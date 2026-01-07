@@ -1,6 +1,5 @@
-
-import React, { useState } from 'react';
-import { ChevronLeft, Heart, Star, MessageCircle, Share2, MoreHorizontal } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, Heart, Star, MessageCircle, Share2, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { Post } from '../types';
 
 interface PostDetailProps {
@@ -14,11 +13,52 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeTogg
   const [localIsLiked, setLocalIsLiked] = useState(post.isLiked);
   const [localLikes, setLocalLikes] = useState(post.likes);
 
+  // Image Logic
+  const [currentSrc, setCurrentSrc] = useState(post.imageUrl);
+  const [attemptIndex, setAttemptIndex] = useState(0);
+  const [hasError, setHasError] = useState(false);
+
+  // Reset when post changes
+  useEffect(() => {
+    setCurrentSrc(post.imageUrl);
+    setAttemptIndex(0);
+    setHasError(false);
+  }, [post.imageUrl]);
+
   const handleLike = () => {
     const newLikedState = !localIsLiked;
     setLocalIsLiked(newLikedState);
     setLocalLikes(prev => newLikedState ? prev + 1 : prev - 1);
     onLikeToggle(post.id);
+  };
+
+  const candidates = useMemo(() => {
+    const originalUrl = post.imageUrl;
+    const basePath = originalUrl.substring(0, originalUrl.lastIndexOf('.')); 
+    const singularPath = originalUrl.replace('/images/', '/image/');
+    return [
+        basePath,
+        basePath + '.PNG',
+        basePath + '.jpg',
+        basePath + '.jpeg',
+        singularPath
+    ];
+  }, [post.imageUrl]);
+
+  const handleError = () => {
+    if (currentSrc.includes('picsum.photos')) {
+        setHasError(true);
+        return;
+    }
+    if (attemptIndex < candidates.length) {
+        const nextSrc = candidates[attemptIndex];
+        setAttemptIndex(prev => prev + 1);
+        setCurrentSrc(nextSrc);
+    } else {
+        // Fallback
+        const fallbackUrl = `https://picsum.photos/seed/${post.id}/${post.width}/${post.height}`;
+        setCurrentSrc(fallbackUrl);
+    }
   };
 
   return (
@@ -45,8 +85,20 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeTogg
       {/* Scrollable Content Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar bg-white pb-20">
          {/* Main Media */}
-         <div className="w-full relative">
-            <img src={post.imageUrl} className="w-full h-auto object-cover" alt="post content" />
+         <div className="w-full relative min-h-[300px] bg-gray-50">
+             {!hasError ? (
+                <img 
+                    src={currentSrc} 
+                    className="w-full h-auto object-cover block" 
+                    alt="post content"
+                    onError={handleError}
+                />
+             ) : (
+                <div className="w-full h-[400px] flex flex-col items-center justify-center text-gray-300 bg-gray-50 p-6 border-b border-gray-100">
+                    <AlertCircle size={48} className="mb-2 text-gray-300" />
+                    <span className="text-sm text-gray-400 font-medium mb-1">Image Not Found</span>
+                </div>
+             )}
          </div>
 
          {/* Content Body */}

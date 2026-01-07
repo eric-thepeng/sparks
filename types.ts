@@ -22,5 +22,5 @@ export interface Post {
   date: string;
 }
 
-export type NavTab = 'home' | 'shop' | 'create' | 'messages' | 'me';
+export type NavTab = 'explore' | 'following' | 'search' | 'messages' | 'me';
 export type FeedTab = 'follow' | 'explore' | 'nearby';

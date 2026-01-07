@@ -7,39 +7,52 @@ interface TopHeaderProps {
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({ activeTab, onTabChange }) => {
+  const tabs: { id: FeedTab; label: string }[] = [
+    { id: 'follow', label: 'Follow' },
+    { id: 'explore', label: 'Explore' },
+    { id: 'nearby', label: 'Nearby' },
+  ];
+
   return (
     <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm transition-all duration-300 border-b border-gray-50/50">
       <div className="flex items-center h-[52px] px-4 relative justify-center">
         
          {/* Centered Tabs Container */}
-         <div className="flex items-center gap-6 h-full">
-            <button 
-              onClick={() => onTabChange('follow')}
-              className={`relative transition-all px-1 ${activeTab === 'follow' ? 'text-gray-900 font-bold text-[17px] scale-105' : 'text-gray-400 font-medium text-[16px] hover:text-gray-600'}`}
-            >
-              Follow
-              {activeTab === 'follow' && (
-                <span className="absolute -bottom-1 left-1/2 w-3 h-[3px] bg-brand -translate-x-1/2 rounded-full" />
-              )}
-            </button>
-            <button 
-              onClick={() => onTabChange('explore')}
-              className={`relative transition-all px-1 ${activeTab === 'explore' ? 'text-gray-900 font-bold text-[17px] scale-105' : 'text-gray-400 font-medium text-[16px] hover:text-gray-600'}`}
-            >
-              Explore
-              {activeTab === 'explore' && (
-                <span className="absolute -bottom-1 left-1/2 w-3 h-[3px] bg-brand -translate-x-1/2 rounded-full" />
-              )}
-            </button>
-            <button 
-              onClick={() => onTabChange('nearby')}
-              className={`relative transition-all px-1 ${activeTab === 'nearby' ? 'text-gray-900 font-bold text-[17px] scale-105' : 'text-gray-400 font-medium text-[16px] hover:text-gray-600'}`}
-            >
-              Nearby
-              {activeTab === 'nearby' && (
-                <span className="absolute -bottom-1 left-1/2 w-3 h-[3px] bg-brand -translate-x-1/2 rounded-full" />
-              )}
-            </button>
+         <div className="flex items-center gap-8 h-full">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button 
+                  key={tab.id}
+                  onClick={() => onTabChange(tab.id)}
+                  className="relative flex items-center justify-center h-full"
+                >
+                   {/* 
+                     Layout Stabilizer: 
+                     This invisible text is always bold and at the largest size.
+                     It reserves the necessary width so the button doesn't expand/contract
+                     and push neighbors when the state changes.
+                   */}
+                   <span className="invisible font-bold text-[17px] px-1 select-none">
+                     {tab.label}
+                   </span>
+
+                   {/* Visible Text Layer */}
+                   <span className={`absolute flex items-center justify-center transition-colors duration-200 ${
+                     isActive 
+                       ? 'text-gray-900 font-bold text-[17px]' 
+                       : 'text-gray-400 font-medium text-[16px] hover:text-gray-600'
+                   }`}>
+                      {tab.label}
+                   </span>
+
+                   {/* Indicator Line */}
+                   {isActive && (
+                    <span className="absolute bottom-[6px] w-4 h-[3px] bg-brand rounded-full transition-transform duration-200" />
+                   )}
+                </button>
+              );
+            })}
          </div>
 
       </div>
