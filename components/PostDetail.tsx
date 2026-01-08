@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Heart, Star, MessageCircle, Share2, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, Heart, Star, MessageCircle, Share2, AlertCircle } from 'lucide-react';
 import { Post } from '../types';
 
 interface PostDetailProps {
@@ -8,20 +8,74 @@ interface PostDetailProps {
   onLikeToggle: (id: string) => void;
 }
 
+// 简单的 Markdown 渲染组件，支持加粗和列表
+const SimpleMarkdown: React.FC<{ content: string }> = ({ content }) => {
+  const renderLine = (line: string, lineIndex: number) => {
+    // 处理加粗文本 **text**
+    const parts = line.split(/(\*\*[^*]+\*\*)/g);
+    
+    return parts.map((part, partIndex) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        // 加粗文本
+        return (
+          <strong key={`${lineIndex}-${partIndex}`} className="font-bold text-gray-900">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      return <span key={`${lineIndex}-${partIndex}`}>{part}</span>;
+    });
+  };
+
+  const lines = content.split('\n');
+  
+  return (
+    <>
+      {lines.map((line, index) => {
+        // 处理列表项 (* 或 - 开头)
+        const listMatch = line.match(/^(\*|\-)\s+(.+)$/);
+        if (listMatch) {
+          return (
+            <div key={index} className="flex gap-2 my-1">
+              <span className="text-brand">•</span>
+              <span>{renderLine(listMatch[2], index)}</span>
+            </div>
+          );
+        }
+        
+        // 处理数字列表 (1. 开头)
+        const numListMatch = line.match(/^(\d+)\.\s+(.+)$/);
+        if (numListMatch) {
+          return (
+            <div key={index} className="flex gap-2 my-1">
+              <span className="text-brand font-medium">{numListMatch[1]}.</span>
+              <span>{renderLine(numListMatch[2], index)}</span>
+            </div>
+          );
+        }
+
+        // 普通段落
+        return (
+          <React.Fragment key={index}>
+            {renderLine(line, index)}
+            {index < lines.length - 1 && <br />}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+};
+
 export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeToggle }) => {
   const [isCollected, setIsCollected] = useState(post.isCollected);
   const [localIsLiked, setLocalIsLiked] = useState(post.isLiked);
   const [localLikes, setLocalLikes] = useState(post.likes);
 
   // Image Logic
-  const [currentSrc, setCurrentSrc] = useState(post.imageUrl);
-  const [attemptIndex, setAttemptIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
 
   // Reset when post changes
   useEffect(() => {
-    setCurrentSrc(post.imageUrl);
-    setAttemptIndex(0);
     setHasError(false);
   }, [post.imageUrl]);
 
@@ -32,33 +86,8 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeTogg
     onLikeToggle(post.id);
   };
 
-  const candidates = useMemo(() => {
-    const originalUrl = post.imageUrl;
-    const basePath = originalUrl.substring(0, originalUrl.lastIndexOf('.')); 
-    const singularPath = originalUrl.replace('/images/', '/image/');
-    return [
-        basePath,
-        basePath + '.PNG',
-        basePath + '.jpg',
-        basePath + '.jpeg',
-        singularPath
-    ];
-  }, [post.imageUrl]);
-
   const handleError = () => {
-    if (currentSrc.includes('picsum.photos')) {
-        setHasError(true);
-        return;
-    }
-    if (attemptIndex < candidates.length) {
-        const nextSrc = candidates[attemptIndex];
-        setAttemptIndex(prev => prev + 1);
-        setCurrentSrc(nextSrc);
-    } else {
-        // Fallback
-        const fallbackUrl = `https://picsum.photos/seed/${post.id}/${post.width}/${post.height}`;
-        setCurrentSrc(fallbackUrl);
-    }
+    setHasError(true);
   };
 
   return (
@@ -88,7 +117,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeTogg
          <div className="w-full relative min-h-[300px] bg-gray-50">
              {!hasError ? (
                 <img 
-                    src={currentSrc} 
+                    src={post.imageUrl} 
                     className="w-full h-auto object-cover block" 
                     alt="post content"
                     onError={handleError}
@@ -106,9 +135,9 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post, onBack, onLikeTogg
             <h1 className="text-lg font-bold text-gray-900 leading-snug mb-3">
                 {post.title}
             </h1>
-            <p className="text-[16px] text-gray-800 leading-relaxed whitespace-pre-line mb-4 font-normal">
-                {post.description}
-            </p>
+            <div className="text-[16px] text-gray-800 leading-relaxed mb-4 font-normal">
+                <SimpleMarkdown content={post.description} />
+            </div>
             
             <div className="flex flex-wrap gap-2 mb-4">
                 {post.tags.map((tag, idx) => (
