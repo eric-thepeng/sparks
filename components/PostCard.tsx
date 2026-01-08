@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Heart, Play, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Heart, Play, AlertCircle } from 'lucide-react';
 import { Post } from '../types';
 
 interface PostCardProps {
@@ -9,60 +9,16 @@ interface PostCardProps {
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post, onLikeToggle, onClick }) => {
-  // Image Loading Logic
-  const [currentSrc, setCurrentSrc] = useState(post.imageUrl);
-  const [attemptIndex, setAttemptIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
 
-  // Reset state when the post prop changes (e.g. during shuffling or filtering)
+  // Reset error state when the post prop changes
   useEffect(() => {
-    setCurrentSrc(post.imageUrl);
-    setAttemptIndex(0);
     setHasError(false);
   }, [post.imageUrl]);
 
-  // Generate candidates for auto-correction
-  const candidates = useMemo(() => {
-    const originalUrl = post.imageUrl;
-    // Strip extension to get base path: /tempData/images/abc
-    const basePath = originalUrl.substring(0, originalUrl.lastIndexOf('.')); 
-    
-    // Check if the folder might be singular 'image' instead of 'images'
-    const singularPath = originalUrl.replace('/images/', '/image/');
-
-    return [
-        // 1. Base path (no extension)
-        basePath,
-        // 2. Uppercase PNG (common issue on case-sensitive servers)
-        basePath + '.PNG',
-        // 3. JPG alternatives
-        basePath + '.jpg',
-        basePath + '.jpeg',
-        // 4. Singular folder path
-        singularPath
-    ];
-  }, [post.imageUrl]);
-
   const handleError = () => {
-    // 1. If we are currently showing a fallback image and IT failed, show the error UI.
-    if (currentSrc.includes('picsum.photos')) {
-        setHasError(true);
-        return;
-    }
-
-    // 2. Try next local candidate
-    if (attemptIndex < candidates.length) {
-        const nextSrc = candidates[attemptIndex];
-        setAttemptIndex(prev => prev + 1);
-        setCurrentSrc(nextSrc);
-    } 
-    // 3. If all local attempts fail, switch to a high-quality online placeholder
-    else {
-        // Use post ID as seed to ensure the same post always gets the same random image
-        const fallbackUrl = `https://picsum.photos/seed/${post.id}/${post.width}/${post.height}`;
-        console.warn(`Local image failed for ${post.title}. Falling back to: ${fallbackUrl}`);
-        setCurrentSrc(fallbackUrl);
-    }
+    console.warn(`Image failed to load for: ${post.title}, URL: ${post.imageUrl}`);
+    setHasError(true);
   };
 
   const formatLikes = (num: number) => {
@@ -78,7 +34,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLikeToggle, onClick 
       <div className="relative overflow-hidden w-full bg-gray-100">
         {!hasError ? (
             <img 
-              src={currentSrc} 
+              src={post.imageUrl} 
               alt={post.title} 
               className="w-full h-auto object-cover block min-h-[150px]"
               loading="lazy"
@@ -86,11 +42,12 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLikeToggle, onClick 
             />
         ) : (
             <div 
-                className="w-full flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-gray-200 text-gray-400 p-4 relative"
+                className="w-full flex flex-col items-center justify-center bg-red-50 border-2 border-dashed border-red-200 text-gray-400 p-4 relative"
                 style={{ aspectRatio: `${post.width}/${post.height}` }}
             >
                 <AlertCircle size={24} className="mb-2 text-red-400" />
-                <span className="text-[10px] font-bold text-red-400 mb-1">Image Unavailable</span>
+                <span className="text-[10px] font-bold text-red-400 mb-1">图片加载失败</span>
+                <span className="text-[8px] text-red-300 break-all px-2">{post.imageUrl}</span>
             </div>
         )}
 
