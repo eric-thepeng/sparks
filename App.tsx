@@ -95,7 +95,13 @@ const App: React.FC = () => {
       {/* Post Detail Overlay */}
       {selectedPost && (
         <PostDetail 
-          post={selectedPost} 
+          post={selectedPost}
+          posts={posts}
+          selectedPostId={selectedPost.id}
+          onSelectPost={(id) => {
+             const nextPost = posts.find(p => p.id === id);
+             if (nextPost) setSelectedPost(nextPost);
+          }}
           onBack={() => setSelectedPost(null)}
           onLikeToggle={handleLikeToggle}
         />
