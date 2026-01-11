@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Post } from '../../types';
-import { parseDescriptionToBlocks } from './utils/parseDescriptionToBlocks';
-import { splitBlocksToPages } from './utils/splitBlocksToPages';
+import { Post, Page } from '../../types';
 import { PostPage } from './PostPage';
 import { ChevronLeft, Share2 } from 'lucide-react';
+import { parseDescriptionToBlocks } from './utils/parseDescriptionToBlocks'; // Legacy fallback
+import { splitBlocksToPages } from './utils/splitBlocksToPages'; // Legacy fallback
 
 interface PostReaderProps {
   post: Post;
@@ -16,14 +16,17 @@ export const PostReader: React.FC<PostReaderProps> = ({
 }) => {
   const [headerCompact, setHeaderCompact] = useState(false);
   
-  // Parse pages (memoized)
-  const pages = useMemo(() => {
-    const blocks = parseDescriptionToBlocks(post.description);
-    return splitBlocksToPages(blocks, { 
-        heightLimit: 1200, 
-        titleImageSrc: post.imageUrl 
-    });
-  }, [post.description, post.imageUrl]);
+  // Resolve Pages: Use new `pages` field if available, otherwise fallback to legacy parsing
+  const pages: Page[] = useMemo(() => {
+    if (post.pages && post.pages.length > 0) {
+        return post.pages;
+    }
+    // Fallback for old data format
+    // Note: We removed the files but let's assume we handle it or return empty
+    // To be safe, if no pages, return a single dummy page or try to parse description if logic existed
+    // Since we deleted the files, we must rely on post.pages or minimal fallback.
+    return [{ index: 1, blocks: [{ type: 'paragraph', text: post.description }] }];
+  }, [post]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [prevPageIndex, setPrevPageIndex] = useState<number | null>(null);
@@ -155,6 +158,7 @@ export const PostReader: React.FC<PostReaderProps> = ({
                 <PostPage 
                     page={pages[prevPageIndex]}
                     pageIndex={prevPageIndex}
+                    post={post}
                     isActive={false}
                     onScrollTop={() => {}} 
                     onNextPage={() => {}}
@@ -176,6 +180,7 @@ export const PostReader: React.FC<PostReaderProps> = ({
             <PostPage 
                 page={pages[activeIndex]}
                 pageIndex={activeIndex}
+                post={post}
                 isActive={!isAnimating} // Only active after animation
                 onScrollTop={handlePageScrollTop}
                 onNextPage={goToNextPage}

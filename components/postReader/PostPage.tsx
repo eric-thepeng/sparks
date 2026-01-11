@@ -1,11 +1,12 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Page } from './types';
+import React, { useRef, useEffect } from 'react';
+import { Page, Post } from '../../types';
 import { BlockRenderer } from './blocks';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 interface PostPageProps {
   page: Page;
   pageIndex: number;
+  post: Post;
   isActive: boolean;
   onScrollTop: (top: number) => void;
   onNextPage: () => void;
@@ -17,6 +18,7 @@ interface PostPageProps {
 
 export const PostPage: React.FC<PostPageProps> = ({
   page,
+  post,
   isActive,
   onScrollTop,
   onNextPage,
@@ -32,9 +34,7 @@ export const PostPage: React.FC<PostPageProps> = ({
 
   // Restore Scroll Position
   useEffect(() => {
-    // Only set scroll position on mount (or when page ID changes)
-    // We ignore updates to initialScrollPosition prop itself to prevent
-    // resets during parent re-renders/animation cleanup.
+    // Only set scroll position on mount (or when page index changes)
     requestAnimationFrame(() => {
         if (containerRef.current) {
             if (initialScrollPosition === 'bottom') {
@@ -47,7 +47,7 @@ export const PostPage: React.FC<PostPageProps> = ({
         }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page.id]); // Explicitly depend ONLY on page.id
+  }, [page.index]); // Use page index as stable identifier
 
   // Fallback Button Handlers
   const handleNextClick = () => {
@@ -150,6 +150,12 @@ export const PostPage: React.FC<PostPageProps> = ({
     };
   }, [isActive, onScrollTop, onNextPage, onPrevPage, isLastPage, isFirstPage]);
 
+  // Handle Title Image Injection for Page 1
+  // In the new schema, "Page 1" doesn't automatically contain the cover image block.
+  // We need to decide if we inject it manually or rely on the JSONL data.
+  // Since the prompt implied cover image is separate, let's inject it at the top of Page 1.
+  const shouldShowCoverImage = page.index === 1;
+
   return (
     <div className="relative w-full h-full flex flex-col pt-[72px]">
        {/* Scrollable Content */}
@@ -158,20 +164,25 @@ export const PostPage: React.FC<PostPageProps> = ({
          className="flex-1 overflow-y-auto no-scrollbar w-full relative touch-pan-y min-h-0"
        >
           <div className="px-4 py-6 pb-20 max-w-2xl mx-auto flex flex-col min-h-full">
-             {/* Render Placeholder for Title Image if present */}
-             {page.blocks.length > 0 && page.blocks[0].type === 'image' && (
-                 <div className="min-h-[300px] w-full">
-                    <BlockRenderer key={page.blocks[0].id} block={page.blocks[0]} />
+             
+             {/* Inject Cover Image on Page 1 */}
+             {shouldShowCoverImage && (
+                 <div className="min-h-[300px] w-full mb-8 flex flex-col items-center">
+                    <img 
+                        src={post.imageUrl} // Use the main cover image
+                        alt={post.title}
+                        className="max-h-[60vh] w-auto max-w-full rounded-lg shadow-md object-contain"
+                    />
                  </div>
              )}
              
-             {/* Render remaining blocks */}
-             {page.blocks.slice(page.blocks.length > 0 && page.blocks[0].type === 'image' ? 1 : 0).map(block => (
-               <BlockRenderer key={block.id} block={block} />
+             {/* Render blocks */}
+             {page.blocks.map((block, idx) => (
+               <BlockRenderer key={idx} block={block} post={post} />
              ))}
              
              {/* Empty State */}
-             {page.blocks.length === 0 && (
+             {page.blocks.length === 0 && !shouldShowCoverImage && (
                  <div className="p-4 bg-gray-50 text-gray-400 text-center text-sm">Empty page</div>
              )}
              

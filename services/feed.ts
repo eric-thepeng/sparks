@@ -1,9 +1,24 @@
-import { Post, User } from '../types';
+import { Post, User, Page, InlineImage, ContentBlock } from '../types';
 
+// Update RawPost to match the NEW JSONL output
 interface RawPost {
     uid: string;
     title: string;
-    content: string;
+    topic?: string;
+    cover_image: {
+        prompt: string;
+        file_name?: string;
+    };
+    inline_images: Array<{
+        id: string;
+        prompt: string;
+        file_name?: string;
+        placement_hint?: string;
+    }>;
+    pages: Array<{
+        index: number;
+        blocks: any[]; // will validate structure in transform
+    }>;
 }
 
 // Mock Users to assign to the raw content
@@ -34,7 +49,6 @@ const getStableRandom = (seed: string) => {
 
 // Transform Raw Data to App Schema
 const transformPost = (raw: RawPost): Post => {
-    // Ensure raw.uid is a string (handles numbers in JSON) and remove whitespace
     const rawUid = String(raw.uid || '');
     
     // Seed generator
@@ -49,17 +63,32 @@ const transformPost = (raw: RawPost): Post => {
     const ratioIndex = Math.floor((randomVal * 10) % 3);
     const dimensions = ASPECT_RATIOS[ratioIndex];
 
-    // Construct Image URL
-    // 1. Remove any existing extensions (.png, .jpg, etc) to get the "base" name
-    // 2. Append .png explicitly as requested
-    const cleanId = rawUid.trim().replace(/\.(png|jpg|jpeg|gif)$/i, '');
-    const imageUrl = `/tempData/images/${cleanId}.png`;
+    // Construct Cover Image URL
+    // Legacy: /tempData/images/{uid}.png
+    // New: /tempData/images/{uid}_cover.png
+    // We'll try to support the new format first
+    const coverImageUrl = `/tempData/images/${rawUid}_cover.png`;
+
+    // Map Inline Images
+    const inlineImages: InlineImage[] = (raw.inline_images || []).map(img => ({
+        id: img.id,
+        prompt: img.prompt,
+        placement_hint: img.placement_hint
+    }));
+
+    // Map Pages & Blocks (Basic Validation)
+    const pages: Page[] = (raw.pages || []).map(p => ({
+        index: p.index,
+        blocks: (p.blocks || []) as ContentBlock[]
+    }));
 
     return {
         id: rawUid,
         title: raw.title,
-        description: raw.content, // Use content directly
-        tags: ['lifestyle', 'daily', 'indigo'], 
+        description: '', // Legacy field, mostly unused if pages exist
+        pages: pages,
+        inlineImages: inlineImages,
+        tags: [raw.topic || 'general'], 
         comments: Math.floor(randomVal * 200),
         likes: Math.floor(randomVal * 5000),
         isLiked: randomVal > 0.7,
@@ -67,7 +96,7 @@ const transformPost = (raw: RawPost): Post => {
         user: user,
         type: 'image',
         date: '2 days ago',
-        imageUrl: imageUrl,
+        imageUrl: coverImageUrl,
         width: dimensions.width,
         height: dimensions.height,
     };
@@ -90,8 +119,8 @@ const loadAndProcessData = async (): Promise<Post[]> => {
     if (globalPostCache) return globalPostCache;
 
     try {
-        // Fetch the JSONL file
-        const response = await fetch('/tempData/posts.jsonl');
+        // Fetch the JSONL file with timestamp to bypass cache
+        const response = await fetch(`/tempData/posts.jsonl?t=${Date.now()}`);
         if (!response.ok) {
             console.error(`Failed to fetch posts.jsonl: ${response.status} ${response.statusText}`);
             return [];
@@ -117,7 +146,8 @@ const loadAndProcessData = async (): Promise<Post[]> => {
         const posts = rawPosts.map(transformPost);
 
         // Apply "The Algorithm": Shuffle the posts to distribute them randomly
-        globalPostCache = shuffleArray(posts);
+        // globalPostCache = shuffleArray(posts);
+        globalPostCache = posts; // Keep order for now
         
         return globalPostCache;
     } catch (error) {
