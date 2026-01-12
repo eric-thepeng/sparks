@@ -23,13 +23,32 @@ export const PostDetail: React.FC<PostDetailProps> = ({
   const [isCollected, setIsCollected] = useState(post.isCollected);
   const [localIsLiked, setLocalIsLiked] = useState(post.isLiked);
   const [localLikes, setLocalLikes] = useState(post.likes);
+  const [slideDirection, setSlideDirection] = useState<'right' | 'left' | null>(null);
+  const prevPostIdRef = useRef(post.id);
 
   // Sync state when post changes
   useEffect(() => {
     setLocalIsLiked(post.isLiked);
     setLocalLikes(post.likes);
     setIsCollected(post.isCollected);
-  }, [post.id, post.isLiked, post.likes, post.isCollected]);
+
+    // Determine slide direction based on index change
+    if (prevPostIdRef.current !== post.id) {
+        const oldIndex = posts.findIndex(p => p.id === prevPostIdRef.current);
+        const newIndex = posts.findIndex(p => p.id === post.id);
+        
+        // If index increased -> Next -> Slide In From Right
+        // If index decreased -> Prev -> Slide In From Left
+        if (newIndex > oldIndex) {
+            setSlideDirection('right');
+        } else if (newIndex < oldIndex) {
+            setSlideDirection('left');
+        } else {
+            setSlideDirection(null);
+        }
+        prevPostIdRef.current = post.id;
+    }
+  }, [post.id, post.isLiked, post.likes, post.isCollected, posts]);
 
   const handleLike = () => {
     const newLikedState = !localIsLiked;
@@ -94,6 +113,19 @@ export const PostDetail: React.FC<PostDetailProps> = ({
       touchStartRef.current = null;
   };
 
+  const animationStyles = `
+    @keyframes slideInRight {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    @keyframes slideInLeft {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(0); }
+    }
+    .slide-in-right { animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .slide-in-left { animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  `;
+
   return (
     <div 
         className="fixed inset-0 z-[60] bg-white flex flex-col animate-in slide-in-from-right duration-200 touch-pan-y"
@@ -101,11 +133,21 @@ export const PostDetail: React.FC<PostDetailProps> = ({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
     >
+      <style>{animationStyles}</style>
       <div className="flex-1 relative overflow-hidden">
-         <PostReader 
-             post={post} 
-             onClose={onBack}
-         />
+         {/* Wrapper with key to trigger animation on post change */}
+         <div 
+            key={post.id}
+            className={`w-full h-full absolute inset-0 bg-white ${
+                slideDirection === 'right' ? 'slide-in-right shadow-2xl z-10' : 
+                slideDirection === 'left' ? 'slide-in-left shadow-2xl z-10' : ''
+            }`}
+         >
+             <PostReader 
+                 post={post} 
+                 onClose={onBack}
+             />
+         </div>
       </div>
 
       {/* Bottom Action Bar (Shared) */}
