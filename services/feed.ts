@@ -48,7 +48,7 @@ const getStableRandom = (seed: string) => {
 };
 
 // Transform Raw Data to App Schema
-const transformPost = (raw: RawPost): Post => {
+const transformPost = (raw: RawPost, baseUrl: string = ''): Post => {
     const rawUid = String(raw.uid || '');
     
     // Seed generator
@@ -65,9 +65,11 @@ const transformPost = (raw: RawPost): Post => {
 
     // Construct Cover Image URL
     // Legacy: /tempData/images/{uid}.png
-    // New: /tempData/images/{uid}_cover.png
-    // We'll try to support the new format first
-    const coverImageUrl = `/tempData/images/${rawUid}_cover.png`;
+    // New (Backend): {baseUrl}/images/{uid}_cover.png
+    // New (Local): /tempData/images/{uid}_cover.png
+    const cleanBase = baseUrl ? baseUrl.replace(/\/$/, '') : '';
+    const imagePath = baseUrl ? '/images' : '/tempData/images';
+    const coverImageUrl = `${cleanBase}${imagePath}/${rawUid}_cover.png`;
 
     // Map Inline Images
     const inlineImages: InlineImage[] = (raw.inline_images || []).map(img => ({
@@ -99,6 +101,7 @@ const transformPost = (raw: RawPost): Post => {
         imageUrl: coverImageUrl,
         width: dimensions.width,
         height: dimensions.height,
+        assetBaseUrl: baseUrl || undefined
     };
 };
 
@@ -143,7 +146,7 @@ const loadAndProcessData = async (): Promise<Post[]> => {
             .filter(item => item !== null) as RawPost[];
 
         // Transform to application Post format
-        const posts = rawPosts.map(transformPost);
+        const posts = rawPosts.map(p => transformPost(p));
 
         // Apply "The Algorithm": Shuffle the posts to distribute them randomly
         // globalPostCache = shuffleArray(posts);
@@ -158,6 +161,23 @@ const loadAndProcessData = async (): Promise<Post[]> => {
 
 export const feedService = {
     getPosts: async (page: number = 1, pageSize: number = 10): Promise<Post[]> => {
+        // Backend Fetch (Test Mode)
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+        if (apiBaseUrl) {
+            try {
+                const response = await fetch(`${apiBaseUrl}/posts?page=${page}&limit=${pageSize}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    // Handle both array response or { data: [] } format
+                    const rawPosts = Array.isArray(data) ? data : (data.data || []);
+                    return rawPosts.map((p: any) => transformPost(p, apiBaseUrl));
+                }
+                console.warn(`Backend fetch failed: ${response.status}, falling back to local data.`);
+            } catch (error) {
+                console.error("Backend fetch error:", error);
+            }
+        }
+
         await new Promise(resolve => setTimeout(resolve, 400));
         const allPosts = await loadAndProcessData();
         const start = (page - 1) * pageSize;
@@ -174,5 +194,25 @@ export const feedService = {
         }
 
         return allPosts.slice(start, end);
+    },
+
+    getPostById: async (id: string): Promise<Post | null> => {
+        // Backend Fetch (Test Mode)
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+        if (apiBaseUrl) {
+            try {
+                const response = await fetch(`${apiBaseUrl}/posts/${id}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    return transformPost(data, apiBaseUrl);
+                }
+            } catch (error) {
+                console.error("Backend detail fetch error:", error);
+            }
+        }
+
+        // Fallback to local data
+        const allPosts = await loadAndProcessData();
+        return allPosts.find(p => p.id === id) || null;
     }
 };
