@@ -43,6 +43,7 @@ export interface Post {
   user: User;
   type: 'video' | 'image';
   date: string;
+  assetBaseUrl?: string; // Optional base URL for assets (images) if fetched from backend
 }
 
 export type NavTab = 'explore' | 'following' | 'search' | 'messages' | 'me';

@@ -3,45 +3,36 @@ import { ContentBlock, Post } from '../../../types';
 
 // Helper to look up image URL from Post data
 const getImageUrl = (ref: string, post: Post) => {
-    // 1. Try to find the inline image definition
+    // Determine base URL
+    const base = post.assetBaseUrl ? post.assetBaseUrl.replace(/\/$/, '') : '';
+    const imagePath = post.assetBaseUrl ? '/images' : '/tempData/images';
+    
+    // 1. Try to find the inline image definition (if needed for metadata, though URL construction is generic)
     const inlineImg = post.inlineImages?.find(img => img.id === ref);
-    if (!inlineImg) {
-        // Fallback or placeholder if not found
-        // Assuming images are in /tempData/images/{uid}_{ref}.png based on new schema
-        return `/tempData/images/${post.id}_${ref}.png`;
-    }
-    // Construct path: /tempData/images/{uid}_{ref}.png
-    return `/tempData/images/${post.id}_${ref}.png`;
+    
+    // 2. Construct path
+    return `${base}${imagePath}/${post.id}_${ref}.png`;
 };
 
 export const Heading: React.FC<{ block: Extract<ContentBlock, { type: 'h1' | 'h2' | 'h3' }> }> = ({ block }) => {
-  const sizes = {
-    h1: 'text-2xl font-bold mb-4 mt-6 leading-tight',
-    h2: 'text-xl font-bold mb-3 mt-5 leading-snug',
-    h3: 'text-lg font-semibold mb-2 mt-4 leading-snug'
+  const Tag = block.type;
+  const classes = {
+    h1: "text-2xl font-bold mb-6 text-gray-900 leading-tight",
+    h2: "text-xl font-bold mt-8 mb-4 text-gray-800 leading-snug",
+    h3: "text-lg font-bold mt-6 mb-3 text-gray-800"
   };
-  return <div className={`text-gray-900 ${sizes[block.type]}`}>{block.text}</div>;
+
+  return <Tag className={classes[block.type]}>{block.text}</Tag>;
 };
 
 export const Paragraph: React.FC<{ block: Extract<ContentBlock, { type: 'paragraph' }> }> = ({ block }) => {
-  // Simple markdown-ish bold parser
-  const parts = block.text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <div className="text-[16px] text-gray-800 leading-relaxed mb-4">
-      {parts.map((part, idx) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-           return <strong key={idx} className="font-bold">{part.slice(2, -2)}</strong>;
-        }
-        return <span key={idx}>{part}</span>;
-      })}
-    </div>
-  );
+  return <p className="text-gray-700 leading-relaxed mb-4 text-[17px] tracking-wide text-justify">{block.text}</p>;
 };
 
 export const Quote: React.FC<{ block: Extract<ContentBlock, { type: 'quote' }> }> = ({ block }) => (
-  <div className="border-l-4 border-brand/40 pl-4 py-1 my-6 text-gray-600 italic bg-gray-50/50 rounded-r-lg">
-    {block.text}
-    {block.attribution && <div className="text-sm text-gray-400 mt-2 not-italic">— {block.attribution}</div>}
+  <div className="my-6 pl-4 border-l-4 border-brand/40 italic text-gray-600 bg-gray-50 py-2 pr-2 rounded-r-lg">
+    <p className="text-lg font-serif">"{block.text}"</p>
+    {block.attribution && <div className="text-sm text-gray-400 mt-2 text-right">— {block.attribution}</div>}
   </div>
 );
 
@@ -64,16 +55,20 @@ export const Image: React.FC<{ block: Extract<ContentBlock, { type: 'image' }>; 
 };
 
 export const Spacer: React.FC<{ block: Extract<ContentBlock, { type: 'spacer' }> }> = ({ block }) => {
-  const heights = { sm: 'h-4', md: 'h-8', lg: 'h-16' };
-  return <div className={heights[block.size]} />;
+  const heights = {
+    sm: 'h-4',
+    md: 'h-8',
+    lg: 'h-16'
+  };
+  return <div className={heights[block.size || 'md']} />;
 };
 
 export const List: React.FC<{ block: Extract<ContentBlock, { type: 'bullets' }> }> = ({ block }) => (
-  <div className="mb-4 pl-1">
+  <div className="mb-4 pl-2 space-y-2">
     {block.items.map((item, idx) => (
-      <div key={idx} className="flex gap-2 my-1.5 items-start">
-        <span className="text-brand shrink-0 mt-1.5 text-[6px]">•</span>
-        <span className="text-[16px] text-gray-800 leading-relaxed flex-1">{item}</span>
+      <div key={idx} className="flex items-start gap-2 text-gray-700 leading-relaxed text-[17px]">
+        <span className="text-brand mt-1.5 text-[8px]">●</span>
+        <span>{item}</span>
       </div>
     ))}
   </div>
