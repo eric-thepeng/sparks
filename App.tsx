@@ -12,6 +12,9 @@ import {
   Modal,
   Dimensions,
   FlatList,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +29,10 @@ import {
   FileText,
   User,
   Sparkles,
+  Share2,
+  Pencil,
+  X,
+  Send,
 } from 'lucide-react-native';
 
 // 数据层
@@ -283,6 +290,9 @@ function PostReader({
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [showNoteInput, setShowNoteInput] = useState(false);
   
   // 记录每个页面分隔符的位置
   const pagePositions = useRef<number[]>([0]);
@@ -330,8 +340,31 @@ function PostReader({
     }
   };
 
+  // 处理收藏
+  const handleBookmark = () => {
+    setIsBookmarked(!isBookmarked);
+  };
+
+  // 处理分享
+  const handleShare = () => {
+    // TODO: 实现分享功能
+    console.log('Share post:', post.uid);
+  };
+
+  // 处理发送笔记
+  const handleSendNote = () => {
+    if (noteText.trim()) {
+      console.log('Save note:', noteText);
+      setNoteText('');
+      setShowNoteInput(false);
+    }
+  };
+
   return (
-    <View style={[styles.readerContainer, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView 
+      style={[styles.readerContainer, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       {/* 顶部栏 */}
       <View style={styles.readerHeader}>
         <Pressable onPress={onClose} style={styles.closeButton}>
@@ -357,7 +390,7 @@ function PostReader({
       <ScrollView
         ref={scrollViewRef}
         style={styles.readerScroll}
-        contentContainerStyle={[styles.readerScrollContent, { paddingBottom: 60 + insets.bottom }]}
+        contentContainerStyle={[styles.readerScrollContent, { paddingBottom: 20 }]}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -407,7 +440,71 @@ function PostReader({
           <Text style={styles.articleEndText}>— 全文完 —</Text>
         </View>
       </ScrollView>
-    </View>
+
+      {/* 底部操作栏 */}
+      <View 
+        style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
+      >
+        {/* 笔记输入区域 - 占2/3宽度 */}
+        <Pressable 
+          style={styles.noteInputContainer}
+          onPress={() => setShowNoteInput(true)}
+        >
+          {showNoteInput ? (
+            <View style={styles.noteInputWrapper}>
+              <TextInput
+                style={styles.noteInput}
+                placeholder="Write a note..."
+                placeholderTextColor={colors.textMuted}
+                value={noteText}
+                onChangeText={setNoteText}
+                autoFocus
+                multiline
+                maxLength={500}
+              />
+              {noteText.trim() ? (
+                <Pressable style={styles.sendButton} onPress={handleSendNote}>
+                  <Send size={18} color="#fff" />
+                </Pressable>
+              ) : (
+                <Pressable style={styles.closeNoteButton} onPress={() => setShowNoteInput(false)}>
+                  <X size={18} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <View style={styles.notePlaceholder}>
+              <Pencil size={16} color={colors.textMuted} />
+              <Text style={styles.notePlaceholderText}>Write a note...</Text>
+            </View>
+          )}
+        </Pressable>
+
+        {/* 操作按钮区域 - 占1/3宽度 */}
+        <View style={styles.actionButtons}>
+          {/* 收藏按钮 */}
+          <Pressable style={styles.actionButton} onPress={handleBookmark}>
+            <Bookmark 
+              size={22} 
+              color={isBookmarked ? colors.primary : colors.textSecondary}
+              fill={isBookmarked ? colors.primary : 'transparent'}
+            />
+            <Text style={[
+              styles.actionButtonText,
+              isBookmarked && { color: colors.primary }
+            ]}>
+              Save
+            </Text>
+          </Pressable>
+
+          {/* 分享按钮 */}
+          <Pressable style={styles.actionButton} onPress={handleShare}>
+            <Share2 size={22} color={colors.textSecondary} />
+            <Text style={styles.actionButtonText}>Share</Text>
+          </Pressable>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -816,6 +913,82 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginVertical: 12,
     backgroundColor: colors.border,
+  },
+  
+  // Post Bottom Bar
+  postBottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border,
+    gap: 8,
+  },
+  noteInputContainer: {
+    flex: 3,
+    height: 44,
+    backgroundColor: colors.bg,
+    borderRadius: 22,
+    justifyContent: 'center',
+  },
+  noteInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  noteInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    maxHeight: 80,
+    paddingVertical: 0,
+  },
+  notePlaceholder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  notePlaceholderText: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  sendButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  closeNoteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  actionButtons: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  actionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  actionButtonText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   
 });
