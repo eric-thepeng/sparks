@@ -47,6 +47,9 @@ import {
   ContentBlock 
 } from './src/data';
 
+// Hooks
+import { useFeedItems, usePost } from './src/hooks';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_GAP = 8;
 const CARD_WIDTH = (SCREEN_WIDTH - 24 - COLUMN_GAP) / 2;
@@ -521,19 +524,89 @@ function PlaceholderScreen({ title }: { title: string }) {
 }
 
 // ============================================================
+// Loading 状态组件
+// ============================================================
+function LoadingScreen() {
+  return (
+    <View style={styles.loadingContainer}>
+      <Sparkles size={48} color={colors.primary} />
+      <Text style={styles.loadingText}>加载中...</Text>
+    </View>
+  );
+}
+
+// ============================================================
+// Error 状态组件
+// ============================================================
+function ErrorScreen({ 
+  message, 
+  onRetry 
+}: { 
+  message: string; 
+  onRetry: () => void;
+}) {
+  return (
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorIcon}>⚠️</Text>
+      <Text style={styles.errorTitle}>加载失败</Text>
+      <Text style={styles.errorMessage}>{message}</Text>
+      <Pressable style={styles.retryButton} onPress={onRetry}>
+        <Text style={styles.retryButtonText}>重试</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ============================================================
 // 主应用
 // ============================================================
 export default function App() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [topTab, setTopTab] = useState('发现');
   const [bottomTab, setBottomTab] = useState('explore');
-  const selectedPost = selectedPostUid ? getPost(selectedPostUid) : null;
-  const feedItems = getFeedItems();
+  
+  // 使用 hooks 获取数据
+  const { 
+    feedItems, 
+    status: feedStatus, 
+    error: feedError, 
+    refetch: refetchFeed 
+  } = useFeedItems();
+  
+  const { 
+    post: selectedPost, 
+    status: postStatus, 
+    error: postError,
+    refetch: refetchPost 
+  } = usePost(selectedPostUid);
 
   // 渲染当前页面内容
   const renderContent = () => {
     switch (bottomTab) {
       case 'explore':
+        // 处理加载状态
+        if (feedStatus === 'loading' && feedItems.length === 0) {
+          return (
+            <>
+              <Header activeTab={topTab} onTabChange={setTopTab} />
+              <LoadingScreen />
+            </>
+          );
+        }
+        
+        // 处理错误状态
+        if (feedStatus === 'error' && feedItems.length === 0) {
+          return (
+            <>
+              <Header activeTab={topTab} onTabChange={setTopTab} />
+              <ErrorScreen 
+                message={feedError || '未知错误'} 
+                onRetry={refetchFeed} 
+              />
+            </>
+          );
+        }
+        
         return (
           <>
             {/* 顶部 Header */}
@@ -549,7 +622,13 @@ export default function App() {
                 items={feedItems} 
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
-              <Text style={styles.endText}>— 到底啦 —</Text>
+              {feedStatus === 'loading' ? (
+                <View style={styles.loadingMore}>
+                  <Text style={styles.loadingMoreText}>加载中...</Text>
+                </View>
+              ) : (
+                <Text style={styles.endText}>— 到底啦 —</Text>
+              )}
             </ScrollView>
           </>
         );
@@ -578,17 +657,40 @@ export default function App() {
 
         {/* 帖子详情 Modal */}
         <Modal
-          visible={selectedPost !== null}
+          visible={selectedPostUid !== null}
           animationType="slide"
           presentationStyle="fullScreen"
           onRequestClose={() => setSelectedPostUid(null)}
         >
-          {selectedPost && (
+          {postStatus === 'loading' ? (
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <LoadingScreen />
+              <Pressable 
+                style={styles.modalCloseButton} 
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : postStatus === 'error' ? (
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ErrorScreen 
+                message={postError || '加载帖子失败'} 
+                onRetry={refetchPost} 
+              />
+              <Pressable 
+                style={styles.modalCloseButton} 
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : selectedPost ? (
             <PostReader
               post={selectedPost}
               onClose={() => setSelectedPostUid(null)}
             />
-          )}
+          ) : null}
         </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -989,6 +1091,78 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  
+  // Loading
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  loadingMore: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  
+  // Error
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  errorIcon: {
+    fontSize: 48,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  
+  // Modal close button
+  modalCloseButton: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    padding: 8,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   
 });
