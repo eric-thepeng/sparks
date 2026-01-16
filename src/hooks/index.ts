@@ -1,7 +1,8 @@
 /**
- * Hooks 入口
+ * Hooks Entry
  */
 
 export * from './usePosts';
 export * from './useSavedPosts';
+export * from './useNotes';
 

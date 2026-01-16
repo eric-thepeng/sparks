@@ -1,85 +1,105 @@
 # Sparks
 
-Expo + React Native 移动应用 - 小红书风格的信息流阅读 App
+Expo + React Native Mobile App - Xiaohongshu-style Feed Reading App
 
-## 📁 项目结构
+## ✨ Features
+
+- **Feed** - Masonry-style post feed with beautiful cards
+- **Post Reader** - Paginated reading experience with smooth scrolling
+- **Save** - Bookmark posts for later, persisted locally with backend sync support
+- **Notes** - Take notes while reading, linked to specific posts
+
+## 📁 Project Structure
 
 ```
 sparks/
-├── App.tsx                  ← 主应用（UI + 状态管理）
-├── index.ts                 ← 入口
+├── App.tsx                  ← Main app (UI + state)
+├── index.ts                 ← Entry point
 ├── assets/
-│   └── posts/               ← 帖子图片 (55张)
+│   └── posts/               ← Post images (55 files)
 ├── src/
-│   ├── api/                 ← API 层
-│   │   ├── index.ts         ← API 客户端（fetch 封装）
-│   │   └── types.ts         ← API 数据类型定义
-│   ├── data/                ← 数据层
-│   │   ├── index.ts         ← 数据管理 + 转换函数
-│   │   ├── imageMap.ts      ← 本地图片映射
-│   │   ├── posts.ts         ← 帖子类型定义
-│   │   └── postsData.json   ← 本地帖子数据（离线回退）
+│   ├── api/                 ← API layer
+│   │   ├── index.ts         ← API client (fetch wrapper)
+│   │   └── types.ts         ← API type definitions
+│   ├── context/             ← React Context (state management)
+│   │   ├── index.ts         ← Context entry
+│   │   ├── SavedContext.tsx ← Saved posts state + AsyncStorage
+│   │   └── NotesContext.tsx ← Notes state + AsyncStorage
+│   ├── data/                ← Data layer
+│   │   ├── index.ts         ← Data management + transformers
+│   │   ├── imageMap.ts      ← Local image mapping
+│   │   ├── posts.ts         ← Post type definitions
+│   │   └── postsData.json   ← Local post data (offline fallback)
 │   └── hooks/               ← React Hooks
-│       ├── index.ts         ← Hooks 入口
-│       └── usePosts.ts      ← 数据获取 Hooks
+│       ├── index.ts         ← Hooks entry
+│       ├── usePosts.ts      ← Data fetching hooks
+│       ├── useSavedPosts.ts ← Save functionality hook
+│       └── useNotes.ts      ← Notes functionality hook
 └── scripts/
-    ├── generate-image-map.js  ← 图片映射生成
-    └── convert-posts.js       ← JSONL 转 TypeScript
+    ├── generate-image-map.js  ← Image mapping generator
+    └── convert-posts.js       ← JSONL to TypeScript converter
 ```
 
-## 🏗️ 架构设计
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  App.tsx (UI 层)                                            │
+│  App.tsx (UI Layer)                                         │
 │  └── useFeedItems() / usePost()                             │
+│  └── useSavedPosts() / useNotesHook()                       │
 ├─────────────────────────────────────────────────────────────┤
-│  src/hooks/usePosts.ts (状态管理层)                          │
-│  └── 管理 loading/error/success 状态                         │
-│  └── 调用 API，返回转换后的数据                               │
+│  src/context/ (State Management)                            │
+│  └── SavedContext - Saved posts with AsyncStorage           │
+│  └── NotesContext - Notes with AsyncStorage                 │
+│  └── Reserved backend sync interfaces                       │
 ├─────────────────────────────────────────────────────────────┤
-│  src/api/index.ts (网络层)                                   │
-│  └── fetch 请求后端 API                                      │
-│  └── 统一错误处理和超时控制                                    │
+│  src/hooks/ (Custom Hooks)                                  │
+│  └── usePosts.ts - Loading/error/success states             │
+│  └── useSavedPosts.ts - Save operations                     │
+│  └── useNotes.ts - Notes operations                         │
 ├─────────────────────────────────────────────────────────────┤
-│  src/data/index.ts (数据层)                                  │
-│  └── 数据转换：ApiPost → FeedItem / Post                     │
-│  └── 本地数据回退支持                                         │
+│  src/api/index.ts (Network Layer)                           │
+│  └── Fetch backend API                                      │
+│  └── Unified error handling and timeout                     │
+├─────────────────────────────────────────────────────────────┤
+│  src/data/index.ts (Data Layer)                             │
+│  └── Transform: ApiPost → FeedItem / Post                   │
+│  └── Local data fallback                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 运行
+## 🚀 Getting Started
 
 ```bash
-# 安装依赖
+# Install dependencies
 npm install
 
-# 启动开发服务器
+# Start dev server
 npm start
 
-# 清缓存启动
+# Start with cache clear
 npm run start:clear
 ```
 
-## 🔌 后端 API
+## 🔌 Backend API
 
-### API 地址
+### API Base URL
 ```
 https://spark-api-nvy6vvhfoa-ue.a.run.app
 ```
 
-### 可用接口
+### Available Endpoints
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/posts` | 获取帖子列表 |
-| GET | `/posts/{id}` | 获取单个帖子（id = platform_post_id） |
-| GET | `/api/db/posts?limit=20&offset=0` | 分页获取帖子 |
-| POST | `/generate` | 生成新帖子 |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/posts` | Get post list |
+| GET | `/posts/{id}` | Get single post (id = platform_post_id) |
+| GET | `/api/db/posts?limit=20&offset=0` | Paginated posts |
+| POST | `/generate` | Generate new posts |
 
-### 数据结构
+### Data Structures
 
-**API 返回格式（ApiPost）：**
+**API Response Format (ApiPost):**
 ```typescript
 {
   platform_post_id: string;  // 帖子唯一ID，如 "spark_6720"
@@ -93,9 +113,9 @@ https://spark-api-nvy6vvhfoa-ue.a.run.app
 }
 ```
 
-**App 内部格式（FeedItem / Post）：**
+**App Internal Format (FeedItem / Post):**
 ```typescript
-// FeedItem - 用于信息流卡片
+// FeedItem - for feed cards
 interface FeedItem {
   uid: string;
   title: string;
@@ -107,22 +127,22 @@ interface FeedItem {
   user: { id, name, avatar };
 }
 
-// Post - 用于帖子详情页
+// Post - for post detail page
 interface Post {
   uid: string;
   title: string;
   topic: string;
-  pages: PostPage[];  // 分页内容
+  pages: PostPage[];  // Paginated content
   author?: string;
   likeCount?: number;
   collectCount?: number;
 }
 ```
 
-## 🎣 Hooks 使用
+## 🎣 Hooks Usage
 
 ### useFeedItems
-获取信息流列表：
+Get feed list:
 ```typescript
 const { 
   feedItems,  // FeedItem[]
@@ -133,20 +153,20 @@ const {
 ```
 
 ### usePaginatedFeed
-分页获取（支持无限滚动）：
+Paginated fetch (infinite scroll):
 ```typescript
 const { 
   feedItems,
   status,
   error,
-  hasMore,   // boolean - 是否有更多数据
-  loadMore,  // () => void - 加载下一页
-  refetch    // () => void - 重新加载
+  hasMore,   // boolean - has more data
+  loadMore,  // () => void - load next page
+  refetch    // () => void - reload
 } = usePaginatedFeed(20);
 ```
 
 ### usePost
-获取单个帖子详情：
+Get single post detail:
 ```typescript
 const { 
   post,      // Post | null
@@ -156,44 +176,140 @@ const {
 } = usePost(postId);
 ```
 
-## 📊 数据生成
+## 💾 Save & Notes
 
-### 从 JSONL 生成帖子数据
+### useSavedPosts
+Manage saved posts:
+```typescript
+const { 
+  savedPosts,  // SavedPost[]
+  savedCount,  // number
+  isLoading,
+  isEmpty,
+  save,        // (post) => Promise<void>
+  unsave,      // (uid) => Promise<void>
+  toggle,      // (post) => Promise<boolean>
+  isSaved,     // (uid) => boolean
+  clearAll,    // () => Promise<void>
+} = useSavedPosts();
+```
+
+### useNotesHook
+Manage notes:
+```typescript
+const { 
+  notes,       // Note[]
+  noteCount,   // number
+  isLoading,
+  isEmpty,
+  add,         // (postUid, postTitle, content) => Promise<Note>
+  update,      // (noteId, content) => Promise<void>
+  remove,      // (noteId) => Promise<void>
+  getForPost,  // (postUid) => Note[]
+  hasNotes,    // (postUid) => boolean
+  clearAll,    // () => Promise<void>
+} = useNotesHook();
+```
+
+### Data Structures
+
+```typescript
+// SavedPost - saved post info
+interface SavedPost {
+  uid: string;
+  title: string;
+  topic: string;
+  coverImageUri?: string;
+  savedAt: string;        // ISO timestamp
+  syncedToServer?: boolean;
+}
+
+// Note - user note
+interface Note {
+  id: string;
+  postUid: string;        // Associated post
+  postTitle: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  syncedToServer?: boolean;
+}
+```
+
+### Backend Sync (Reserved)
+Both Save and Notes support backend synchronization:
+```typescript
+// Bind user account
+const { bindAccount } = useSavedSync();
+await bindAccount('user123', 'auth_token');
+
+// Sync to server
+const { syncToServer, syncStatus } = useSavedSync();
+await syncToServer();  // syncStatus: 'idle' | 'syncing' | 'synced' | 'error'
+```
+
+Implementation points in context files:
+- `SavedContext.tsx` - `syncToServer()`, `syncSinglePost()`, `deleteSyncedPost()`
+- `NotesContext.tsx` - `syncToServer()`, `syncSingleNote()`, `deleteSyncedNote()`
+
+## 📊 Data Generation
+
+### Generate Posts from JSONL
 
 ```bash
-# 转换 JSONL 为 TypeScript（自动处理中文引号）
+# Convert JSONL to TypeScript (auto-fix Chinese quotes)
 npm run convert:posts -- ~/Downloads/posts.jsonl
 ```
 
-### 生成图片映射
+### Generate Image Mapping
 
 ```bash
-# 把图片放到 assets/posts/ 后运行
+# After placing images in assets/posts/
 npm run gen:images
 ```
 
-## ⚠️ 注意事项
+## ⚠️ Notes
 
-1. **中文引号问题**：在 TypeScript/JavaScript 字符串中，中文引号 `""` 会导致语法错误。使用 `convert:posts` 脚本会自动处理。
+1. **Chinese Quotes**: Chinese quotes `""` cause syntax errors in JS/TS. The `convert:posts` script handles this automatically.
 
-2. **本地图片加载**：React Native 不支持动态 `require()`，需要使用 `gen:images` 预先映射所有图片。
+2. **Local Images**: React Native doesn't support dynamic `require()`. Use `gen:images` to pre-map all images.
 
-3. **数据转换**：API 返回的 `content` 是纯文本，会在 `apiPostToPost()` 中自动解析为 `pages/blocks` 结构。
+3. **Data Transform**: API `content` is plain text, automatically parsed to `pages/blocks` in `apiPostToPost()`.
 
-4. **离线回退**：如果 API 请求失败，可以使用 `getFeedItems()` / `getPost()` 获取本地数据。
+4. **Offline Fallback**: If API fails, use `getFeedItems()` / `getPost()` for local data.
 
-## 🔧 扩展开发
+5. **Local Storage**: Save and Notes use AsyncStorage for persistence. Data survives app restarts.
 
-### 添加新的 API 接口
+## 🔧 Development
 
-1. 在 `src/api/types.ts` 添加类型定义
-2. 在 `src/api/index.ts` 添加请求函数
-3. 在 `src/hooks/usePosts.ts` 添加对应的 Hook
-4. 如需数据转换，在 `src/data/index.ts` 添加转换函数
+### Add New API Endpoint
 
-### 修改 API 地址
+1. Add types in `src/api/types.ts`
+2. Add request function in `src/api/index.ts`
+3. Add hook in `src/hooks/`
+4. Add transformer in `src/data/index.ts` if needed
 
-编辑 `src/api/index.ts`：
+### Add New Feature with State
+
+1. Create context in `src/context/YourContext.tsx`
+2. Export from `src/context/index.ts`
+3. Create hook in `src/hooks/useYour.ts`
+4. Wrap app with provider in `App.tsx`
+
+### Change API URL
+
+Edit `src/api/index.ts`:
 ```typescript
 const API_BASE_URL = 'https://your-api-url.com';
+```
+
+### Implement Backend Sync
+
+Edit context files to implement TODO functions:
+```typescript
+// In SavedContext.tsx or NotesContext.tsx
+const syncToServer = async () => {
+  // Replace TODO with actual API call
+  await api.syncData(userId, data, authToken);
+};
 ```

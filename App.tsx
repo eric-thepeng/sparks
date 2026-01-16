@@ -54,10 +54,10 @@ import {
 } from './src/data';
 
 // Hooks
-import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
+import { useFeedItems, usePost, useSavedPosts, useNotesHook } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes } from './src/context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -305,13 +305,21 @@ function PostReader({
   const [noteText, setNoteText] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   
-  // 保存功能 - 使用 Context
+  // Save functionality - using Context
   const { isPostSaved, toggleSavePost } = useSaved();
   const isBookmarked = isPostSaved(post.uid);
   const [isSaving, setIsSaving] = useState(false);
   
-  // 保存动画
+  // Notes functionality - using Context
+  const { addNote, getNotesForPost } = useNotes();
+  const postNotes = getNotesForPost(post.uid);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  
+  // Save animation
   const saveScale = useRef(new Animated.Value(1)).current;
+  
+  // Note animation
+  const noteScale = useRef(new Animated.Value(1)).current;
   
   // 记录每个页面分隔符的位置
   const pagePositions = useRef<number[]>([0]);
@@ -394,12 +402,34 @@ function PostReader({
     console.log('Share post:', post.uid);
   };
 
-  // 处理发送笔记
-  const handleSendNote = () => {
-    if (noteText.trim()) {
-      console.log('Save note:', noteText);
+  // Handle send note
+  const handleSendNote = async () => {
+    if (!noteText.trim() || isSavingNote) return;
+    
+    setIsSavingNote(true);
+    
+    // Bounce animation
+    Animated.sequence([
+      Animated.spring(noteScale, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+      Animated.spring(noteScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+    ]).start();
+    
+    try {
+      await addNote(post.uid, post.title, noteText.trim());
       setNoteText('');
       setShowNoteInput(false);
+    } catch (err) {
+      console.error('Failed to save note:', err);
+    } finally {
+      setIsSavingNote(false);
     }
   };
 
@@ -506,9 +536,15 @@ function PostReader({
                 maxLength={500}
               />
               {noteText.trim() ? (
-                <Pressable style={styles.sendButton} onPress={handleSendNote}>
-                  <Send size={18} color="#fff" />
-                </Pressable>
+                <Animated.View style={{ transform: [{ scale: noteScale }] }}>
+                  <Pressable 
+                    style={[styles.sendButton, isSavingNote && styles.sendButtonDisabled]} 
+                    onPress={handleSendNote}
+                    disabled={isSavingNote}
+                  >
+                    <Send size={18} color="#fff" />
+                  </Pressable>
+                </Animated.View>
               ) : (
                 <Pressable style={styles.closeNoteButton} onPress={() => setShowNoteInput(false)}>
                   <X size={18} color={colors.textMuted} />
@@ -760,7 +796,177 @@ function SavedScreen({
 }
 
 // ============================================================
-// Loading 状态组件
+// Notes Screen
+// ============================================================
+function NotesScreen({ 
+  onPostPress 
+}: { 
+  onPostPress: (uid: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { notes, isLoading, error, remove, clearAll, noteCount } = useNotesHook();
+  const isEmpty = notes.length === 0;
+  
+  // Delete note
+  const handleDeleteNote = useCallback((noteId: string, content: string) => {
+    Alert.alert(
+      'Delete Note',
+      `Delete this note?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => remove(noteId),
+        },
+      ]
+    );
+  }, [remove]);
+
+  // Clear all
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      'Clear All Notes',
+      'Delete all notes? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete All', 
+          style: 'destructive',
+          onPress: () => clearAll(),
+        },
+      ]
+    );
+  }, [clearAll]);
+
+  // Format time
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Render empty state
+  const renderEmptyState = () => (
+    <View style={styles.notesEmptyContainer}>
+      <View style={styles.notesEmptyIcon}>
+        <Pencil size={48} color={colors.primaryLight} strokeWidth={1.5} />
+      </View>
+      <Text style={styles.notesEmptyTitle}>No Notes Yet</Text>
+      <Text style={styles.notesEmptySubtitle}>
+        Write notes while reading posts{'\n'}to capture your thoughts
+      </Text>
+      <View style={styles.notesEmptyHint}>
+        <FileText size={16} color={colors.textMuted} />
+        <Text style={styles.notesEmptyHintText}>Start writing in any post</Text>
+      </View>
+    </View>
+  );
+
+  // Render note item
+  const renderNoteItem = ({ item, index }: { item: typeof notes[0]; index: number }) => {
+    return (
+      <View style={styles.noteCard}>
+        <Pressable 
+          style={styles.noteCardInner}
+          onPress={() => onPostPress(item.postUid)}
+        >
+          {/* Note content */}
+          <View style={styles.noteContent}>
+            <Text style={styles.noteText} numberOfLines={3}>
+              {item.content}
+            </Text>
+          </View>
+          
+          {/* Post info */}
+          <View style={styles.notePostInfo}>
+            <View style={styles.notePostBadge}>
+              <FileText size={12} color={colors.primary} />
+              <Text style={styles.notePostTitle} numberOfLines={1}>
+                {item.postTitle}
+              </Text>
+            </View>
+            <View style={styles.noteTimeRow}>
+              <Clock size={11} color={colors.textMuted} />
+              <Text style={styles.noteTimeText}>
+                {formatTime(item.updatedAt)}
+              </Text>
+            </View>
+          </View>
+          
+          {/* Delete button */}
+          <Pressable 
+            style={styles.noteDeleteButton}
+            onPress={() => handleDeleteNote(item.id, item.content)}
+            hitSlop={8}
+          >
+            <X size={16} color={colors.textMuted} />
+          </Pressable>
+        </Pressable>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.notesContainer}>
+      {/* Header */}
+      <View style={styles.notesHeader}>
+        <View style={styles.notesHeaderLeft}>
+          <FileText size={24} color={colors.primary} />
+          <Text style={styles.notesHeaderTitle}>My Notes</Text>
+          {noteCount > 0 && (
+            <View style={styles.notesCountBadge}>
+              <Text style={styles.notesCountText}>{noteCount}</Text>
+            </View>
+          )}
+        </View>
+        
+        {noteCount > 0 && (
+          <Pressable 
+            style={styles.notesClearButton}
+            onPress={handleClearAll}
+          >
+            <Trash2 size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+
+      {/* Content */}
+      {isLoading ? (
+        <View style={styles.notesLoadingContainer}>
+          <Sparkles size={32} color={colors.primary} />
+          <Text style={styles.notesLoadingText}>Loading...</Text>
+        </View>
+      ) : isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <FlatList
+          data={notes}
+          renderItem={renderNoteItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.notesListContent,
+            { paddingBottom: insets.bottom + 80 }
+          ]}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.notesItemSeparator} />}
+        />
+      )}
+    </View>
+  );
+}
+
+// ============================================================
+// Loading Screen
 // ============================================================
 function LoadingScreen() {
   return (
@@ -873,7 +1079,7 @@ export default function App() {
       case 'saved':
         return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'notes':
-        return <PlaceholderScreen title="Notes" />;
+        return <NotesScreen onPostPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
         return <PlaceholderScreen title="Me" />;
       default:
@@ -883,9 +1089,10 @@ export default function App() {
 
   return (
     <SavedProvider>
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <StatusBar style="dark" />
+      <NotesProvider>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.container} edges={['top']}>
+            <StatusBar style="dark" />
           
           {renderContent()}
 
@@ -928,9 +1135,10 @@ export default function App() {
                 onClose={() => setSelectedPostUid(null)}
               />
             ) : null}
-          </Modal>
-        </SafeAreaView>
-      </SafeAreaProvider>
+            </Modal>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </NotesProvider>
     </SavedProvider>
   );
 }
@@ -1578,5 +1786,181 @@ const styles = StyleSheet.create({
   savedEmptyHintText: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  
+  // ============================================================
+  // Notes Screen Styles
+  // ============================================================
+  notesContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+  },
+  notesHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  notesHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  notesCountBadge: {
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  notesCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  notesClearButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
+  },
+  notesLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  notesLoadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  notesListContent: {
+    padding: 16,
+  },
+  notesItemSeparator: {
+    height: 12,
+  },
+  noteCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  noteCardInner: {
+    padding: 14,
+  },
+  noteContent: {
+    marginBottom: 12,
+    paddingRight: 24,
+  },
+  noteText: {
+    fontSize: 15,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  notePostInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  notePostBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    flex: 1,
+    marginRight: 12,
+  },
+  notePostTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.primary,
+    flex: 1,
+  },
+  noteTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  noteTimeText: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  noteDeleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: colors.bg,
+  },
+  
+  // Notes Empty State
+  notesEmptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  notesEmptyIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  notesEmptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  notesEmptySubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  notesEmptyHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  notesEmptyHintText: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  
+  // Send button disabled state
+  sendButtonDisabled: {
+    opacity: 0.6,
   },
 });
