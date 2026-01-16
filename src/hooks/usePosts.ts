@@ -8,16 +8,29 @@ import { fetchPosts, fetchPostById, fetchPostsPaginated, ApiPost, RequestStatus 
 import { apiPostToFeedItem, apiPostToPost, getFeedItems, getPost, FeedItem, Post } from '../data';
 
 // ============================================================
-// 配置：数据源切换
+// 数据源配置
 // ============================================================
 
 /**
- * 数据源配置
- * - 'api': 使用后端 API（需要后端有图片数据）
- * - 'local': 使用本地数据（用于测试 UI，有完整图片）
- * - 'api-fallback': 优先 API，失败时回退到本地
+ * 数据源枚举
  */
-export const DATA_SOURCE: 'api' | 'local' | 'api-fallback' = 'api';
+export enum DataSource {
+  /** 使用后端 API */
+  API = 'api',
+  /** 使用本地测试数据（有完整图片） */
+  LOCAL = 'local',
+  /** 优先 API，失败时回退到本地 */
+  API_WITH_FALLBACK = 'api-fallback',
+}
+
+/**
+ * ⚙️ 当前数据源配置 - 在这里切换！
+ * 
+ * DataSource.API            - 使用后端 API
+ * DataSource.LOCAL          - 使用本地测试数据（有完整图片）
+ * DataSource.API_WITH_FALLBACK - 优先 API，失败时回退到本地
+ */
+export const CURRENT_DATA_SOURCE: DataSource = DataSource.API;
 
 // ============================================================
 // useFeedItems - 获取 Feed 列表
@@ -40,7 +53,7 @@ export function useFeedItems(): UseFeedItemsResult {
     setError(null);
 
     // 使用本地数据
-    if (DATA_SOURCE === 'local') {
+    if (CURRENT_DATA_SOURCE === DataSource.LOCAL) {
       const localItems = getFeedItems();
       setFeedItems(localItems);
       setStatus('success');
@@ -60,7 +73,7 @@ export function useFeedItems(): UseFeedItemsResult {
       console.error('[useFeedItems] API failed:', err);
       
       // API 失败时回退到本地数据
-      if (DATA_SOURCE === 'api-fallback') {
+      if (CURRENT_DATA_SOURCE === DataSource.API_WITH_FALLBACK) {
         console.log('[useFeedItems] Falling back to local data');
         const localItems = getFeedItems();
         setFeedItems(localItems);
@@ -187,7 +200,7 @@ export function usePost(postId: string | null): UsePostResult {
     setError(null);
 
     // 使用本地数据
-    if (DATA_SOURCE === 'local') {
+    if (CURRENT_DATA_SOURCE === DataSource.LOCAL) {
       const localPost = getPost(postId);
       if (localPost) {
         setPost(localPost);
@@ -212,7 +225,7 @@ export function usePost(postId: string | null): UsePostResult {
       console.error('[usePost] API failed:', err);
       
       // API 失败时回退到本地数据
-      if (DATA_SOURCE === 'api-fallback') {
+      if (CURRENT_DATA_SOURCE === DataSource.API_WITH_FALLBACK) {
         const localPost = getPost(postId);
         if (localPost) {
           console.log('[usePost] Falling back to local data for:', postId);

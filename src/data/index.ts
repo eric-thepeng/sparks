@@ -137,14 +137,45 @@ function richPostToFeedItem(post: ApiRichPost, index: number): FeedItem {
 }
 
 /**
+ * 从 content 文本中提取第一张 Markdown 图片 URL
+ * 返回 { coverUrl, contentWithoutCover }
+ */
+function extractCoverImageFromContent(content: string): { coverUrl: string | null; contentWithoutCover: string } {
+  const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/;
+  const match = content.match(markdownImageRegex);
+  
+  if (match) {
+    // 移除第一张图片
+    const contentWithoutCover = content.replace(match[0], '').trim();
+    return {
+      coverUrl: match[2],
+      contentWithoutCover,
+    };
+  }
+  
+  return {
+    coverUrl: null,
+    contentWithoutCover: content,
+  };
+}
+
+/**
  * 简单帖子 → FeedItem
  */
 function simplePostToFeedItem(post: ApiSimplePost, index: number): FeedItem {
-  // 尝试获取本地封面图
-  const localCover = getCoverImage(post.platform_post_id);
-  const coverImage: ImageSource = localCover || {
-    uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(post.title.slice(0, 10))}`,
-  };
+  // 优先从 content 中提取第一张图片作为封面
+  const { coverUrl } = extractCoverImageFromContent(post.content);
+  
+  let coverImage: ImageSource;
+  if (coverUrl) {
+    coverImage = { uri: coverUrl };
+  } else {
+    // 尝试获取本地封面图
+    const localCover = getCoverImage(post.platform_post_id);
+    coverImage = localCover || {
+      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(post.title.slice(0, 10))}`,
+    };
+  }
 
   return {
     uid: post.platform_post_id,
@@ -234,13 +265,18 @@ function convertApiBlock(apiBlock: ApiBlock, inlineImages: Map<string, string>):
  * 简单帖子 → Post（需要解析 content 文本）
  */
 function simplePostToPost(apiPost: ApiSimplePost): Post {
-  const pages = parseContentToPages(apiPost.content, apiPost.title);
+  // 提取封面图，并获取去掉封面图后的内容
+  const { coverUrl, contentWithoutCover } = extractCoverImageFromContent(apiPost.content);
+  
+  // 使用去掉封面图的内容来生成 pages
+  const pages = parseContentToPages(contentWithoutCover, apiPost.title);
 
   return {
     uid: apiPost.platform_post_id,
     title: apiPost.title,
     topic: apiPost.tags[0] || 'General',
     pages,
+    coverImageUrl: coverUrl || undefined,  // 第一张图作为封面
     author: apiPost.author,
     likeCount: apiPost.like_count,
     collectCount: apiPost.collect_count,
@@ -267,6 +303,9 @@ function parseContentToPages(content: string, title: string): PostPage[] {
   const PARAGRAPHS_PER_PAGE = 4;
   const pages: PostPage[] = [];
   
+  // Markdown 图片正则：![alt](url)
+  const markdownImageRegex = /^!\[([^\]]*)\]\(([^)]+)\)$/;
+  
   for (let i = 0; i < paragraphs.length; i += PARAGRAPHS_PER_PAGE) {
     const pageBlocks: ContentBlock[] = [];
     const pageParagraphs = paragraphs.slice(i, i + PARAGRAPHS_PER_PAGE);
@@ -276,13 +315,52 @@ function parseContentToPages(content: string, title: string): PostPage[] {
     }
     
     pageParagraphs.forEach((para, idx) => {
-      if (para.startsWith('#')) {
+      // 检查是否是 Markdown 图片语法
+      const imageMatch = para.trim().match(markdownImageRegex);
+      if (imageMatch) {
+        // 将 Markdown 图片转换为 image block
+        pageBlocks.push({ 
+          type: 'image', 
+          imageUrl: imageMatch[2],  // URL
+          text: imageMatch[1],       // alt text
+        });
+      } else if (para.startsWith('#')) {
         const headerText = para.replace(/^#+\s*/, '');
         pageBlocks.push({ type: 'h2', text: headerText });
       } else if (para.match(/^【.+】/)) {
         pageBlocks.push({ type: 'h2', text: para });
       } else {
-        pageBlocks.push({ type: 'paragraph', text: para });
+        // 检查段落内是否包含内嵌的 Markdown 图片
+        const inlineImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        let lastIndex = 0;
+        let match;
+        let hasInlineImages = false;
+        
+        while ((match = inlineImageRegex.exec(para)) !== null) {
+          hasInlineImages = true;
+          // 添加图片前的文本
+          const textBefore = para.slice(lastIndex, match.index).trim();
+          if (textBefore) {
+            pageBlocks.push({ type: 'paragraph', text: textBefore });
+          }
+          // 添加图片
+          pageBlocks.push({
+            type: 'image',
+            imageUrl: match[2],
+            text: match[1],
+          });
+          lastIndex = match.index + match[0].length;
+        }
+        
+        if (hasInlineImages) {
+          // 添加图片后的剩余文本
+          const textAfter = para.slice(lastIndex).trim();
+          if (textAfter) {
+            pageBlocks.push({ type: 'paragraph', text: textAfter });
+          }
+        } else {
+          pageBlocks.push({ type: 'paragraph', text: para });
+        }
       }
       
       if (idx > 0 && idx % 2 === 1) {
