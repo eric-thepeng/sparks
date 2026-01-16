@@ -1,8 +1,8 @@
 /**
  * Sparks - 小红书风格
- * 瀑布流信息流 + 帖子详情 + 翻页阅读
+ * 瀑布流信息流 + 帖子详情 + 翻页阅读 + 保存功能
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +28,7 @@ import {
   Bell,
   LayoutGrid,
   Bookmark,
+  BookmarkCheck,
   FileText,
   User,
   Sparkles,
@@ -33,6 +36,9 @@ import {
   Pencil,
   X,
   Send,
+  Trash2,
+  Clock,
+  BookmarkPlus,
 } from 'lucide-react-native';
 
 // 数据层
@@ -48,7 +54,10 @@ import {
 } from './src/data';
 
 // Hooks
-import { useFeedItems, usePost } from './src/hooks';
+import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
+
+// Context
+import { SavedProvider, useSaved } from './src/context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -77,7 +86,7 @@ const colors = {
 // 顶部导航 Tab
 // ============================================================
 function TopTabs({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
-  const tabs = ['关注', '发现', '附近'];
+  const tabs = ['Following', 'Discover', 'Nearby'];
   
   return (
     <View style={styles.topTabs}>
@@ -293,9 +302,16 @@ function PostReader({
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [isBookmarked, setIsBookmarked] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
+  
+  // 保存功能 - 使用 Context
+  const { isPostSaved, toggleSavePost } = useSaved();
+  const isBookmarked = isPostSaved(post.uid);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // 保存动画
+  const saveScale = useRef(new Animated.Value(1)).current;
   
   // 记录每个页面分隔符的位置
   const pagePositions = useRef<number[]>([0]);
@@ -343,9 +359,33 @@ function PostReader({
     }
   };
 
-  // 处理收藏
-  const handleBookmark = () => {
-    setIsBookmarked(!isBookmarked);
+  // 处理收藏 - 带动画
+  const handleBookmark = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    
+    // 弹性动画
+    Animated.sequence([
+      Animated.spring(saveScale, {
+        toValue: 1.3,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+      Animated.spring(saveScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+    ]).start();
+    
+    try {
+      await toggleSavePost(post);
+    } catch (err) {
+      console.error('Failed to toggle save:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 处理分享
@@ -426,7 +466,7 @@ function PostReader({
             {pageIdx > 0 && (
               <View style={styles.pageDivider}>
                 <View style={styles.pageDividerLine} />
-                <Text style={styles.pageDividerText}>第 {pageIdx + 1} 页</Text>
+                <Text style={styles.pageDividerText}>Page {pageIdx + 1}</Text>
                 <View style={styles.pageDividerLine} />
               </View>
             )}
@@ -440,7 +480,7 @@ function PostReader({
 
         {/* 文章结束 */}
         <View style={styles.articleEnd}>
-          <Text style={styles.articleEndText}>— 全文完 —</Text>
+          <Text style={styles.articleEndText}>— The End —</Text>
         </View>
       </ScrollView>
 
@@ -485,18 +525,31 @@ function PostReader({
 
         {/* 操作按钮区域 - 占1/3宽度 */}
         <View style={styles.actionButtons}>
-          {/* 收藏按钮 */}
-          <Pressable style={styles.actionButton} onPress={handleBookmark}>
-            <Bookmark 
-              size={22} 
-              color={isBookmarked ? colors.primary : colors.textSecondary}
-              fill={isBookmarked ? colors.primary : 'transparent'}
-            />
+          {/* 收藏按钮 - 带动画 */}
+          <Pressable 
+            style={styles.actionButton} 
+            onPress={handleBookmark}
+            disabled={isSaving}
+          >
+            <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+              {isBookmarked ? (
+                <BookmarkCheck 
+                  size={22} 
+                  color={colors.primary}
+                  fill={colors.primary}
+                />
+              ) : (
+                <Bookmark 
+                  size={22} 
+                  color={colors.textSecondary}
+                />
+              )}
+            </Animated.View>
             <Text style={[
               styles.actionButtonText,
-              isBookmarked && { color: colors.primary }
+              isBookmarked && { color: colors.primary, fontWeight: '600' }
             ]}>
-              Save
+              {isBookmarked ? 'Saved' : 'Save'}
             </Text>
           </Pressable>
 
@@ -524,13 +577,196 @@ function PlaceholderScreen({ title }: { title: string }) {
 }
 
 // ============================================================
+// 保存页面 - Saved Screen
+// ============================================================
+function SavedScreen({ 
+  onItemPress 
+}: { 
+  onItemPress: (uid: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
+  
+  // 删除动画
+  const handleUnsave = useCallback((uid: string, title: string) => {
+    Alert.alert(
+      'Remove from Saved',
+      `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive',
+          onPress: () => unsave(uid),
+        },
+      ]
+    );
+  }, [unsave]);
+
+  // 清空所有
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      'Clear All Saved',
+      'Remove all saved posts? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove All', 
+          style: 'destructive',
+          onPress: () => clearAll(),
+        },
+      ]
+    );
+  }, [clearAll]);
+
+  // 格式化保存时间
+  const formatSavedTime = (isoString: string) => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  };
+
+  // 渲染空状态
+  const renderEmptyState = () => (
+    <View style={styles.savedEmptyContainer}>
+      <View style={styles.savedEmptyIcon}>
+        <BookmarkPlus size={48} color={colors.primaryLight} strokeWidth={1.5} />
+      </View>
+      <Text style={styles.savedEmptyTitle}>No Saved Posts</Text>
+      <Text style={styles.savedEmptySubtitle}>
+        Tap Save while reading posts{'\n'}to revisit them anytime
+      </Text>
+      <View style={styles.savedEmptyHint}>
+        <Bookmark size={16} color={colors.textMuted} />
+        <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
+      </View>
+    </View>
+  );
+
+  // 渲染保存项
+  const renderSavedItem = ({ item, index }: { item: typeof savedPosts[0]; index: number }) => {
+    const localCover = getPostCover(item.uid);
+    
+    return (
+      <Animated.View 
+        style={[
+          styles.savedCard,
+          { opacity: 1 }
+        ]}
+      >
+        <Pressable 
+          style={styles.savedCardInner}
+          onPress={() => onItemPress(item.uid)}
+        >
+          {/* 封面图 */}
+          <Image
+            source={localCover || { uri: item.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(item.title.slice(0, 5))}` }}
+            style={styles.savedCardImage}
+            contentFit="cover"
+            transition={200}
+          />
+          
+          {/* 内容 */}
+          <View style={styles.savedCardContent}>
+            <View style={styles.savedCardHeader}>
+              <View style={styles.savedTopicBadge}>
+                <Text style={styles.savedTopicText}>#{item.topic}</Text>
+              </View>
+            </View>
+            
+            <Text style={styles.savedCardTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            
+            <View style={styles.savedCardFooter}>
+              <View style={styles.savedTimeRow}>
+                <Clock size={12} color={colors.textMuted} />
+                <Text style={styles.savedTimeText}>
+                  {formatSavedTime(item.savedAt)}
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          {/* 删除按钮 */}
+          <Pressable 
+            style={styles.savedDeleteButton}
+            onPress={() => handleUnsave(item.uid, item.title)}
+            hitSlop={8}
+          >
+            <X size={18} color={colors.textMuted} />
+          </Pressable>
+        </Pressable>
+      </Animated.View>
+    );
+  };
+
+  return (
+    <View style={styles.savedContainer}>
+      {/* 顶部标题栏 */}
+      <View style={styles.savedHeader}>
+        <View style={styles.savedHeaderLeft}>
+          <Bookmark size={24} color={colors.primary} fill={colors.primary} />
+          <Text style={styles.savedHeaderTitle}>My Saved</Text>
+          {savedCount > 0 && (
+            <View style={styles.savedCountBadge}>
+              <Text style={styles.savedCountText}>{savedCount}</Text>
+            </View>
+          )}
+        </View>
+        
+        {savedCount > 0 && (
+          <Pressable 
+            style={styles.savedClearButton}
+            onPress={handleClearAll}
+          >
+            <Trash2 size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+
+      {/* 内容列表 */}
+      {isLoading ? (
+        <View style={styles.savedLoadingContainer}>
+          <Sparkles size={32} color={colors.primary} />
+          <Text style={styles.savedLoadingText}>Loading...</Text>
+        </View>
+      ) : isEmpty ? (
+        renderEmptyState()
+      ) : (
+        <FlatList
+          data={savedPosts}
+          renderItem={renderSavedItem}
+          keyExtractor={(item) => item.uid}
+          contentContainerStyle={[
+            styles.savedListContent,
+            { paddingBottom: insets.bottom + 80 }
+          ]}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.savedItemSeparator} />}
+        />
+      )}
+    </View>
+  );
+}
+
+// ============================================================
 // Loading 状态组件
 // ============================================================
 function LoadingScreen() {
   return (
     <View style={styles.loadingContainer}>
       <Sparkles size={48} color={colors.primary} />
-      <Text style={styles.loadingText}>加载中...</Text>
+      <Text style={styles.loadingText}>Loading...</Text>
     </View>
   );
 }
@@ -548,10 +784,10 @@ function ErrorScreen({
   return (
     <View style={styles.errorContainer}>
       <Text style={styles.errorIcon}>⚠️</Text>
-      <Text style={styles.errorTitle}>加载失败</Text>
+      <Text style={styles.errorTitle}>Failed to Load</Text>
       <Text style={styles.errorMessage}>{message}</Text>
       <Pressable style={styles.retryButton} onPress={onRetry}>
-        <Text style={styles.retryButtonText}>重试</Text>
+        <Text style={styles.retryButtonText}>Retry</Text>
       </Pressable>
     </View>
   );
@@ -562,7 +798,7 @@ function ErrorScreen({
 // ============================================================
 export default function App() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
-  const [topTab, setTopTab] = useState('发现');
+  const [topTab, setTopTab] = useState('Discover');
   const [bottomTab, setBottomTab] = useState('explore');
   
   // 使用 hooks 获取数据
@@ -600,7 +836,7 @@ export default function App() {
             <>
               <Header activeTab={topTab} onTabChange={setTopTab} />
               <ErrorScreen 
-                message={feedError || '未知错误'} 
+                message={feedError || 'Unknown error'} 
                 onRetry={refetchFeed} 
               />
             </>
@@ -624,10 +860,10 @@ export default function App() {
               />
               {feedStatus === 'loading' ? (
                 <View style={styles.loadingMore}>
-                  <Text style={styles.loadingMoreText}>加载中...</Text>
+                  <Text style={styles.loadingMoreText}>Loading...</Text>
                 </View>
               ) : (
-                <Text style={styles.endText}>— 到底啦 —</Text>
+                <Text style={styles.endText}>— End of List —</Text>
               )}
             </ScrollView>
           </>
@@ -635,7 +871,7 @@ export default function App() {
       case 'collection':
         return <PlaceholderScreen title="Collection" />;
       case 'saved':
-        return <PlaceholderScreen title="Saved" />;
+        return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'notes':
         return <PlaceholderScreen title="Notes" />;
       case 'me':
@@ -646,54 +882,56 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="dark" />
-        
-        {renderContent()}
+    <SavedProvider>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <StatusBar style="dark" />
+          
+          {renderContent()}
 
-        {/* 底部导航 */}
-        <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
+          {/* 底部导航 */}
+          <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
 
-        {/* 帖子详情 Modal */}
-        <Modal
-          visible={selectedPostUid !== null}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setSelectedPostUid(null)}
-        >
-          {postStatus === 'loading' ? (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <LoadingScreen />
-              <Pressable 
-                style={styles.modalCloseButton} 
-                onPress={() => setSelectedPostUid(null)}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
-          ) : postStatus === 'error' ? (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <ErrorScreen 
-                message={postError || '加载帖子失败'} 
-                onRetry={refetchPost} 
+          {/* 帖子详情 Modal */}
+          <Modal
+            visible={selectedPostUid !== null}
+            animationType="slide"
+            presentationStyle="fullScreen"
+            onRequestClose={() => setSelectedPostUid(null)}
+          >
+            {postStatus === 'loading' ? (
+              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+                <LoadingScreen />
+                <Pressable 
+                  style={styles.modalCloseButton} 
+                  onPress={() => setSelectedPostUid(null)}
+                >
+                  <X size={24} color={colors.text} />
+                </Pressable>
+              </View>
+            ) : postStatus === 'error' ? (
+              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ErrorScreen 
+                  message={postError || 'Failed to load post'} 
+                  onRetry={refetchPost} 
+                />
+                <Pressable 
+                  style={styles.modalCloseButton} 
+                  onPress={() => setSelectedPostUid(null)}
+                >
+                  <X size={24} color={colors.text} />
+                </Pressable>
+              </View>
+            ) : selectedPost ? (
+              <PostReader
+                post={selectedPost}
+                onClose={() => setSelectedPostUid(null)}
               />
-              <Pressable 
-                style={styles.modalCloseButton} 
-                onPress={() => setSelectedPostUid(null)}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
-          ) : selectedPost ? (
-            <PostReader
-              post={selectedPost}
-              onClose={() => setSelectedPostUid(null)}
-            />
-          ) : null}
-        </Modal>
-      </SafeAreaView>
-    </SafeAreaProvider>
+            ) : null}
+          </Modal>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </SavedProvider>
   );
 }
 
@@ -1165,4 +1403,180 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   
+  // ============================================================
+  // Saved Screen 样式
+  // ============================================================
+  savedContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  savedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+  },
+  savedHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  savedHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  savedCountBadge: {
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  savedCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  savedClearButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
+  },
+  savedLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  savedLoadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  savedListContent: {
+    padding: 16,
+  },
+  savedItemSeparator: {
+    height: 12,
+  },
+  savedCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  savedCardInner: {
+    flexDirection: 'row',
+    padding: 12,
+  },
+  savedCardImage: {
+    width: 80,
+    height: 100,
+    borderRadius: 10,
+    backgroundColor: colors.border,
+  },
+  savedCardContent: {
+    flex: 1,
+    marginLeft: 14,
+    justifyContent: 'space-between',
+  },
+  savedCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  savedTopicBadge: {
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  savedTopicText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.primary,
+  },
+  savedCardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 22,
+    marginTop: 6,
+  },
+  savedCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  savedTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  savedTimeText: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  savedDeleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: colors.bg,
+  },
+  
+  // Empty State
+  savedEmptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  savedEmptyIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  savedEmptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  savedEmptySubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  savedEmptyHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  savedEmptyHintText: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
 });

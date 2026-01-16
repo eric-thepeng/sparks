@@ -3,4 +3,5 @@
  */
 
 export * from './usePosts';
+export * from './useSavedPosts';
 

@@ -12,6 +12,7 @@
     "fix:json": "python3 scripts/fix-json.py"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~54.0.31",
     "expo-image": "~3.0.11",
     "expo-status-bar": "~3.0.9",
