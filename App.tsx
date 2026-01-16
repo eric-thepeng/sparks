@@ -47,6 +47,8 @@ import {
   getPost, 
   getPostCover, 
   getPostImage,
+  getPostCoverImage,
+  getBlockImage,
   FeedItem, 
   Post, 
   PostPage, 
@@ -332,10 +334,13 @@ function PostReader({
         return <Text key={key} style={styles.blockH1}>{block.text}</Text>;
       case 'h2':
         return <Text key={key} style={styles.blockH2}>{block.text}</Text>;
+      case 'h3':
+        return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
       case 'paragraph':
         return <Text key={key} style={styles.blockParagraph}>{block.text}</Text>;
       case 'image':
-        const imageSource = getPostImage(post.uid, block.ref || '');
+        // 优先使用后端图片 URL，其次本地图片
+        const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
           <Image
@@ -343,10 +348,30 @@ function PostReader({
             source={imageSource}
             style={styles.blockImage}
             contentFit="cover"
+            transition={300}
           />
         );
+      case 'bullets':
+        return (
+          <View key={key} style={styles.blockBullets}>
+            {block.items?.map((item, bulletIdx) => (
+              <View key={bulletIdx} style={styles.bulletItem}>
+                <Text style={styles.bulletDot}>•</Text>
+                <Text style={styles.bulletText}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      case 'quote':
+        return (
+          <View key={key} style={styles.blockQuote}>
+            <View style={styles.quoteLine} />
+            <Text style={styles.quoteText}>{block.text}</Text>
+          </View>
+        );
       case 'spacer':
-        return <View key={key} style={{ height: 24 }} />;
+        const spacerHeight = block.size === 'sm' ? 12 : block.size === 'lg' ? 36 : 24;
+        return <View key={key} style={{ height: spacerHeight }} />;
       default:
         return null;
     }
@@ -468,11 +493,12 @@ function PostReader({
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* 封面图 */}
+        {/* 封面图 - 优先使用后端 URL */}
         <Image
-          source={getPostCover(post.uid)}
+          source={getPostCoverImage(post)}
           style={styles.coverImage}
           contentFit="cover"
+          transition={300}
         />
         
         {/* 标题区域 */}
@@ -1449,11 +1475,58 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
   },
+  blockH3: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 24,
+    marginTop: 16,
+    marginBottom: 8,
+  },
   blockParagraph: {
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
     marginBottom: 12,
+  },
+  blockBullets: {
+    marginVertical: 12,
+    paddingLeft: 4,
+  },
+  bulletItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  bulletDot: {
+    fontSize: 16,
+    color: colors.primary,
+    marginRight: 10,
+    lineHeight: 24,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 24,
+  },
+  blockQuote: {
+    flexDirection: 'row',
+    marginVertical: 16,
+    paddingLeft: 4,
+  },
+  quoteLine: {
+    width: 3,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  quoteText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 24,
   },
   blockImage: {
     width: '100%',

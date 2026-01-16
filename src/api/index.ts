@@ -3,13 +3,20 @@
  * 封装所有后端 API 请求
  */
 
-import { ApiPost, GeneratePostRequest, ApiError } from './types';
+import { 
+  ApiPost, 
+  ApiSimplePost,
+  ApiRichPost,
+  GeneratePostRequest, 
+  CreatePostRequest,
+  ApiError 
+} from './types';
 
 // API 基础地址
 const API_BASE_URL = 'https://spark-api-nvy6vvhfoa-ue.a.run.app';
 
 // 请求超时时间（毫秒）
-const REQUEST_TIMEOUT = 10000;
+const REQUEST_TIMEOUT = 15000;
 
 /**
  * 通用请求函数
@@ -53,21 +60,17 @@ async function request<T>(
   }
 }
 
+// ============================================================
+// 帖子列表相关
+// ============================================================
+
 /**
  * 获取帖子列表
  * GET /posts
+ * 返回的可能是简单帖子或富文本帖子的混合数组
  */
 export async function fetchPosts(): Promise<ApiPost[]> {
   return request<ApiPost[]>('/posts');
-}
-
-/**
- * 获取单个帖子
- * GET /posts/{id}
- * @param id - platform_post_id
- */
-export async function fetchPostById(id: string): Promise<ApiPost> {
-  return request<ApiPost>(`/posts/${id}`);
 }
 
 /**
@@ -81,15 +84,43 @@ export async function fetchPostsPaginated(
   return request<ApiPost[]>(`/api/db/posts?limit=${limit}&offset=${offset}`);
 }
 
+// ============================================================
+// 单个帖子相关
+// ============================================================
+
 /**
- * 生成新帖子
+ * 获取单个帖子
+ * GET /posts/{id}
+ * @param id - platform_post_id 或 uid
+ */
+export async function fetchPostById(id: string): Promise<ApiPost> {
+  return request<ApiPost>(`/posts/${id}`);
+}
+
+// ============================================================
+// 创建和生成帖子
+// ============================================================
+
+/**
+ * 创建/更新帖子
+ * POST /posts
+ */
+export async function createPost(post: CreatePostRequest): Promise<ApiSimplePost> {
+  return request<ApiSimplePost>('/posts', {
+    method: 'POST',
+    body: JSON.stringify(post),
+  });
+}
+
+/**
+ * 生成新帖子（AI 生成，包含富文本和图片）
  * POST /generate
  */
 export async function generatePost(
   topics: string[],
   limit: number = 1
-): Promise<ApiPost[]> {
-  return request<ApiPost[]>('/generate', {
+): Promise<ApiRichPost[]> {
+  return request<ApiRichPost[]>('/generate', {
     method: 'POST',
     body: JSON.stringify({ topics, limit } as GeneratePostRequest),
   });
@@ -97,4 +128,3 @@ export async function generatePost(
 
 // 导出类型
 export * from './types';
-

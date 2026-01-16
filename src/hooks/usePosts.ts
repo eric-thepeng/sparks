@@ -5,7 +5,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchPosts, fetchPostById, fetchPostsPaginated, ApiPost, RequestStatus } from '../api';
-import { apiPostToFeedItem, apiPostToPost, FeedItem, Post } from '../data';
+import { apiPostToFeedItem, apiPostToPost, getFeedItems, getPost, FeedItem, Post } from '../data';
+
+// ============================================================
+// 配置：数据源切换
+// ============================================================
+
+/**
+ * 数据源配置
+ * - 'api': 使用后端 API（需要后端有图片数据）
+ * - 'local': 使用本地数据（用于测试 UI，有完整图片）
+ * - 'api-fallback': 优先 API，失败时回退到本地
+ */
+export const DATA_SOURCE: 'api' | 'local' | 'api-fallback' = 'api';
 
 // ============================================================
 // useFeedItems - 获取 Feed 列表
@@ -27,16 +39,37 @@ export function useFeedItems(): UseFeedItemsResult {
     setStatus('loading');
     setError(null);
 
+    // 使用本地数据
+    if (DATA_SOURCE === 'local') {
+      const localItems = getFeedItems();
+      setFeedItems(localItems);
+      setStatus('success');
+      console.log('[useFeedItems] Using local data, count:', localItems.length);
+      return;
+    }
+
+    // 使用 API
     try {
       const apiPosts = await fetchPosts();
       const items = apiPosts.map((post, index) => apiPostToFeedItem(post, index));
       setFeedItems(items);
       setStatus('success');
+      console.log('[useFeedItems] API success, count:', items.length);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取数据失败';
+      console.error('[useFeedItems] API failed:', err);
+      
+      // API 失败时回退到本地数据
+      if (DATA_SOURCE === 'api-fallback') {
+        console.log('[useFeedItems] Falling back to local data');
+        const localItems = getFeedItems();
+        setFeedItems(localItems);
+        setStatus('success');
+        return;
+      }
+      
       setError(errorMessage);
       setStatus('error');
-      console.error('Failed to fetch feed items:', err);
     }
   }, []);
 
@@ -153,16 +186,44 @@ export function usePost(postId: string | null): UsePostResult {
     setStatus('loading');
     setError(null);
 
+    // 使用本地数据
+    if (DATA_SOURCE === 'local') {
+      const localPost = getPost(postId);
+      if (localPost) {
+        setPost(localPost);
+        setStatus('success');
+        console.log('[usePost] Using local data for:', postId);
+      } else {
+        setError('帖子不存在');
+        setStatus('error');
+      }
+      return;
+    }
+
+    // 使用 API
     try {
       const apiPost = await fetchPostById(postId);
       const convertedPost = apiPostToPost(apiPost);
       setPost(convertedPost);
       setStatus('success');
+      console.log('[usePost] API success for:', postId);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取帖子失败';
+      console.error('[usePost] API failed:', err);
+      
+      // API 失败时回退到本地数据
+      if (DATA_SOURCE === 'api-fallback') {
+        const localPost = getPost(postId);
+        if (localPost) {
+          console.log('[usePost] Falling back to local data for:', postId);
+          setPost(localPost);
+          setStatus('success');
+          return;
+        }
+      }
+      
       setError(errorMessage);
       setStatus('error');
-      console.error('Failed to fetch post:', err);
     }
   }, [postId]);
 

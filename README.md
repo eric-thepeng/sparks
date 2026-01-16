@@ -99,19 +99,64 @@ https://spark-api-nvy6vvhfoa-ue.a.run.app
 
 ### Data Structures
 
-**API Response Format (ApiPost):**
+The API returns two types of posts:
+
+**1. Simple Post (ApiSimplePost) - Manually Created:**
 ```typescript
 {
-  platform_post_id: string;  // 帖子唯一ID，如 "spark_6720"
-  author: string;            // 作者，如 "User_1Cu8D"
-  title: string;             // 标题
-  content: string;           // 内容文本
-  tags: string[];            // 标签，如 ["Tech", "Random"]
-  like_count: number;        // 点赞数
-  collect_count: number;     // 收藏数
-  created_at: string;        // 创建时间 ISO8601
+  platform_post_id: string;  // Unique ID, e.g. "spark_6720"
+  author: string;            // Author, e.g. "User_1Cu8D"
+  title: string;             // Title
+  content: string;           // Plain text content
+  tags: string[];            // Tags, e.g. ["Tech", "Random"]
+  like_count: number;        // Like count
+  collect_count: number;     // Collect count
+  created_at: string;        // ISO8601 timestamp
 }
 ```
+
+**2. Rich Post (ApiRichPost) - AI Generated with Images:**
+```typescript
+{
+  uid: string;                    // Unique ID
+  title: string;                  // Title
+  topic: string;                  // Topic
+  cover_image: {                  // Cover image
+    url: string;                  // Google Cloud Storage URL
+  };
+  inline_images: [                // Inline images list
+    { id: "img_1", url: "https://storage.googleapis.com/..." },
+    { id: "img_2", url: "https://storage.googleapis.com/..." }
+  ];
+  pages: [                        // Paginated content
+    {
+      index: 1,
+      blocks: [
+        { type: "h2", text: "Header" },
+        { type: "paragraph", text: "Content..." },
+        { type: "image", ref: "img_1" },
+        { type: "bullets", items: ["Item 1", "Item 2"] },
+        { type: "quote", text: "Quote text" },
+        { type: "spacer", size: "md" }
+      ]
+    }
+  ];
+  author?: string;
+  like_count?: number;
+  collect_count?: number;
+}
+```
+
+### Block Types
+
+| Type | Property | Description |
+|------|----------|-------------|
+| h1, h2, h3 | text | Headers |
+| paragraph | text | Paragraph |
+| image | ref | Image reference (matches inline_images.id) |
+| bullets | items[] | Bullet list items |
+| quote | text | Quoted text |
+| spacer | size | Spacing (sm/md/lg) |
 
 **App Internal Format (FeedItem / Post):**
 ```typescript
@@ -132,7 +177,9 @@ interface Post {
   uid: string;
   title: string;
   topic: string;
-  pages: PostPage[];  // Paginated content
+  pages: PostPage[];           // Paginated content
+  coverImageUrl?: string;      // Cover image URL (from backend)
+  inlineImages?: Map<string, string>;  // Image mapping: id -> url
   author?: string;
   likeCount?: number;
   collectCount?: number;
