@@ -112,3 +112,43 @@ export interface ApiError {
 
 // API 请求状态
 export type RequestStatus = 'idle' | 'loading' | 'success' | 'error';
+
+// ============================================================
+// Auth / User Types
+// ============================================================
+
+export interface User {
+  id: string;
+  email: string;
+  username?: string;
+  displayName?: string;
+  avatar?: string;
+  bio?: string;
+  timezone?: string;
+  language?: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface LoginRequest {
+  email?: string;
+  password?: string;
+}
+
+export interface SignupRequest {
+  username: string;
+  email: string;
+  password?: string;
+}
+
+export interface UpdateUserRequest {
+  displayName?: string;
+  username?: string;
+  bio?: string;
+  avatar?: string;
+  timezone?: string;
+  language?: string;
+}

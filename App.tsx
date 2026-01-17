@@ -2,7 +2,7 @@
  * Sparks - 小红书风格
  * 瀑布流信息流 + 帖子详情 + 翻页阅读 + 保存功能
  */
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -59,7 +59,11 @@ import {
 import { useFeedItems, usePost, useSavedPosts, useNotesHook } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth } from './src/context';
+
+// Screens
+import { AuthScreen } from './src/screens/AuthScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -1026,13 +1030,30 @@ function ErrorScreen({
 }
 
 // ============================================================
-// 主应用
+// 主应用内容
 // ============================================================
-export default function App() {
+function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [topTab, setTopTab] = useState('Discover');
   const [bottomTab, setBottomTab] = useState('explore');
   
+  // Auth Hook
+  const { token, user } = useAuth();
+  
+  // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
+  // But if we just logged in, we might want to switch tab to 'me' if not already?
+  // The requirement says "After login/signup, redirect to /profile."
+  // Since 'me' tab renders Profile or Auth based on token, we just need to switch tab to 'me'.
+  // We can watch for token change.
+  const prevTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!prevTokenRef.current && token) {
+      // Just logged in
+      setBottomTab('me');
+    }
+    prevTokenRef.current = token;
+  }, [token]);
+
   // 使用 hooks 获取数据
   const { 
     feedItems, 
@@ -1044,7 +1065,7 @@ export default function App() {
   const { 
     post: selectedPost, 
     status: postStatus, 
-    error: postError,
+    error: postError, 
     refetch: refetchPost 
   } = usePost(selectedPostUid);
 
@@ -1107,65 +1128,77 @@ export default function App() {
       case 'notes':
         return <NotesScreen onPostPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
-        return <PlaceholderScreen title="Me" />;
+        // Route protection / Auth flow
+        return token ? <ProfileScreen /> : <AuthScreen />;
       default:
         return null;
     }
   };
 
   return (
-    <SavedProvider>
-      <NotesProvider>
-        <SafeAreaProvider>
-          <SafeAreaView style={styles.container} edges={['top']}>
-            <StatusBar style="dark" />
-          
-          {renderContent()}
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="dark" />
+      
+        {renderContent()}
 
-          {/* 底部导航 */}
-          <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
+        {/* 底部导航 */}
+        <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
 
-          {/* 帖子详情 Modal */}
-          <Modal
-            visible={selectedPostUid !== null}
-            animationType="slide"
-            presentationStyle="fullScreen"
-            onRequestClose={() => setSelectedPostUid(null)}
-          >
-            {postStatus === 'loading' ? (
-              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-                <LoadingScreen />
-                <Pressable 
-                  style={styles.modalCloseButton} 
-                  onPress={() => setSelectedPostUid(null)}
-                >
-                  <X size={24} color={colors.text} />
-                </Pressable>
-              </View>
-            ) : postStatus === 'error' ? (
-              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-                <ErrorScreen 
-                  message={postError || 'Failed to load post'} 
-                  onRetry={refetchPost} 
-                />
-                <Pressable 
-                  style={styles.modalCloseButton} 
-                  onPress={() => setSelectedPostUid(null)}
-                >
-                  <X size={24} color={colors.text} />
-                </Pressable>
-              </View>
-            ) : selectedPost ? (
-              <PostReader
-                post={selectedPost}
-                onClose={() => setSelectedPostUid(null)}
+        {/* 帖子详情 Modal */}
+        <Modal
+          visible={selectedPostUid !== null}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setSelectedPostUid(null)}
+        >
+          {postStatus === 'loading' ? (
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <LoadingScreen />
+              <Pressable 
+                style={styles.modalCloseButton} 
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : postStatus === 'error' ? (
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ErrorScreen 
+                message={postError || 'Failed to load post'} 
+                onRetry={refetchPost} 
               />
-            ) : null}
-            </Modal>
-          </SafeAreaView>
-        </SafeAreaProvider>
-      </NotesProvider>
-    </SavedProvider>
+              <Pressable 
+                style={styles.modalCloseButton} 
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : selectedPost ? (
+            <PostReader
+              post={selectedPost}
+              onClose={() => setSelectedPostUid(null)}
+            />
+          ) : null}
+        </Modal>
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+// ============================================================
+// 主应用入口
+// ============================================================
+export default function App() {
+  return (
+    <AuthProvider>
+      <SavedProvider>
+        <NotesProvider>
+          <AppContent />
+        </NotesProvider>
+      </SavedProvider>
+    </AuthProvider>
   );
 }
 
