@@ -81,6 +81,30 @@ npm start
 npm run start:clear
 ```
 
+## 📱 Native Development Build
+
+For features requiring native configuration (like **Google Sign-In**), you must use a **Development Build** instead of Expo Go.
+
+### 1. Prerequisites
+Install EAS CLI globally:
+```bash
+npm install -g eas-cli
+```
+
+### 2. Build for iOS Simulator
+This builds a custom client that includes your native config (URL schemes, etc.):
+```bash
+npx eas build --profile development-simulator --platform ios
+```
+
+### 3. Install & Run
+1. Download the `.tar.gz` from the build link.
+2. Unzip and drag `mobile.app` into your iOS Simulator.
+3. Start the development server for the custom client:
+```bash
+npx expo start --dev-client
+```
+
 ## 🔌 Backend API
 
 ### API Base URL

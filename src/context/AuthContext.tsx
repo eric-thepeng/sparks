@@ -84,6 +84,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await apiLogin(data);
       await saveAuth(response.token, response.user);
+      
+      // Update SavedContext if needed, though SavedContext should listen to storage/state
     } catch (err: any) {
       setError(err.message || 'Login failed');
       throw err;

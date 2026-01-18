@@ -33,4 +33,5 @@ export const config = {
   apiPrefix: getEnv('EXPO_PUBLIC_API_PREFIX', ''),
   authStorageKey: getEnv('EXPO_PUBLIC_AUTH_STORAGE_KEY', 'auth'),
   googleClientId: getEnv('EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID', ''),
+  iosGoogleClientId: getEnv('EXPO_PUBLIC_IOS_OAUTH_CLIENT_ID'),
 };

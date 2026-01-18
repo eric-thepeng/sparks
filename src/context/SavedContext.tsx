@@ -10,6 +10,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FeedItem, Post } from '../data';
+import { savePostApi, unsavePostApi, fetchSavedPostsApi, ApiPost, isRichPost, isSimplePost } from '../api';
 
 // ============================================================
 // 类型定义
@@ -94,6 +95,25 @@ export function SavedProvider({ children }: SavedProviderProps) {
     loadSavedPosts();
   }, []);
 
+  // 监听 Token 变化，重新加载或绑定
+  useEffect(() => {
+    const checkAuth = async () => {
+       const storedUserId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
+       const storedToken = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+       
+       if (storedToken !== authToken) {
+         setAuthToken(storedToken);
+         setUserId(storedUserId);
+         
+         // 如果有 Token，触发同步
+         if (storedToken) {
+           syncToServer();
+         }
+       }
+    };
+    checkAuth();
+  }, [authToken]);
+
   const loadSavedPosts = async () => {
     setIsLoading(true);
     setError(null);
@@ -163,9 +183,15 @@ export function SavedProvider({ children }: SavedProviderProps) {
     try {
       await persistSavedPosts(updatedPosts);
       
-      // 如果已登录，尝试同步到服务器（预留）
-      if (userId && authToken) {
-        syncSinglePost(newSavedPost);
+      // 如果已登录，尝试同步到服务器
+      if (authToken) {
+        await savePostApi(newSavedPost.uid);
+        // Mark as synced
+        const syncedPosts = updatedPosts.map(p => 
+          p.uid === newSavedPost.uid ? { ...p, syncedToServer: true } : p
+        );
+        setSavedPosts(syncedPosts);
+        persistSavedPosts(syncedPosts);
       }
     } catch (err) {
       // 回滚
@@ -187,9 +213,9 @@ export function SavedProvider({ children }: SavedProviderProps) {
     try {
       await persistSavedPosts(updatedPosts);
       
-      // 如果已登录，同步删除到服务器（预留）
-      if (userId && authToken) {
-        deleteSyncedPost(uid);
+      // 如果已登录，同步删除到服务器
+      if (authToken) {
+        await unsavePostApi(uid);
       }
     } catch (err) {
       // 回滚
@@ -252,7 +278,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
   
   /** 同步所有本地保存到服务器 */
   const syncToServer = useCallback(async () => {
-    if (!userId || !authToken) {
+    if (!authToken) {
       console.log('User not authenticated, skip sync');
       return;
     }
@@ -260,14 +286,57 @@ export function SavedProvider({ children }: SavedProviderProps) {
     setSyncStatus('syncing');
     
     try {
-      // TODO: 实现后端 API 调用
-      // const unsyncedPosts = savedPosts.filter(p => !p.syncedToServer);
-      // await api.syncSavedPosts(userId, unsyncedPosts, authToken);
+      // 1. Fetch remote saved posts
+      const remoteSavedPosts = await fetchSavedPostsApi();
       
-      // 模拟成功
-      const syncedPosts = savedPosts.map(p => ({ ...p, syncedToServer: true }));
-      setSavedPosts(syncedPosts);
-      await persistSavedPosts(syncedPosts);
+      // 2. Convert remote posts to SavedPost format
+      const convertedRemotePosts: SavedPost[] = remoteSavedPosts.map(p => {
+        const uid = isRichPost(p) ? p.uid : p.platform_post_id;
+        const title = p.title;
+        // For simple posts, topic might be first tag or 'general'
+        const topic = isRichPost(p) ? p.topic : (p.tags && p.tags.length > 0 ? p.tags[0] : 'general');
+        // Cover image
+        let coverUri;
+        if (isRichPost(p) && p.cover_image) {
+           coverUri = p.cover_image.url;
+        } 
+        // For simple post, we might not have a direct cover URL easily available unless we parse content
+        // Assuming we rely on local fallback or placeholder for now if null
+        
+        return {
+          uid,
+          title,
+          topic,
+          coverImageUri: coverUri,
+          savedAt: new Date().toISOString(), // Server might not return saved_at yet, use current
+          syncedToServer: true,
+          serverSavedId: uid 
+        };
+      });
+
+      // 3. Merge Strategy: Server is source of truth, but we can try to upload local unsynced ones?
+      // For now, let's just use Server list + Local unsynced ones that are NOT in server list.
+      
+      // Current implementation simplified: Just use server list. 
+      // If we want to support offline saving and syncing later, we'd iterate local `!syncedToServer` and call savePostApi.
+      
+      // Sync local posts that haven't been synced yet
+      const unsyncedLocalPosts = savedPosts.filter(p => !p.syncedToServer);
+      for (const localPost of unsyncedLocalPosts) {
+         // Check if already in remote list to avoid double add
+         if (!convertedRemotePosts.some(rp => rp.uid === localPost.uid)) {
+            try {
+              await savePostApi(localPost.uid);
+              localPost.syncedToServer = true;
+              convertedRemotePosts.unshift(localPost); // Add to our new list
+            } catch (e) {
+              console.error('Failed to sync local post to server:', localPost.uid);
+            }
+         }
+      }
+
+      setSavedPosts(convertedRemotePosts);
+      await persistSavedPosts(convertedRemotePosts);
       
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
       setSyncStatus('synced');
@@ -276,7 +345,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
       setSyncStatus('error');
       setError('Sync failed, please check your network');
     }
-  }, [userId, authToken, savedPosts]);
+  }, [authToken, savedPosts]);
 
   /** 绑定用户账号 */
   const bindAccount = useCallback(async (newUserId: string, newToken: string) => {

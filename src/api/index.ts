@@ -215,5 +215,28 @@ export async function generatePost(
   });
 }
 
+// ============================================================
+// Saved Posts API
+// ============================================================
+
+export async function fetchSavedPostsApi(): Promise<ApiPost[]> {
+  // GET /me/saved
+  return request<ApiPost[]>('/me/saved');
+}
+
+export async function savePostApi(postId: string): Promise<void> {
+  // POST /me/saved/{post_id}
+  return request<void>(`/me/saved/${postId}`, {
+    method: 'POST'
+  });
+}
+
+export async function unsavePostApi(postId: string): Promise<void> {
+  // DELETE /me/saved/{post_id}
+  return request<void>(`/me/saved/${postId}`, {
+    method: 'DELETE'
+  });
+}
+
 // 导出类型
 export * from './types';

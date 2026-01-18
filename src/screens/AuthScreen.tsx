@@ -46,14 +46,20 @@ export const AuthScreen = () => {
 
   // Google Auth Request
   const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: config.googleClientId,
-    iosClientId: config.googleClientId,
+    // Only pass iosClientId on iOS to prevent Web ID usage
+    iosClientId: '346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj.apps.googleusercontent.com',
     androidClientId: config.googleClientId,
+    // Use scheme for native development builds
     redirectUri: makeRedirectUri({
-      scheme: 'sparks',
-      path: 'oauthredirect'
+      scheme: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj'
     })
   });
+
+  useEffect(() => {
+    if (request) {
+      console.log('Generated Redirect URI:', request.redirectUri);
+    }
+  }, [request]);
 
   // Handle Proxy Redirect URI manually if needed, usually promptAsync handles it for Expo Go.
   // But verifying useProxy is true by default.
