@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, Check, AlertCircle } from 'lucide-react-native';
 import { config } from '../config';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { makeRedirectUri } from 'expo-auth-session';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Reusing colors from App.tsx design system
 const colors = {
@@ -30,18 +35,47 @@ const colors = {
 
 export const AuthScreen = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const { login, signup, isLoading, error, clearError } = useAuth();
+  const { login, signup, loginGoogle, isLoading, error, clearError } = useAuth();
 
   // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
+  // const [username, setUsername] = useState(''); // Removed
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
+
+  // Google Auth Request
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: config.googleClientId,
+    iosClientId: config.googleClientId,
+    androidClientId: config.googleClientId,
+    redirectUri: makeRedirectUri({
+      scheme: 'sparks',
+      path: 'oauthredirect'
+    })
+  });
+
+  // Handle Proxy Redirect URI manually if needed, usually promptAsync handles it for Expo Go.
+  // But verifying useProxy is true by default.
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        // Generate random 8-digit username for Google login too
+        const randomUsername = Math.floor(10000000 + Math.random() * 90000000).toString();
+        loginGoogle({ idToken: id_token, username: randomUsername });
+      }
+    }
+  }, [response]);
 
   const handleSubmit = async () => {
     if (isLoading) return;
     clearError();
+
+    // Password Validation
+    // 8-16 chars, combination of numbers and characters (letters)
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,16}$/;
 
     try {
       if (isLogin) {
@@ -51,7 +85,8 @@ export const AuthScreen = () => {
         }
         await login({ email, password });
       } else {
-        if (!username || !email || !password || !confirmPassword) {
+        // Signup
+        if (!email || !password || !confirmPassword) {
           Alert.alert('Error', 'Please fill in all fields');
           return;
         }
@@ -59,11 +94,19 @@ export const AuthScreen = () => {
           Alert.alert('Error', 'Passwords do not match');
           return;
         }
+        if (!passwordRegex.test(password)) {
+          Alert.alert('Invalid Password', 'Password must be 8-16 characters long and contain both letters and numbers.');
+          return;
+        }
         if (!agreeTerms) {
           Alert.alert('Error', 'Please agree to the terms');
           return;
         }
-        await signup({ username, email, password });
+
+        // Generate random 8-digit username
+        const randomUsername = Math.floor(10000000 + Math.random() * 90000000).toString();
+        
+        await signup({ username: randomUsername, email, password });
       }
     } catch (e) {
       // Error is handled in context and displayed via `error` prop
@@ -75,7 +118,7 @@ export const AuthScreen = () => {
     clearError();
     setEmail('');
     setPassword('');
-    setUsername('');
+    // setUsername(''); // Username state is no longer used
     setConfirmPassword('');
   };
 
@@ -100,22 +143,8 @@ export const AuthScreen = () => {
         )}
 
         <View style={styles.form}>
-          {!isLogin && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Username</Text>
-              <View style={styles.inputWrapper}>
-                <User size={20} color={colors.textMuted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="johndoe"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
-          )}
-
+          {/* Username field removed for Signup as it is auto-generated */}
+          
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
             <View style={styles.inputWrapper}>
@@ -191,20 +220,32 @@ export const AuthScreen = () => {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Social Buttons (UI Only) */}
+          {/* Social Buttons */}
           <View style={styles.socialButtons}>
-            {config.googleClientId && (
-              <Pressable style={styles.socialButton}>
-                <Text style={styles.socialButtonText}>Google</Text>
-              </Pressable>
-            )}
-            {config.appleClientId && (
-              <Pressable style={styles.socialButton}>
-                <Text style={styles.socialButtonText}>Apple</Text>
-              </Pressable>
-            )}
-            {!config.googleClientId && !config.appleClientId && (
-               <Text style={[styles.textSecondary, {textAlign: 'center', fontSize: 12}]}>OAuth not configured</Text>
+            <Pressable 
+              style={[styles.socialButton, styles.googleButton]}
+              onPress={() => {
+                if (!config.googleClientId) {
+                  Alert.alert("Configuration Error", "Google Client ID is missing.");
+                  return;
+                }
+                if (!request) {
+                   Alert.alert("Error", "Auth request not ready.");
+                   return;
+                }
+                promptAsync();
+              }}
+              // disabled={!request} // Don't disable visibly, let user click and see error if needed
+            >
+              {/* Use a simple G icon if possible, or just text */}
+              <Text style={styles.socialButtonText}>Continue with Google</Text>
+            </Pressable>
+            
+            {/* Show error text if configured wrong but still allow button to be there */}
+            {!config.googleClientId && (
+               <Text style={[styles.textSecondary, {textAlign: 'center', fontSize: 12, marginTop: 4}]}>
+                 (Setup VITE_GOOGLE_OAUTH_CLIENT_ID to enable)
+               </Text>
             )}
           </View>
 
@@ -327,19 +368,22 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   socialButtons: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 16,
-    justifyContent: 'center',
+    // justifyContent: 'center', // No longer needed for single column
   },
   socialButton: {
-    flex: 1,
-    height: 44,
+    width: '100%', // Full width
+    height: 50,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  googleButton: {
+    // specific styles if needed
   },
   socialButtonText: {
     fontSize: 14,

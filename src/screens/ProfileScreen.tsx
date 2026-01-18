@@ -48,8 +48,8 @@ export const ProfileScreen = () => {
     setLoading(true);
     try {
       await updateProfile({
-        displayName,
-        username,
+        // displayName, // Removed
+        // username, // Assuming username (ID) is immutable
         bio,
       });
       setIsEditing(false);
@@ -108,24 +108,15 @@ export const ProfileScreen = () => {
       </View>
 
       <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Display Name</Text>
-          <TextInput
-            style={[styles.input, !isEditing && styles.inputDisabled]}
-            value={displayName}
-            onChangeText={setDisplayName}
-            editable={isEditing}
-            placeholder="Your name"
-          />
-        </View>
+        {/* Display Name field removed */}
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Username</Text>
+          <Text style={styles.label}>Username (ID)</Text>
           <TextInput
-            style={[styles.input, !isEditing && styles.inputDisabled]}
+            style={[styles.input, styles.inputDisabled]} // Always disabled for ID? Or editable? Assuming ID is fixed if it's the 8-digit number.
             value={username}
             onChangeText={setUsername}
-            editable={isEditing}
+            editable={false} // Make it read-only if it's a system generated ID
             placeholder="username"
             autoCapitalize="none"
           />

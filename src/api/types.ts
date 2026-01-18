@@ -152,3 +152,8 @@ export interface UpdateUserRequest {
   timezone?: string;
   language?: string;
 }
+
+export interface GoogleLoginRequest {
+  idToken: string;
+  username?: string;
+}

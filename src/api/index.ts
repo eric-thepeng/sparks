@@ -14,7 +14,8 @@ import {
   SignupRequest,
   AuthResponse,
   User,
-  UpdateUserRequest
+  UpdateUserRequest,
+  GoogleLoginRequest
 } from './types';
 import { config } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -61,11 +62,15 @@ async function request<T>(
 
     const url = `${API_BASE_URL}${API_PREFIX}${endpoint}`;
     console.log(`[API] Fetching: ${url}`);
+    console.log(`[API] Headers:`, JSON.stringify(headers));
     
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
       headers,
+    }).catch(e => {
+       console.error(`[API] Network Fail: ${url}`, e);
+       throw e;
     });
 
     clearTimeout(timeoutId);
@@ -125,6 +130,13 @@ export async function getMe(): Promise<{ user: User }> {
 export async function updateMe(data: UpdateUserRequest): Promise<{ user: User }> {
   return request<{ user: User }>('/me', {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function loginWithGoogle(data: GoogleLoginRequest): Promise<AuthResponse> {
+  return request<AuthResponse>('/auth/google', {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }

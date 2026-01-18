@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, LoginRequest, SignupRequest } from '../api/types';
-import { login as apiLogin, signup as apiSignup, getMe as apiGetMe, updateMe as apiUpdateMe } from '../api';
+import { User, LoginRequest, SignupRequest, GoogleLoginRequest } from '../api/types';
+import { 
+  login as apiLogin, 
+  signup as apiSignup, 
+  getMe as apiGetMe, 
+  updateMe as apiUpdateMe,
+  loginWithGoogle as apiLoginWithGoogle
+} from '../api';
 import { config } from '../config';
 
 interface AuthState {
@@ -14,6 +20,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   login: (data: LoginRequest) => Promise<void>;
   signup: (data: SignupRequest) => Promise<void>;
+  loginGoogle: (data: GoogleLoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
   clearError: () => void;
@@ -99,6 +106,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const loginGoogle = async (data: GoogleLoginRequest) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await apiLoginWithGoogle(data);
+      await saveAuth(response.token, response.user);
+    } catch (err: any) {
+      setError(err.message || 'Google login failed');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await AsyncStorage.removeItem(config.authStorageKey);
@@ -136,6 +157,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       error, 
       login, 
       signup, 
+      loginGoogle,
       logout, 
       updateProfile,
       clearError 
