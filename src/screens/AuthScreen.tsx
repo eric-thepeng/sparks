@@ -68,9 +68,8 @@ export const AuthScreen = () => {
     if (response?.type === 'success') {
       const { id_token } = response.params;
       if (id_token) {
-        // Generate random 8-digit username for Google login too
-        const randomUsername = Math.floor(10000000 + Math.random() * 90000000).toString();
-        loginGoogle({ idToken: id_token, username: randomUsername });
+        // Backend now handles ID generation, no username needed
+        loginGoogle({ idToken: id_token });
       }
     }
   }, [response]);
@@ -80,8 +79,11 @@ export const AuthScreen = () => {
     clearError();
 
     // Password Validation
-    // 8-16 chars, combination of numbers and characters (letters)
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,16}$/;
+    // Simple length check only, let backend handle complexity
+    if (password.length < 8) {
+      Alert.alert('Invalid Password', 'Password must be at least 8 characters.');
+      return;
+    }
 
     try {
       if (isLogin) {
@@ -100,19 +102,15 @@ export const AuthScreen = () => {
           Alert.alert('Error', 'Passwords do not match');
           return;
         }
-        if (!passwordRegex.test(password)) {
-          Alert.alert('Invalid Password', 'Password must be 8-16 characters long and contain both letters and numbers.');
-          return;
-        }
+        // Removed complex regex check
+        
         if (!agreeTerms) {
           Alert.alert('Error', 'Please agree to the terms');
           return;
         }
 
-        // Generate random 8-digit username
-        const randomUsername = Math.floor(10000000 + Math.random() * 90000000).toString();
         
-        await signup({ username: randomUsername, email, password });
+        await signup({ email, password, confirmPassword });
       }
     } catch (e) {
       // Error is handled in context and displayed via `error` prop

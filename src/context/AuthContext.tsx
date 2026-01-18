@@ -136,12 +136,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiUpdateMe(data);
-      // Keep token, update user
-      if (token) {
-        await saveAuth(token, response.user);
+      console.log('[Auth] Updating profile:', data);
+      // 1. Call update
+      await apiUpdateMe(data);
+      
+      // 2. Fetch fresh user to ensure we have the DB state
+      const freshUserResponse = await apiGetMe();
+      // Handle unwrapped response (backend might return user directly)
+      // @ts-ignore - Check if response is the user object itself
+      const freshUser = freshUserResponse.user || (freshUserResponse.id ? freshUserResponse : null);
+      
+      console.log('[Auth] Fresh user:', freshUser);
+
+      if (token && freshUser) {
+        await saveAuth(token, freshUser);
       }
     } catch (err: any) {
+      console.error('[Auth] Update failed:', err);
       setError(err.message || 'Update profile failed');
       throw err;
     } finally {
