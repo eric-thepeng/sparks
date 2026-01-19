@@ -29,7 +29,7 @@ const getEnv = (key: string, defaultValue: string = ''): string => {
 
 export const config = {
   // Use EXPO_PUBLIC_ prefix for Expo to auto-load these variables
-  apiBaseUrl: getEnv('EXPO_PUBLIC_API_BASE_URL', 'https://spark-api-nvy6vvhfoa-ue.a.run.app'),
+  apiBaseUrl: getEnv('EXPO_PUBLIC_API_BASE_URL', 'https://spark-api-346549054402.us-east1.run.app'),
   apiPrefix: getEnv('EXPO_PUBLIC_API_PREFIX', ''),
   authStorageKey: getEnv('EXPO_PUBLIC_AUTH_STORAGE_KEY', 'auth'),
   googleClientId: getEnv('EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID', ''),

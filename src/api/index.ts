@@ -60,6 +60,9 @@ async function request<T>(
 
     const url = `${API_BASE_URL}${API_PREFIX}${endpoint}`;
     console.log(`[API] Fetching: ${url}`);
+    if (options.body) {
+      console.log(`[API] Body:`, options.body);
+    }
     console.log(`[API] Headers:`, JSON.stringify(headers));
     
     const response = await fetch(url, {
@@ -76,7 +79,9 @@ async function request<T>(
     if (!response.ok) {
       let errorMessage = `HTTP error: ${response.status}`;
       try {
-        const errorData = await response.json();
+        const errorText = await response.text();
+        console.log(`[API] Error Response: ${errorText}`);
+        const errorData = JSON.parse(errorText);
         if (errorData && errorData.message) {
           errorMessage = errorData.message;
         }
@@ -121,8 +126,8 @@ export async function signup(data: SignupRequest): Promise<AuthResponse> {
   });
 }
 
-export async function getMe(): Promise<{ user: User }> {
-  return request<{ user: User }>('/me');
+export async function getMe(): Promise<User> {
+  return request<User>('/me');
 }
 
 export async function updateMe(data: UpdateUserRequest): Promise<{ user: User }> {

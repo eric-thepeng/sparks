@@ -99,14 +99,14 @@ export type RequestStatus = 'idle' | 'loading' | 'success' | 'error';
 // ============================================================
 
 export interface User {
-  id: string;
+  id: string;          // UUID
   email: string;
-  username?: string;
-  displayName?: string;
-  avatar?: string;
-  bio?: string;
-  timezone?: string;
-  language?: string;
+  userid: string;      // 8-digit unique ID (was username)
+  displayName: string | null;
+  photoUrl: string | null; // (was avatar)
+  bio: string | null;
+  timezone: string | null;
+  language: string | null;
 }
 
 export interface AuthResponse {
@@ -120,21 +120,20 @@ export interface LoginRequest {
 }
 
 export interface SignupRequest {
-  username: string;
   email: string;
   password?: string;
+  confirmPassword?: string; // New field required by backend
 }
 
 export interface UpdateUserRequest {
   displayName?: string;
-  username?: string;
   bio?: string;
-  avatar?: string;
+  photoUrl?: string;
   timezone?: string;
   language?: string;
 }
 
 export interface GoogleLoginRequest {
   idToken: string;
-  username?: string;
+  userid?: string; // Optional suggestion
 }

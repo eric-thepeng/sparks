@@ -8,8 +8,12 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon } from 'lucide-react-native';
 
@@ -28,50 +32,110 @@ const colors = {
 };
 
 export const ProfileScreen = () => {
-  const { user, updateProfile, logout, isLoading } = useAuth();
+  const { user, updateProfile, logout } = useAuth();
   
+  // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [username, setUsername] = useState(user?.username || '');
-  const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);
 
+  // Form State
+  const [displayName, setDisplayName] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatar, setAvatar] = useState<string | null>(null);
+
+  // Onboarding State
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingName, setOnboardingName] = useState('');
+
+  // Sync state with user data
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || '');
-      setUsername(user.username || '');
       setBio(user.bio || '');
+      setAvatar(user.avatar || null);
+
+      // Trigger onboarding if no display name is set (fresh signup)
+      // Check if displayName is empty/null or matches the 8-digit ID exactly
+      if (!user.displayName || (user.userid && user.displayName === user.userid)) {
+         // Also check if userid looks like generated ID to be sure
+         if (/^\d{8}$/.test(user.userid || '')) {
+            setShowOnboarding(true);
+            setOnboardingName('');
+         }
+      }
     }
   }, [user]);
 
+  const pickImage = async () => {
+    if (!isEditing) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true, // Optional: get base64 if backend needs it
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setAvatar(result.assets[0].uri);
+    }
+  };
+
   const handleSave = async () => {
+    if (displayName.trim().length < 2) {
+      Alert.alert('Validation Error', 'Display Name must be at least 2 characters.');
+      return;
+    }
+
     setLoading(true);
     try {
       await updateProfile({
-        // displayName, // Removed
-        // username, // Assuming username (ID) is immutable
-        bio,
+        displayName: displayName.trim(),
+        bio: bio.trim(),
+        avatar: avatar || undefined,
+        // Include username to prevent backend reversion bug if it exists
+        username: user?.username 
       });
       setIsEditing(false);
-      Alert.alert('Success', 'Profile updated successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
+      Alert.alert('Success', 'Profile updated');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = () => {
-    setIsEditing(false);
+    // Revert to original user data
     if (user) {
       setDisplayName(user.displayName || '');
-      setUsername(user.username || '');
       setBio(user.bio || '');
+      setAvatar(user.avatar || null);
+    }
+    setIsEditing(false);
+  };
+
+  const handleOnboardingSubmit = async () => {
+    if (onboardingName.trim().length < 2) {
+      Alert.alert('Invalid Name', 'Name must be at least 2 characters.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await updateProfile({ displayName: onboardingName.trim() });
+      setShowOnboarding(false);
+      Alert.alert('Welcome!', `Hello, ${onboardingName}`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+    Alert.alert('Log Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log Out', style: 'destructive', onPress: logout }
     ]);
@@ -79,49 +143,86 @@ export const ProfileScreen = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Onboarding Modal */}
+      <Modal
+        visible={showOnboarding}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {}} // Prevent closing
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choose a Display Name</Text>
+            <Text style={styles.modalSubtitle}>How should we call you?</Text>
+            
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Alex"
+              value={onboardingName}
+              onChangeText={setOnboardingName}
+              autoCapitalize="words"
+            />
+            
+            <Pressable 
+              style={[styles.button, styles.saveButton, { width: '100%', marginTop: 16 }]} 
+              onPress={handleOnboardingSubmit}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <Text style={styles.buttonText}>Get Started</Text>
+              )}
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Main Profile UI */}
       <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          {user?.avatar ? (
-            <Image source={{ uri: user.avatar }} style={styles.avatar} contentFit="cover" />
+        <Pressable onPress={pickImage} disabled={!isEditing} style={styles.avatarContainer}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.avatar} contentFit="cover" />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <UserIcon size={40} color={colors.textMuted} />
             </View>
           )}
+          
           {isEditing && (
-            <Pressable style={styles.cameraButton}>
+            <View style={styles.cameraButton}>
               <Camera size={16} color="#fff" />
-            </Pressable>
+            </View>
           )}
-        </View>
+        </Pressable>
         
-        {!isEditing ? (
+        {/* View Mode: Name & ID */}
+        {!isEditing && (
           <View style={styles.headerInfo}>
-            <Text style={styles.name}>{user?.displayName || 'User'}</Text>
-            <Text style={styles.username}>@{user?.username || 'username'}</Text>
+            <Text style={styles.name}>{displayName || 'User'}</Text>
+            {user?.userid && (
+              <Text style={styles.idText}>ID: {user.userid}</Text>
+            )}
           </View>
-        ) : (
-          <Pressable onPress={handleCancel} style={styles.cancelButton}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </Pressable>
         )}
       </View>
 
       <View style={styles.form}>
-        {/* Display Name field removed */}
+        {/* Edit Mode: Display Name Input */}
+        {isEditing && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Display Name</Text>
+            <TextInput
+              style={styles.input}
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="Your Name"
+            />
+          </View>
+        )}
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Username (ID)</Text>
-          <TextInput
-            style={[styles.input, styles.inputDisabled]} // Always disabled for ID? Or editable? Assuming ID is fixed if it's the 8-digit number.
-            value={username}
-            onChangeText={setUsername}
-            editable={false} // Make it read-only if it's a system generated ID
-            placeholder="username"
-            autoCapitalize="none"
-          />
-        </View>
-
+        {/* Bio Field (View/Edit) */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Bio</Text>
           <TextInput
@@ -129,36 +230,47 @@ export const ProfileScreen = () => {
             value={bio}
             onChangeText={setBio}
             editable={isEditing}
-            placeholder="Tell us about yourself"
+            placeholder={isEditing ? "Write something about yourself..." : "No bio yet."}
             multiline
             numberOfLines={4}
           />
         </View>
 
+        {/* Info Rows (ReadOnly) */}
         <View style={styles.infoRow}>
           <Globe size={16} color={colors.textMuted} />
           <Text style={styles.infoText}>{user?.language || 'English'}</Text>
         </View>
-
         <View style={styles.infoRow}>
           <Clock size={16} color={colors.textMuted} />
           <Text style={styles.infoText}>{user?.timezone || 'UTC'}</Text>
         </View>
 
+        {/* Actions */}
         <View style={styles.actions}>
           {isEditing ? (
-            <Pressable 
-              style={[styles.button, styles.saveButton]} 
-              onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Save size={18} color="#fff" />
-                  <Text style={styles.buttonText}>Save Changes</Text>
-                </>
-              )}
-            </Pressable>
+            <View style={styles.editActions}>
+              <Pressable 
+                style={[styles.button, styles.cancelButton]} 
+                onPress={handleCancel}
+                disabled={loading}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              
+              <Pressable 
+                style={[styles.button, styles.saveButton, { flex: 1 }]} 
+                onPress={handleSave}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Save size={18} color="#fff" />
+                    <Text style={styles.buttonText}>Save Changes</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
           ) : (
             <Pressable 
               style={[styles.button, styles.editButton]} 
@@ -168,10 +280,12 @@ export const ProfileScreen = () => {
             </Pressable>
           )}
 
-          <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
-            <LogOut size={18} color={colors.error} />
-            <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
-          </Pressable>
+          {!isEditing && (
+            <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
+              <LogOut size={18} color={colors.error} />
+              <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </ScrollView>
@@ -188,7 +302,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   avatarContainer: {
     position: 'relative',
@@ -226,17 +340,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
-  username: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  cancelButton: {
-    marginTop: 10,
-    padding: 8,
-  },
-  cancelButtonText: {
-    color: colors.textSecondary,
+  idText: {
     fontSize: 14,
+    color: colors.textSecondary,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   form: {
     gap: 20,
@@ -282,6 +389,10 @@ const styles = StyleSheet.create({
     marginTop: 32,
     gap: 12,
   },
+  editActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -298,13 +409,66 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  cancelButton: {
+    backgroundColor: colors.bg,
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
   logoutButton: {
-    backgroundColor: '#fef2f2', // red-50
+    backgroundColor: '#fef2f2',
     marginTop: 8,
   },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalInput: {
+    width: '100%',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
   },
 });
