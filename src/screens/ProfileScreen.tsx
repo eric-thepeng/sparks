@@ -13,7 +13,6 @@ import {
   Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon } from 'lucide-react-native';
 
@@ -69,16 +68,28 @@ export const ProfileScreen = () => {
   const pickImage = async () => {
     if (!isEditing) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true, // Optional: get base64 if backend needs it
-    });
+    try {
+      // Dynamic import to avoid crash if native module not available
+      const ImagePicker = await import('expo-image-picker');
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setAvatar(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('ImagePicker error:', error);
+      Alert.alert(
+        'Feature Unavailable',
+        'Image picker is not available in this environment. Please use a development build.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
