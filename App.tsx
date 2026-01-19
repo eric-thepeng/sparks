@@ -211,7 +211,7 @@ function FeedCard({
       
       {/* 内容 */}
       <View style={styles.cardContent}>
-        <Text style={styles.cardTitle} numberOfLines={2}>
+        <Text style={styles.cardTitle} numberOfLines={5}>
           {item.title}
         </Text>
         

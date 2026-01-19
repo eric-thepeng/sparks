@@ -1,30 +1,20 @@
 /**
  * API 类型定义
  * 匹配后端 API 返回的数据结构
+ * 
+ * 所有帖子都是 RichPost 格式，包含 pages/blocks 结构
  */
 
 // ============================================================
-// 简单帖子（POST /posts 创建的）
-// ============================================================
-
-export interface ApiSimplePost {
-  platform_post_id: string;
-  author: string;
-  title: string;
-  content: string;
-  tags: string[];
-  like_count: number;
-  collect_count: number;
-  created_at: string;
-}
-
-// ============================================================
-// 富文本帖子（AI 生成的，包含图片和分页内容）
+// 帖子类型（RichPost - 包含图片和分页内容）
 // ============================================================
 
 export interface ApiImage {
-  id?: string;      // 内嵌图片 ID，如 "img_1"
-  url: string;      // 图片 URL
+  id?: string;              // 内嵌图片 ID，如 "img_1"
+  url: string;              // 图片 URL
+  prompt?: string;          // 图片描述
+  file_name?: string;       // 文件名
+  placement_hint?: string;  // 放置提示
 }
 
 export interface ApiBlock {
@@ -36,14 +26,19 @@ export interface ApiBlock {
 }
 
 export interface ApiPage {
-  index: number;
+  index: number;            // 页码 (1-based)
+  target_words?: number;    // 目标字数
+  actual_words?: number;    // 实际字数
   blocks: ApiBlock[];
 }
 
 export interface ApiRichPost {
   uid: string;
   title: string;
-  topic: string;
+  headline?: string;        // 同 title
+  topic?: string;
+  bucket_key?: string;      // 分类标识
+  total_pages?: number;     // 总页数
   cover_image?: ApiImage;
   inline_images?: ApiImage[];
   pages: ApiPage[];
@@ -55,24 +50,10 @@ export interface ApiRichPost {
 }
 
 // ============================================================
-// 联合类型 - 后端可能返回两种格式
+// 帖子类型 - 所有帖子都是 RichPost 格式
 // ============================================================
 
-export type ApiPost = ApiSimplePost | ApiRichPost;
-
-/**
- * 类型守卫：判断是否是富文本帖子
- */
-export function isRichPost(post: ApiPost): post is ApiRichPost {
-  return 'uid' in post && 'pages' in post;
-}
-
-/**
- * 类型守卫：判断是否是简单帖子
- */
-export function isSimplePost(post: ApiPost): post is ApiSimplePost {
-  return 'platform_post_id' in post && 'content' in post;
-}
+export type ApiPost = ApiRichPost;
 
 // ============================================================
 // 其他 API 类型

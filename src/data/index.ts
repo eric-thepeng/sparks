@@ -5,24 +5,16 @@
  * ┌─────────────────────────────────────────────────────────────┐
  * │  index.ts (这个文件)                                         │
  * │  ↓ 数据转换层 - 将 API 数据转换为 App 内部格式                  │
- * │  ↓ 支持两种帖子格式：简单帖子 和 富文本帖子                      │
- * ├─────────────────────────────────────────────────────────────┤
- * │  简单帖子：只有 content 文本，需要解析为 blocks                 │
- * │  富文本帖子：已有 pages/blocks 结构，直接使用                   │
+ * │  ↓ 支持两种帖子格式：                                          │
+ * │    - RichPost: 已有 pages/blocks 结构，直接使用               │
+ * │    - SimplePost: 只有 content 文本，需要解析为 blocks          │
  * └─────────────────────────────────────────────────────────────┘
  */
 
 import { ImageSource } from 'expo-image';
 import postsData from './postsData.json';
 import { POST_IMAGES, getCoverImage, getInlineImage } from './imageMap';
-import { 
-  ApiPost, 
-  ApiSimplePost, 
-  ApiRichPost, 
-  ApiBlock,
-  isRichPost, 
-  isSimplePost 
-} from '../api/types';
+import { ApiPost } from '../api/types';
 
 // ============================================================
 // 类型定义 (App 内部使用)
@@ -88,6 +80,17 @@ const MOCK_USERS = [
 ];
 
 // ============================================================
+// 类型判断辅助函数
+// ============================================================
+
+/**
+ * 判断是否是 RichPost（有 pages 数组）
+ */
+function hasPages(post: any): boolean {
+  return post.pages && Array.isArray(post.pages) && post.pages.length > 0;
+}
+
+// ============================================================
 // API 数据转换函数
 // ============================================================
 
@@ -95,35 +98,37 @@ const MOCK_USERS = [
  * 将 API 返回的帖子转换为 FeedItem（用于信息流）
  */
 export function apiPostToFeedItem(apiPost: ApiPost, index: number): FeedItem {
-  // 根据帖子类型获取不同的数据
-  if (isRichPost(apiPost)) {
-    return richPostToFeedItem(apiPost, index);
+  const post = apiPost as any;
+  
+  if (hasPages(post)) {
+    return richPostToFeedItem(post, index);
   } else {
-    return simplePostToFeedItem(apiPost, index);
+    return simplePostToFeedItem(post, index);
   }
 }
 
 /**
- * 富文本帖子 → FeedItem
+ * RichPost → FeedItem
  */
-function richPostToFeedItem(post: ApiRichPost, index: number): FeedItem {
-  // 优先使用后端的封面图 URL
+function richPostToFeedItem(post: any, index: number): FeedItem {
+  const postUid = post.uid || post.platform_post_id || `unknown-${index}`;
+  const title = post.title || post.headline || 'Untitled';
+  
   let coverImage: ImageSource;
   if (post.cover_image?.url) {
     coverImage = { uri: post.cover_image.url };
   } else {
-    // 回退到本地图片或占位图
-    const localCover = getCoverImage(post.uid);
+    const localCover = getCoverImage(postUid);
     coverImage = localCover || {
-      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(post.title.slice(0, 10))}`,
+      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(title.slice(0, 10))}`,
     };
   }
 
   const author = post.author || 'AI 创作者';
   return {
-    uid: post.uid,
-    title: post.title,
-    topic: post.topic || 'General',
+    uid: postUid,
+    title,
+    topic: post.topic || post.bucket_key || 'General',
     coverImage,
     likes: post.like_count || Math.floor(Math.random() * 500) + 100,
     isLiked: false,
@@ -138,14 +143,12 @@ function richPostToFeedItem(post: ApiRichPost, index: number): FeedItem {
 
 /**
  * 从 content 文本中提取第一张 Markdown 图片 URL
- * 返回 { coverUrl, contentWithoutCover }
  */
 function extractCoverImageFromContent(content: string): { coverUrl: string | null; contentWithoutCover: string } {
   const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/;
   const match = content.match(markdownImageRegex);
   
   if (match) {
-    // 移除第一张图片
     const contentWithoutCover = content.replace(match[0], '').trim();
     return {
       coverUrl: match[2],
@@ -160,35 +163,40 @@ function extractCoverImageFromContent(content: string): { coverUrl: string | nul
 }
 
 /**
- * 简单帖子 → FeedItem
+ * SimplePost → FeedItem
  */
-function simplePostToFeedItem(post: ApiSimplePost, index: number): FeedItem {
-  // 优先从 content 中提取第一张图片作为封面
-  const { coverUrl } = extractCoverImageFromContent(post.content);
+function simplePostToFeedItem(post: any, index: number): FeedItem {
+  const postUid = post.platform_post_id || post.uid || `unknown-${index}`;
+  const title = post.title || 'Untitled';
+  
+  // 从 content 中提取封面图
+  const { coverUrl } = extractCoverImageFromContent(post.content || '');
   
   let coverImage: ImageSource;
   if (coverUrl) {
     coverImage = { uri: coverUrl };
   } else {
-    // 尝试获取本地封面图
-    const localCover = getCoverImage(post.platform_post_id);
+    const localCover = getCoverImage(postUid);
     coverImage = localCover || {
-      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(post.title.slice(0, 10))}`,
+      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(title.slice(0, 10))}`,
     };
   }
 
+  const author = post.author || 'AI 创作者';
+  const tags = post.tags || [];
+  
   return {
-    uid: post.platform_post_id,
-    title: post.title,
-    topic: post.tags[0] || 'General',
+    uid: postUid,
+    title,
+    topic: tags[0] || 'General',
     coverImage,
-    likes: post.like_count,
+    likes: post.like_count || Math.floor(Math.random() * 500) + 100,
     isLiked: false,
-    comments: Math.floor(post.collect_count * 0.3),
+    comments: post.collect_count ? Math.floor(post.collect_count * 0.3) : Math.floor(Math.random() * 50) + 10,
     user: {
-      id: post.author,
-      name: post.author,
-      avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${post.author}`,
+      id: author,
+      name: author,
+      avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${author}`,
     },
   };
 }
@@ -197,61 +205,84 @@ function simplePostToFeedItem(post: ApiSimplePost, index: number): FeedItem {
  * 将 API 返回的帖子转换为完整 Post（用于详情页）
  */
 export function apiPostToPost(apiPost: ApiPost): Post {
-  if (isRichPost(apiPost)) {
-    return richPostToPost(apiPost);
+  const post = apiPost as any;
+  
+  if (hasPages(post)) {
+    console.log('[apiPostToPost] RichPost detected, using backend pages');
+    return richPostToPost(post);
   } else {
-    return simplePostToPost(apiPost);
+    console.log('[apiPostToPost] SimplePost detected, parsing content');
+    return simplePostToPost(post);
   }
 }
 
 /**
- * 富文本帖子 → Post
+ * RichPost → Post
  */
-function richPostToPost(apiPost: ApiRichPost): Post {
+function richPostToPost(post: any): Post {
+  const postUid = post.uid || post.platform_post_id || 'unknown';
+  const title = post.title || post.headline || 'Untitled';
+  
   // 构建内嵌图片映射
   const inlineImages = new Map<string, string>();
-  if (apiPost.inline_images) {
-    apiPost.inline_images.forEach(img => {
+  if (post.inline_images && Array.isArray(post.inline_images)) {
+    post.inline_images.forEach((img: any) => {
       if (img.id && img.url) {
         inlineImages.set(img.id, img.url);
       }
     });
   }
+  console.log('[richPostToPost] Inline images count:', inlineImages.size);
 
-  // 转换 pages
-  const pages: PostPage[] = apiPost.pages.map(page => ({
-    index: page.index,
-    blocks: page.blocks.map(block => convertApiBlock(block, inlineImages)),
+  // 直接使用后端的 pages 结构
+  const pages: PostPage[] = post.pages.map((page: any) => ({
+    index: page.index || 1,
+    blocks: Array.isArray(page.blocks) 
+      ? page.blocks.map((block: any) => convertApiBlock(block, inlineImages))
+      : [],
   }));
+  
+  console.log('[richPostToPost] Using backend pages:', pages.length);
+  console.log('[richPostToPost] Cover URL:', post.cover_image?.url);
+  
+  // 统计图片数量
+  let imageCount = 0;
+  pages.forEach(page => {
+    page.blocks.forEach(block => {
+      if (block.type === 'image') imageCount++;
+    });
+  });
+  console.log('[richPostToPost] Total image blocks:', imageCount);
 
   return {
-    uid: apiPost.uid,
-    title: apiPost.title,
-    topic: apiPost.topic || 'General',
+    uid: postUid,
+    title,
+    topic: post.topic || post.bucket_key || 'General',
     pages,
-    coverImageUrl: apiPost.cover_image?.url,
+    coverImageUrl: post.cover_image?.url,
     inlineImages,
-    author: apiPost.author,
-    likeCount: apiPost.like_count,
-    collectCount: apiPost.collect_count,
-    createdAt: apiPost.created_at,
+    author: post.author,
+    likeCount: post.like_count,
+    collectCount: post.collect_count,
+    createdAt: post.created_at,
   };
 }
 
 /**
  * 转换 API Block 为 App Block
  */
-function convertApiBlock(apiBlock: ApiBlock, inlineImages: Map<string, string>): ContentBlock {
+function convertApiBlock(apiBlock: any, inlineImages: Map<string, string>): ContentBlock {
+  const blockType = apiBlock.type || 'paragraph';
+  
   const block: ContentBlock = {
-    type: apiBlock.type,
+    type: blockType,
     text: apiBlock.text,
     ref: apiBlock.ref,
     items: apiBlock.items,
     size: apiBlock.size,
   };
 
-  // 如果是图片 block，尝试获取图片 URL
-  if (apiBlock.type === 'image' && apiBlock.ref) {
+  if (blockType === 'image' && apiBlock.ref) {
     const imageUrl = inlineImages.get(apiBlock.ref);
     if (imageUrl) {
       block.imageUrl = imageUrl;
@@ -262,32 +293,115 @@ function convertApiBlock(apiBlock: ApiBlock, inlineImages: Map<string, string>):
 }
 
 /**
- * 简单帖子 → Post（需要解析 content 文本）
+ * SimplePost → Post（解析 content 文本）
  */
-function simplePostToPost(apiPost: ApiSimplePost): Post {
-  // 提取封面图，并获取去掉封面图后的内容
-  const { coverUrl, contentWithoutCover } = extractCoverImageFromContent(apiPost.content);
+function simplePostToPost(post: any): Post {
+  const postUid = post.platform_post_id || post.uid || 'unknown';
+  const title = post.title || 'Untitled';
+  const content = post.content || '';
+  const tags = post.tags || [];
   
-  // 使用去掉封面图的内容来生成 pages
-  const pages = parseContentToPages(contentWithoutCover, apiPost.title);
+  // 提取封面图
+  const { coverUrl, contentWithoutCover } = extractCoverImageFromContent(content);
+  
+  // 解析 content 为 pages
+  const pages = parseContentToPages(contentWithoutCover, title);
+  
+  console.log('[simplePostToPost] Parsed content into', pages.length, 'pages');
+  console.log('[simplePostToPost] Cover URL:', coverUrl);
+  
+  // 统计图片数量
+  let imageCount = 0;
+  pages.forEach(page => {
+    page.blocks.forEach(block => {
+      if (block.type === 'image') imageCount++;
+    });
+  });
+  console.log('[simplePostToPost] Total images in pages:', imageCount);
 
   return {
-    uid: apiPost.platform_post_id,
-    title: apiPost.title,
-    topic: apiPost.tags[0] || 'General',
+    uid: postUid,
+    title,
+    topic: tags[0] || 'General',
     pages,
-    coverImageUrl: coverUrl || undefined,  // 第一张图作为封面
-    author: apiPost.author,
-    likeCount: apiPost.like_count,
-    collectCount: apiPost.collect_count,
-    createdAt: apiPost.created_at,
+    coverImageUrl: coverUrl || undefined,
+    author: post.author,
+    likeCount: post.like_count,
+    collectCount: post.collect_count,
+    createdAt: post.created_at,
   };
 }
+
+// ============================================================
+// Content 解析函数（SimplePost 使用）
+// ============================================================
+
+/**
+ * 分页标记：后端可以在 content 中使用这些标记来控制分页
+ */
+const PAGE_BREAK_PATTERN = /\n(?:---+|<!--\s*page-break\s*-->|\[PAGE_BREAK\])\n/gi;
 
 /**
  * 将纯文本内容解析为 pages 和 blocks 结构
  */
 function parseContentToPages(content: string, title: string): PostPage[] {
+  // 检查是否有分页标记
+  const hasPageBreaks = PAGE_BREAK_PATTERN.test(content);
+  PAGE_BREAK_PATTERN.lastIndex = 0;
+  
+  if (hasPageBreaks) {
+    return parseContentWithPageBreaks(content, title);
+  } else {
+    return parseContentWithFallback(content, title);
+  }
+}
+
+/**
+ * 根据分页标记解析内容
+ */
+function parseContentWithPageBreaks(content: string, title: string): PostPage[] {
+  const pageContents = content.split(PAGE_BREAK_PATTERN).filter(p => p.trim());
+  
+  if (pageContents.length === 0) {
+    return [{
+      index: 1,
+      blocks: [
+        { type: 'h1', text: title },
+        { type: 'paragraph', text: content || '暂无内容' },
+      ],
+    }];
+  }
+  
+  const pages: PostPage[] = [];
+  
+  pageContents.forEach((pageContent, pageIdx) => {
+    const pageBlocks: ContentBlock[] = [];
+    
+    if (pageIdx === 0) {
+      pageBlocks.push({ type: 'h1', text: title });
+    }
+    
+    const paragraphs = pageContent.split(/\n\n+/).filter(p => p.trim());
+    paragraphs.forEach((para, idx) => {
+      parseAndAddBlocks(para, pageBlocks);
+      if (idx > 0 && idx % 2 === 1) {
+        pageBlocks.push({ type: 'spacer' });
+      }
+    });
+    
+    pages.push({
+      index: pages.length + 1,
+      blocks: pageBlocks,
+    });
+  });
+  
+  return pages;
+}
+
+/**
+ * 默认分页逻辑（每 8 段落一页）
+ */
+function parseContentWithFallback(content: string, title: string): PostPage[] {
   const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
   
   if (paragraphs.length === 0) {
@@ -300,11 +414,8 @@ function parseContentToPages(content: string, title: string): PostPage[] {
     }];
   }
 
-  const PARAGRAPHS_PER_PAGE = 4;
+  const PARAGRAPHS_PER_PAGE = 8;
   const pages: PostPage[] = [];
-  
-  // Markdown 图片正则：![alt](url)
-  const markdownImageRegex = /^!\[([^\]]*)\]\(([^)]+)\)$/;
   
   for (let i = 0; i < paragraphs.length; i += PARAGRAPHS_PER_PAGE) {
     const pageBlocks: ContentBlock[] = [];
@@ -315,54 +426,7 @@ function parseContentToPages(content: string, title: string): PostPage[] {
     }
     
     pageParagraphs.forEach((para, idx) => {
-      // 检查是否是 Markdown 图片语法
-      const imageMatch = para.trim().match(markdownImageRegex);
-      if (imageMatch) {
-        // 将 Markdown 图片转换为 image block
-        pageBlocks.push({ 
-          type: 'image', 
-          imageUrl: imageMatch[2],  // URL
-          text: imageMatch[1],       // alt text
-        });
-      } else if (para.startsWith('#')) {
-        const headerText = para.replace(/^#+\s*/, '');
-        pageBlocks.push({ type: 'h2', text: headerText });
-      } else if (para.match(/^【.+】/)) {
-        pageBlocks.push({ type: 'h2', text: para });
-      } else {
-        // 检查段落内是否包含内嵌的 Markdown 图片
-        const inlineImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        let lastIndex = 0;
-        let match;
-        let hasInlineImages = false;
-        
-        while ((match = inlineImageRegex.exec(para)) !== null) {
-          hasInlineImages = true;
-          // 添加图片前的文本
-          const textBefore = para.slice(lastIndex, match.index).trim();
-          if (textBefore) {
-            pageBlocks.push({ type: 'paragraph', text: textBefore });
-          }
-          // 添加图片
-          pageBlocks.push({
-            type: 'image',
-            imageUrl: match[2],
-            text: match[1],
-          });
-          lastIndex = match.index + match[0].length;
-        }
-        
-        if (hasInlineImages) {
-          // 添加图片后的剩余文本
-          const textAfter = para.slice(lastIndex).trim();
-          if (textAfter) {
-            pageBlocks.push({ type: 'paragraph', text: textAfter });
-          }
-        } else {
-          pageBlocks.push({ type: 'paragraph', text: para });
-        }
-      }
-      
+      parseAndAddBlocks(para, pageBlocks);
       if (idx > 0 && idx % 2 === 1) {
         pageBlocks.push({ type: 'spacer' });
       }
@@ -377,25 +441,71 @@ function parseContentToPages(content: string, title: string): PostPage[] {
   return pages;
 }
 
+/**
+ * 解析单个段落并添加到 blocks 数组
+ */
+function parseAndAddBlocks(para: string, pageBlocks: ContentBlock[]): void {
+  const markdownImageRegex = /^!\[([^\]]*)\]\(([^)]+)\)$/;
+  
+  const imageMatch = para.trim().match(markdownImageRegex);
+  if (imageMatch) {
+    pageBlocks.push({ 
+      type: 'image', 
+      imageUrl: imageMatch[2],
+      text: imageMatch[1],
+    });
+  } else if (para.startsWith('#')) {
+    const headerText = para.replace(/^#+\s*/, '');
+    pageBlocks.push({ type: 'h2', text: headerText });
+  } else if (para.match(/^【.+】/)) {
+    pageBlocks.push({ type: 'h2', text: para });
+  } else {
+    // 检查内嵌图片
+    const inlineImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let lastIndex = 0;
+    let match;
+    let hasInlineImages = false;
+    
+    while ((match = inlineImageRegex.exec(para)) !== null) {
+      hasInlineImages = true;
+      const textBefore = para.slice(lastIndex, match.index).trim();
+      if (textBefore) {
+        pageBlocks.push({ type: 'paragraph', text: textBefore });
+      }
+      pageBlocks.push({
+        type: 'image',
+        imageUrl: match[2],
+        text: match[1],
+      });
+      lastIndex = match.index + match[0].length;
+    }
+    
+    if (hasInlineImages) {
+      const textAfter = para.slice(lastIndex).trim();
+      if (textAfter) {
+        pageBlocks.push({ type: 'paragraph', text: textAfter });
+      }
+    } else {
+      pageBlocks.push({ type: 'paragraph', text: para });
+    }
+  }
+}
+
 // ============================================================
 // 图片获取函数（支持本地和远程）
 // ============================================================
 
 /**
  * 获取帖子封面图
- * 优先使用 post.coverImageUrl（后端），否则使用本地图片
  */
 export function getPostCoverImage(post: Post): ImageSource {
-  // 后端 URL
   if (post.coverImageUrl) {
     return { uri: post.coverImageUrl };
   }
-  // 本地图片
   const localCover = getCoverImage(post.uid);
   if (localCover) {
     return localCover;
   }
-  // 占位图
   return {
     uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(post.title.slice(0, 10))}`,
   };
@@ -403,15 +513,12 @@ export function getPostCoverImage(post: Post): ImageSource {
 
 /**
  * 获取帖子内嵌图片
- * 优先使用 block.imageUrl（后端），否则使用本地图片
  */
 export function getBlockImage(post: Post, block: ContentBlock): ImageSource | undefined {
-  // 使用 block 上直接保存的 URL
   if (block.imageUrl) {
     return { uri: block.imageUrl };
   }
   
-  // 使用 post 的 inlineImages 映射
   if (block.ref && post.inlineImages) {
     const url = post.inlineImages.get(block.ref);
     if (url) {
@@ -419,7 +526,6 @@ export function getBlockImage(post: Post, block: ContentBlock): ImageSource | un
     }
   }
   
-  // 回退到本地图片
   if (block.ref) {
     return getInlineImage(post.uid, block.ref);
   }
@@ -428,7 +534,7 @@ export function getBlockImage(post: Post, block: ContentBlock): ImageSource | un
 }
 
 // ============================================================
-// 本地数据 API (保留原有接口，用于离线或回退)
+// 本地数据 API
 // ============================================================
 
 export function getFeedItems(): FeedItem[] {

@@ -10,7 +10,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FeedItem, Post } from '../data';
-import { savePostApi, unsavePostApi, fetchSavedPostsApi, ApiPost, isRichPost, isSimplePost } from '../api';
+import { savePostApi, unsavePostApi, fetchSavedPostsApi, ApiPost, ApiRichPost } from '../api';
 
 // ============================================================
 // 类型定义
@@ -290,25 +290,20 @@ export function SavedProvider({ children }: SavedProviderProps) {
       const remoteSavedPosts = await fetchSavedPostsApi();
       
       // 2. Convert remote posts to SavedPost format
+      // All posts are RichPost format
       const convertedRemotePosts: SavedPost[] = remoteSavedPosts.map(p => {
-        const uid = isRichPost(p) ? p.uid : p.platform_post_id;
-        const title = p.title;
-        // For simple posts, topic might be first tag or 'general'
-        const topic = isRichPost(p) ? p.topic : (p.tags && p.tags.length > 0 ? p.tags[0] : 'general');
-        // Cover image
-        let coverUri;
-        if (isRichPost(p) && p.cover_image) {
-           coverUri = p.cover_image.url;
-        } 
-        // For simple post, we might not have a direct cover URL easily available unless we parse content
-        // Assuming we rely on local fallback or placeholder for now if null
+        const post = p as ApiRichPost;
+        const uid = post.uid || (post as any).platform_post_id;
+        const title = post.title;
+        const topic = post.topic || post.bucket_key || 'General';
+        const coverUri = post.cover_image?.url;
         
         return {
           uid,
           title,
           topic,
           coverImageUri: coverUri,
-          savedAt: new Date().toISOString(), // Server might not return saved_at yet, use current
+          savedAt: new Date().toISOString(),
           syncedToServer: true,
           serverSavedId: uid 
         };

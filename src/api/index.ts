@@ -5,10 +5,8 @@
 
 import { 
   ApiPost, 
-  ApiSimplePost,
   ApiRichPost,
   GeneratePostRequest, 
-  CreatePostRequest,
   ApiError,
   LoginRequest,
   SignupRequest,
@@ -194,8 +192,8 @@ export async function fetchPostById(id: string): Promise<ApiPost> {
  * 创建/更新帖子
  * POST /posts
  */
-export async function createPost(post: CreatePostRequest): Promise<ApiSimplePost> {
-  return request<ApiSimplePost>('/posts', {
+export async function createPost(post: any): Promise<ApiRichPost> {
+  return request<ApiRichPost>('/posts', {
     method: 'POST',
     body: JSON.stringify(post),
   });

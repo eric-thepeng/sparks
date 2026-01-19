@@ -216,7 +216,9 @@ export function usePost(postId: string | null): UsePostResult {
     // 使用 API
     try {
       const apiPost = await fetchPostById(postId);
+      console.log('[usePost] API response for:', postId, 'has pages:', 'pages' in apiPost ? (apiPost as any).pages?.length : 'N/A');
       const convertedPost = apiPostToPost(apiPost);
+      console.log('[usePost] Converted post pages:', convertedPost.pages.length);
       setPost(convertedPost);
       setStatus('success');
       console.log('[usePost] API success for:', postId);
