@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Localization from 'expo-localization';
 import { User, LoginRequest, SignupRequest, GoogleLoginRequest } from '../api/types';
 import { 
   login as apiLogin, 
@@ -34,6 +35,70 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Helper to detect and update missing metadata
+  const checkAndFillMetadata = async (currentUser: User) => {
+    if (!currentUser) return;
+    
+    const needsUpdate: Partial<User> = {};
+    
+    if (!currentUser.timezone) {
+      let timeZone = 'UTC';
+      try {
+        // @ts-ignore
+        if (Localization.getCalendars) {
+           timeZone = Localization.getCalendars()[0]?.timeZone || 'UTC';
+        } else {
+           // Fallback for when native module is missing
+           timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        }
+      } catch (e) {
+        console.warn('Timezone detection failed, using UTC');
+      }
+      needsUpdate.timezone = timeZone;
+    }
+
+    if (!currentUser.language) {
+      let locale = 'en-US';
+      try {
+        // @ts-ignore
+        if (Localization.getLocales) {
+           locale = Localization.getLocales()[0]?.languageTag || 'en-US';
+        } else {
+           // Fallback
+           // @ts-ignore
+           locale = (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
+        }
+      } catch (e) {
+        console.warn('Language detection failed, using en-US');
+      }
+      needsUpdate.language = locale;
+    }
+
+    if (Object.keys(needsUpdate).length > 0) {
+      try {
+        console.log('[Auth] Updating missing metadata:', needsUpdate);
+        await apiUpdateMe(needsUpdate);
+        
+        // Fetch fresh user again to sync state
+        const freshUserResponse = await apiGetMe();
+        // @ts-ignore
+        const freshUser = freshUserResponse.user || (freshUserResponse.id ? freshUserResponse : null);
+        
+        if (freshUser) {
+           setUser(freshUser);
+           // Also update storage
+           const storedAuth = await AsyncStorage.getItem(config.authStorageKey);
+           if (storedAuth) {
+             const { token } = JSON.parse(storedAuth);
+             await AsyncStorage.setItem(config.authStorageKey, JSON.stringify({ token, user: freshUser }));
+           }
+        }
+      } catch (err) {
+        console.error('[Auth] Failed to auto-update metadata:', err);
+      }
+    }
+  };
+
   // Load auth state from storage on boot
   useEffect(() => {
     const loadAuth = async () => {
@@ -43,15 +108,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const { token: storedToken, user: storedUser } = JSON.parse(storedAuth);
           if (storedToken) {
             setToken(storedToken);
-            // Verify token and refresh user data
+              // Verify token and refresh user data
             try {
               // We need to set the token in a way API client can use it, 
               // but API client reads from AsyncStorage directly in this implementation.
               // Just to be safe, we rely on the stored value.
               const response = await apiGetMe();
-              setUser(response.user);
+              let freshUser = response.user || (response.id ? response : null);
+              
+              // Check metadata
+              // @ts-ignore
+              freshUser = await checkAndFillMetadata(freshUser);
+
+              setUser(freshUser);
               // Update storage with fresh user
-              await AsyncStorage.setItem(config.authStorageKey, JSON.stringify({ token: storedToken, user: response.user }));
+              // @ts-ignore
+              await AsyncStorage.setItem(config.authStorageKey, JSON.stringify({ token: storedToken, user: freshUser }));
             } catch (err) {
               // Token invalid or expired
               await logout();
@@ -83,7 +155,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await apiLogin(data);
+      // Save auth FIRST so token is available for API calls
       await saveAuth(response.token, response.user);
+      
+      // Then check metadata in background
+      checkAndFillMetadata(response.user);
       
       // Update SavedContext if needed, though SavedContext should listen to storage/state
     } catch (err: any) {
@@ -99,7 +175,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await apiSignup(data);
+      // Save auth FIRST
       await saveAuth(response.token, response.user);
+      
+      // Then check metadata
+      checkAndFillMetadata(response.user);
     } catch (err: any) {
       setError(err.message || 'Signup failed');
       throw err;
@@ -113,7 +193,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await apiLoginWithGoogle(data);
+      // Save auth FIRST
       await saveAuth(response.token, response.user);
+      
+      // Then check metadata
+      checkAndFillMetadata(response.user);
     } catch (err: any) {
       setError(err.message || 'Google login failed');
       throw err;

@@ -11,6 +11,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FeedItem, Post } from '../data';
 import { savePostApi, unsavePostApi, fetchSavedPostsApi, ApiPost, ApiRichPost } from '../api';
+import { config } from '../config';
 
 // ============================================================
 // 类型定义
@@ -58,8 +59,6 @@ interface SavedContextValue {
 
 const STORAGE_KEYS = {
   SAVED_POSTS: '@sparks/saved_posts',
-  USER_ID: '@sparks/user_id',
-  AUTH_TOKEN: '@sparks/auth_token',
   LAST_SYNC: '@sparks/last_sync',
 };
 
@@ -88,52 +87,95 @@ export function SavedProvider({ children }: SavedProviderProps) {
   const [authToken, setAuthToken] = useState<string | null>(null);
 
   // ============================================================
-  // 初始化 - 从本地存储加载
+  // 初始化 - 监听 AuthContext (通过 AsyncStorage 检查)
   // ============================================================
   
   useEffect(() => {
-    loadSavedPosts();
+    // Initial load
+    const init = async () => {
+       const storedAuth = await AsyncStorage.getItem(config.authStorageKey);
+       let currentUserId = null;
+       let currentToken = null;
+
+       if (storedAuth) {
+         try {
+           const { user, token } = JSON.parse(storedAuth);
+           if (user && user.id) currentUserId = user.id;
+           if (token) currentToken = token;
+         } catch (e) {
+           // ignore parse error
+         }
+       }
+
+       setUserId(currentUserId);
+       setAuthToken(currentToken);
+       loadSavedPosts(currentUserId);
+    };
+    init();
   }, []);
 
   // 监听 Token 变化，重新加载或绑定
   useEffect(() => {
     const checkAuth = async () => {
-       const storedUserId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
-       const storedToken = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-       
-       if (storedToken !== authToken) {
-         setAuthToken(storedToken);
-         setUserId(storedUserId);
-         
-         // 如果有 Token，触发同步
-         if (storedToken) {
-           syncToServer();
+       const storedAuth = await AsyncStorage.getItem(config.authStorageKey);
+       let currentUserId = null;
+       let currentToken = null;
+
+       if (storedAuth) {
+         try {
+           const { user, token } = JSON.parse(storedAuth);
+           if (user && user.id) currentUserId = user.id;
+           if (token) currentToken = token;
+         } catch (e) {
+            // ignore
          }
        }
+       
+       // If user changed (login or logout or switch)
+       if (currentUserId !== userId) {
+         setUserId(currentUserId);
+         setAuthToken(currentToken);
+         
+         // Reload posts for new user (or clear if null)
+         await loadSavedPosts(currentUserId);
+         
+         // If logged in, sync
+         if (currentUserId && currentToken) {
+           setTimeout(() => syncToServer(), 500);
+         }
+       } else if (currentToken !== authToken) {
+         // Just token changed
+         setAuthToken(currentToken);
+       }
     };
-    checkAuth();
-  }, [authToken]);
+    
+    const interval = setInterval(checkAuth, 1000);
+    return () => clearInterval(interval);
+  }, [userId, authToken]); // Depend on local state to detect diffs
 
-  const loadSavedPosts = async () => {
+  const loadSavedPosts = async (currentUserId: string | null) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEYS.SAVED_POSTS);
+      // If no user, clear posts (or load guest posts if we supported that)
+      if (!currentUserId) {
+        setSavedPosts([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const key = `${STORAGE_KEYS.SAVED_POSTS}_${currentUserId}`;
+      const stored = await AsyncStorage.getItem(key);
       if (stored) {
         const parsed: SavedPost[] = JSON.parse(stored);
-        // 按保存时间倒序排列（最新的在前）
         parsed.sort((a, b) => 
           new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
         );
         setSavedPosts(parsed);
+      } else {
+        setSavedPosts([]);
       }
-      
-      // 加载用户认证信息（预留）
-      const storedUserId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
-      const storedToken = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-      if (storedUserId) setUserId(storedUserId);
-      if (storedToken) setAuthToken(storedToken);
       
     } catch (err) {
       console.error('Failed to load saved posts:', err);
@@ -147,9 +189,11 @@ export function SavedProvider({ children }: SavedProviderProps) {
   // 持久化保存
   // ============================================================
   
-  const persistSavedPosts = async (posts: SavedPost[]) => {
+  const persistSavedPosts = async (posts: SavedPost[], currentUserId: string | null) => {
+    if (!currentUserId) return;
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.SAVED_POSTS, JSON.stringify(posts));
+      const key = `${STORAGE_KEYS.SAVED_POSTS}_${currentUserId}`;
+      await AsyncStorage.setItem(key, JSON.stringify(posts));
     } catch (err) {
       console.error('Failed to persist saved posts:', err);
       throw err;
@@ -181,7 +225,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
     setSavedPosts(updatedPosts);
     
     try {
-      await persistSavedPosts(updatedPosts);
+      await persistSavedPosts(updatedPosts, userId);
       
       // 如果已登录，尝试同步到服务器
       if (authToken) {
@@ -191,7 +235,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
           p.uid === newSavedPost.uid ? { ...p, syncedToServer: true } : p
         );
         setSavedPosts(syncedPosts);
-        persistSavedPosts(syncedPosts);
+        persistSavedPosts(syncedPosts, userId);
       }
     } catch (err) {
       // 回滚
@@ -211,7 +255,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
     setSavedPosts(updatedPosts);
     
     try {
-      await persistSavedPosts(updatedPosts);
+      await persistSavedPosts(updatedPosts, userId);
       
       // 如果已登录，同步删除到服务器
       if (authToken) {
@@ -257,7 +301,9 @@ export function SavedProvider({ children }: SavedProviderProps) {
     setSavedPosts([]);
     
     try {
-      await AsyncStorage.removeItem(STORAGE_KEYS.SAVED_POSTS);
+      if (userId) {
+         await AsyncStorage.removeItem(`${STORAGE_KEYS.SAVED_POSTS}_${userId}`);
+      }
     } catch (err) {
       setSavedPosts(previousPosts);
       setError('Failed to clear, please try again');
@@ -269,8 +315,8 @@ export function SavedProvider({ children }: SavedProviderProps) {
   // ============================================================
   
   const refreshSavedPosts = useCallback(async () => {
-    await loadSavedPosts();
-  }, []);
+    await loadSavedPosts(userId);
+  }, [userId]);
 
   // ============================================================
   // 后端同步预留接口
@@ -331,7 +377,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
       }
 
       setSavedPosts(convertedRemotePosts);
-      await persistSavedPosts(convertedRemotePosts);
+      await persistSavedPosts(convertedRemotePosts, userId);
       
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
       setSyncStatus('synced');
@@ -345,8 +391,8 @@ export function SavedProvider({ children }: SavedProviderProps) {
   /** 绑定用户账号 */
   const bindAccount = useCallback(async (newUserId: string, newToken: string) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, newUserId);
-      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, newToken);
+      // No longer need to manually set keys, AuthContext handles it.
+      // We just update local state to trigger sync
       setUserId(newUserId);
       setAuthToken(newToken);
       

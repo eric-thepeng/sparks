@@ -11,10 +11,14 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { useAuth } from '../context/AuthContext';
-import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon } from 'lucide-react-native';
+  } from 'react-native';
+  import { Image } from 'expo-image';
+  // Use legacy import for getInfoAsync compatibility
+  import * as FileSystem from 'expo-file-system/legacy';
+  import * as ImageManipulator from 'expo-image-manipulator';
+  import { useAuth } from '../context/AuthContext';
+  import { uploadImage } from '../api';
+  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon } from 'lucide-react-native';
 
 // Reusing colors
 const colors = {
@@ -51,7 +55,7 @@ export const ProfileScreen = () => {
     if (user) {
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
-      setAvatar(user.avatar || null);
+      setAvatar(user.photoUrl || null);
 
       // Trigger onboarding if no display name is set (fresh signup)
       // Check if displayName is empty/null or matches the 8-digit ID exactly
@@ -68,22 +72,30 @@ export const ProfileScreen = () => {
   const pickImage = async () => {
     if (!isEditing) return;
 
-    try {
-      // Dynamic import to avoid crash if native module not available
-      const ImagePicker = await import('expo-image-picker');
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5,
-        base64: true,
-      });
+      try {
+        // Dynamic import to avoid crash if native module not available
+        const ImagePicker = await import('expo-image-picker');
+        
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true, // Allows user to crop ("chop")
+          aspect: [1, 1],      // Force square aspect ratio
+          quality: 1,          // Get full quality first, we compress later
+        });
+  
+        if (!result.canceled && result.assets[0]) {
+          // Resize and Compress ("Decrease Size")
+          const manipResult = await ImageManipulator.manipulateAsync(
+            result.assets[0].uri,
+            [
+              { resize: { width: 800 } } // Resize to 800px width (maintains aspect ratio)
+            ],
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70% quality
+          );
 
-      if (!result.canceled && result.assets[0]) {
-        setAvatar(result.assets[0].uri);
-      }
-    } catch (error) {
+          setAvatar(manipResult.uri);
+        }
+      } catch (error) {
       console.error('ImagePicker error:', error);
       Alert.alert(
         'Feature Unavailable',
@@ -101,10 +113,37 @@ export const ProfileScreen = () => {
 
     setLoading(true);
     try {
+      let finalPhotoUrl = avatar;
+
+      // Handle Image Upload if avatar is a local file
+      if (avatar && (avatar.startsWith('file://') || avatar.startsWith('content://'))) {
+         try {
+           const fileInfo = await FileSystem.getInfoAsync(avatar);
+           if (fileInfo.exists) {
+             const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+             if (fileInfo.size > MAX_SIZE) {
+               Alert.alert('File too large', 'Profile photo must be under 5MB.');
+               setLoading(false);
+               return;
+             }
+             
+             // Upload
+             console.log('Uploading image...');
+             finalPhotoUrl = await uploadImage(avatar);
+             console.log('Upload success, url:', finalPhotoUrl);
+           }
+         } catch (uploadError: any) {
+           console.error('Upload failed:', uploadError);
+           Alert.alert('Upload Failed', 'Could not upload profile photo. Please try again.');
+           setLoading(false);
+           return;
+         }
+      }
+
       await updateProfile({
         displayName: displayName.trim(),
         bio: bio.trim(),
-        avatar: avatar || undefined,
+        photoUrl: finalPhotoUrl || undefined,
         // Include username to prevent backend reversion bug if it exists
         username: user?.username 
       });

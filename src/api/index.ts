@@ -47,9 +47,14 @@ async function request<T>(
 
   try {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
       ...options.headers,
     };
+
+    // Only set JSON content type if body is not FormData
+    if (!(options.body instanceof FormData)) {
+      // @ts-ignore
+      headers['Content-Type'] = 'application/json';
+    }
 
     // 自动添加 Token
     const token = await getToken();
@@ -135,6 +140,29 @@ export async function updateMe(data: UpdateUserRequest): Promise<{ user: User }>
     method: 'PATCH',
     body: JSON.stringify(data),
   });
+}
+
+export async function uploadImage(uri: string): Promise<string> {
+  const formData = new FormData();
+  const filename = uri.split('/').pop() || 'photo.jpg';
+  
+  // Infer type from extension
+  const match = /\.(\w+)$/.exec(filename);
+  const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+  // @ts-ignore - React Native FormData expects an object for file
+  formData.append('file', {
+    uri,
+    name: filename,
+    type,
+  });
+
+  const response = await request<{ url: string }>('/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  
+  return response.url;
 }
 
 export async function loginWithGoogle(data: GoogleLoginRequest): Promise<AuthResponse> {
