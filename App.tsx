@@ -26,6 +26,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   Heart, 
   ChevronLeft, 
@@ -127,10 +128,10 @@ function TopTabs() {
 // ============================================================
 // 顶部 Header
 // ============================================================
-function Header() {
+function Header({ onSearchPress }: { onSearchPress?: () => void }) {
   return (
     <View style={styles.header}>
-      <Pressable style={styles.headerIcon}>
+      <Pressable style={styles.headerIcon} onPress={onSearchPress}>
         <Search size={22} color={colors.text} />
       </Pressable>
       
@@ -1221,7 +1222,7 @@ function HistoryScreen({
         <View style={styles.headerRightArea}>
           {historyData.length > 0 && (
             <Pressable onPress={handleClearHistory} style={styles.headerClearButton}>
-              <Text style={styles.headerClearButtonText}>Remove All</Text>
+              <Trash2 size={20} color={colors.textMuted} />
             </Pressable>
           )}
         </View>
@@ -1659,12 +1660,151 @@ function ErrorScreen({
 }
 
 // ============================================================
+// 搜索页面 - Search Screen
+// ============================================================
+function SearchScreen({ 
+  items, 
+  onItemPress, 
+  onClose 
+}: { 
+  items: FeedItem[]; 
+  onItemPress: (uid: string) => void;
+  onClose: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const insets = useSafeAreaInsets();
+  
+  // 加载搜索历史
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('search_history');
+        if (saved) setHistory(JSON.parse(saved));
+      } catch (e) {}
+    };
+    loadHistory();
+  }, []);
+
+  // 过滤结果
+  const filteredItems = searchQuery.trim() === '' 
+    ? [] 
+    : items.filter(item => 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.topic.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+  const handleSearch = async (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed && !history.includes(trimmed)) {
+      const newHistory = [trimmed, ...history].slice(0, 10);
+      setHistory(newHistory);
+      try {
+        await AsyncStorage.setItem('search_history', JSON.stringify(newHistory));
+      } catch (e) {}
+    }
+  };
+
+  const clearHistory = async () => {
+    setHistory([]);
+    try {
+      await AsyncStorage.removeItem('search_history');
+    } catch (e) {}
+  };
+
+  return (
+    <View style={[styles.searchContainer, { paddingTop: insets.top }]}>
+      {/* 搜索栏 */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchFieldContainer}>
+          <Search size={18} color={colors.textMuted} style={styles.searchIconSmall} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search posts or topics..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={() => handleSearch(searchQuery)}
+            autoFocus
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
+              <X size={16} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable onPress={onClose} style={styles.cancelSearchButton}>
+          <Text style={styles.cancelSearchText}>Cancel</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView 
+        style={{ flex: 1 }} 
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {searchQuery.trim() === '' ? (
+          // 搜索历史
+          <View style={styles.searchHistoryContainer}>
+            <View style={styles.searchHistoryHeader}>
+              <Text style={styles.searchHistoryTitle}>Recent Searches</Text>
+              {history.length > 0 && (
+                <Pressable onPress={clearHistory}>
+                  <Trash2 size={16} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+            <View style={styles.searchHistoryTags}>
+              {history.length > 0 ? (
+                history.map((item, index) => (
+                  <Pressable 
+                    key={index} 
+                    style={styles.historyTag}
+                    onPress={() => {
+                      setSearchQuery(item);
+                      handleSearch(item);
+                    }}
+                  >
+                    <Clock size={12} color={colors.textMuted} style={{ marginRight: 6 }} />
+                    <Text style={styles.historyTagText}>{item}</Text>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.noHistoryText}>No recent searches</Text>
+              )}
+            </View>
+          </View>
+        ) : (
+          // 搜索结果
+          <View style={{ paddingHorizontal: 8, paddingTop: 12 }}>
+            {filteredItems.length > 0 ? (
+              <MasonryFeed 
+                items={filteredItems} 
+                onItemPress={(uid) => {
+                  handleSearch(searchQuery);
+                  onItemPress(uid);
+                }} 
+              />
+            ) : (
+              <View style={styles.noResultsContainer}>
+                <Text style={styles.noResultsText}>No results found for "{searchQuery}"</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ============================================================
 // 主应用内容
 // ============================================================
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
 
   // 使用 hooks 获取数据
@@ -1701,7 +1841,7 @@ function AppContent() {
         if (feedStatus === 'loading' && feedItems.length === 0) {
           return (
             <>
-              <Header />
+              <Header onSearchPress={() => setShowSearchModal(true)} />
               <LoadingScreen />
             </>
           );
@@ -1711,7 +1851,7 @@ function AppContent() {
         if (feedStatus === 'error' && feedItems.length === 0) {
           return (
             <>
-              <Header />
+              <Header onSearchPress={() => setShowSearchModal(true)} />
               <ErrorScreen 
                 message={feedError || 'Unknown error'} 
                 onRetry={refetchFeed} 
@@ -1723,7 +1863,7 @@ function AppContent() {
         return (
           <>
             {/* 顶部 Header */}
-            <Header />
+            <Header onSearchPress={() => setShowSearchModal(true)} />
             
             {/* 信息流 */}
             <ScrollView
@@ -1815,6 +1955,23 @@ function AppContent() {
                </Pressable>
              </View>
           )}
+        </Modal>
+
+        {/* 搜索 Modal */}
+        <Modal
+          visible={showSearchModal}
+          animationType="fade"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowSearchModal(false)}
+        >
+          <SearchScreen 
+            items={feedItems}
+            onItemPress={(uid) => {
+              setShowSearchModal(false);
+              setSelectedPostUid(uid);
+            }}
+            onClose={() => setShowSearchModal(false)}
+          />
         </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -2333,6 +2490,105 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  // Search Screen Styles
+  searchContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.card,
+    gap: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+  },
+  searchFieldContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  searchIconSmall: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    height: '100%',
+    padding: 0,
+  },
+  clearSearchButton: {
+    padding: 4,
+  },
+  cancelSearchButton: {
+    paddingVertical: 8,
+  },
+  cancelSearchText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  searchHistoryContainer: {
+    padding: 20,
+  },
+  searchHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  searchHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  searchHistoryTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  historyTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+  },
+  historyTagText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  noHistoryText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  noResultsContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  noResultsText: {
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   loadingMore: {
     paddingVertical: 24,
     alignItems: 'center',
@@ -2726,15 +2982,11 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   headerClearButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
   },
-  headerClearButtonText: {
-    fontSize: 14,
-    color: colors.error,
-    fontWeight: '600',
-  },
-
+  
   // ============================================================
   // History & Likes Screen Styles
   // ============================================================
