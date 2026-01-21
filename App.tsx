@@ -208,6 +208,7 @@ function FeedCard({
   onPress: () => void;
   index?: number;
 }) {
+  const { token, logout } = useAuth();
   const [isLiked, setIsLiked] = useState(item.isLiked);
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
@@ -245,6 +246,16 @@ function FeedCard({
 
   const handleLike = async () => {
     if (isLiking) return;
+
+    if (!token) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to like posts.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setIsLiking(true);
 
     // Optimistic Update
@@ -274,11 +285,16 @@ function FeedCard({
       } else {
         await likeItem(item.uid, 'post');
       }
-    } catch (error) {
+    } catch (error: any) {
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
       console.error('Like failed', error);
+
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        logout();
+      }
     } finally {
       setIsLiking(false);
     }
@@ -639,11 +655,14 @@ const PageItem = React.memo(({
 function SinglePostReader({
   post,
   onClose,
+  onLikeUpdate,
 }: {
   post: Post;
   onClose: () => void;
+  onLikeUpdate?: (isLiked: boolean, likeCount: number) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { token, logout } = useAuth();
   const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
@@ -668,7 +687,9 @@ function SinglePostReader({
     setVisiblePages(new Set([0]));
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     setShowComments(false); // Reset comments view on post change
-  }, [post.uid]);
+    setIsLiked(!!post.isLiked);
+    setLikeCount(post.likeCount || 0);
+  }, [post.uid, post.isLiked, post.likeCount]);
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
@@ -744,6 +765,24 @@ function SinglePostReader({
 
   const handleLike = async () => {
     if (isLiking) return;
+    
+    if (!token) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to like posts.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Login', onPress: () => {
+            onClose();
+            // We need a way to switch to 'me' tab. 
+            // In this monolithic App.tsx, we can't easily do it from here without passing props.
+            // But for now, just informing the user is better than a silent fail or rollback.
+          }}
+        ]
+      );
+      return;
+    }
+
     setIsLiking(true);
 
     // Optimistic Update
@@ -773,11 +812,20 @@ function SinglePostReader({
       } else {
         await likeItem(post.uid, 'post');
       }
-    } catch (error) {
+      // Update hook state so it persists during swipes
+      onLikeUpdate?.(!prevIsLiked, prevIsLiked ? prevLikeCount - 1 : prevLikeCount + 1);
+    } catch (error: any) {
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
       console.error('Like failed', error);
+
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        logout();
+      } else {
+        Alert.alert('Error', error?.message || 'Failed to update like status');
+      }
     } finally {
       setIsLiking(false);
     }
@@ -993,8 +1041,16 @@ function SinglePostReader({
 // ============================================================
 // Post Loader (Fetches individual post)
 // ============================================================
-function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
-  const { post, status, error, refetch } = usePost(uid);
+function PostLoader({ 
+  uid, 
+  onClose,
+  onFeedLikeUpdate
+}: { 
+  uid: string, 
+  onClose: () => void,
+  onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+}) {
+  const { post, status, error, refetch, updateLocalLike } = usePost(uid);
 
   if (status === 'loading') {
     return (
@@ -1021,7 +1077,16 @@ function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
     );
   }
 
-  return <SinglePostReader post={post} onClose={onClose} />;
+  return (
+    <SinglePostReader 
+      post={post} 
+      onClose={onClose} 
+      onLikeUpdate={(isLiked, count) => {
+        updateLocalLike(isLiked, count);
+        onFeedLikeUpdate?.(uid, isLiked, count);
+      }} 
+    />
+  );
 }
 
 // ============================================================
@@ -1032,11 +1097,13 @@ const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 function PostSwiper({ 
   items, 
   initialIndex, 
-  onClose 
+  onClose,
+  onFeedLikeUpdate
 }: { 
   items: FeedItem[]; 
   initialIndex: number; 
-  onClose: () => void; 
+  onClose: () => void;
+  onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
 
@@ -1076,7 +1143,11 @@ function PostSwiper({
 
         return (
           <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity }}>
-            <PostLoader uid={item.uid} onClose={onClose} />
+            <PostLoader 
+              uid={item.uid} 
+              onClose={onClose} 
+              onFeedLikeUpdate={onFeedLikeUpdate}
+            />
           </Animated.View>
         );
       }}
@@ -1812,7 +1883,8 @@ function AppContent() {
     feedItems, 
     status: feedStatus, 
     error: feedError, 
-    refetch: refetchFeed 
+    refetch: refetchFeed,
+    updateLocalLike: updateFeedLike
   } = useFeedItems();
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
@@ -1943,6 +2015,7 @@ function AppContent() {
               items={feedItems}
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
+              onFeedLikeUpdate={updateFeedLike}
             />
           ) : (
              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>

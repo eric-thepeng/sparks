@@ -54,8 +54,8 @@ async function request<T>(
       ...options.headers,
     };
 
-    // Only set JSON content type if body is not FormData
-    if (!(options.body instanceof FormData)) {
+    // Only set JSON content type if body exists and is not FormData
+    if (options.body && !(options.body instanceof FormData)) {
       // @ts-ignore
       headers['Content-Type'] = 'application/json';
     }
@@ -316,26 +316,29 @@ export async function getMyLikes(limit: number = 20, cursor?: string): Promise<P
 }
 
 export async function likeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/likes', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/likes?${query}`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
 }
 
 export async function unlikeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/likes', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/likes?${query}`, {
     method: 'DELETE',
     body: JSON.stringify({ itemId, itemType })
   });
 }
 
 export async function getMyHistory(limit: number = 20, cursor?: string): Promise<ProfileListResponse> {
-  const query = `limit=${limit}` + (cursor ? `&cursor=${cursor}` : '');
+  const query = `limit=${limit}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
   return request<ProfileListResponse>(`/me/history?${query}`);
 }
 
 export async function recordHistory(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/history', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/history?${query}`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
