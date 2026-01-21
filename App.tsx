@@ -20,6 +20,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Share,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,13 +81,21 @@ import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth
 import { AuthScreen } from './src/screens/AuthScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLUMN_GAP = 8;
 const CARD_WIDTH = (SCREEN_WIDTH - 24 - COLUMN_GAP) / 2;
 
 // 封面图原始尺寸 928x1152
 const COVER_ASPECT_RATIO = 928 / 1152; // ≈ 0.806
 const CARD_IMAGE_HEIGHT = CARD_WIDTH / COVER_ASPECT_RATIO;
+
+const HEADER_HEIGHT = 60;
+const BOTTOM_BAR_HEIGHT = 64;
+
+// 启用 LayoutAnimation
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Indigo 色彩系统
 const colors = {
@@ -209,14 +219,40 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
 function FeedCard({ 
   item, 
   onPress,
+  index = 0,
 }: { 
   item: FeedItem; 
   onPress: () => void;
+  index?: number;
 }) {
   const [isLiked, setIsLiked] = useState(item.isLiked);
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
+  
+  // Entry Animation
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    // Stagger animation based on index
+    const delay = index * 100; // 100ms per item
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        friction: 6,
+        tension: 50,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Sync with item prop if it changes (e.g. pull to refresh)
   useEffect(() => {
@@ -266,51 +302,53 @@ function FeedCard({
   };
 
   return (
-    <Pressable style={styles.card} onPress={onPress}>
-      {/* 封面图 - 保持原始宽高比 */}
-      <Image
-        source={item.coverImage}
-        style={[styles.cardImage, { height: CARD_IMAGE_HEIGHT }]}
-        contentFit="cover"
-        transition={200}
-      />
-      
-      {/* 内容 */}
-      <View style={styles.cardContent}>
-        <Text style={styles.cardTitle} numberOfLines={5}>
-          {item.title}
-        </Text>
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <Pressable style={styles.card} onPress={onPress}>
+        {/* 封面图 - 保持原始宽高比 */}
+        <Image
+          source={item.coverImage}
+          style={[styles.cardImage, { height: CARD_IMAGE_HEIGHT }]}
+          contentFit="cover"
+          transition={200}
+        />
         
-        {/* 底部：用户信息 + 点赞 */}
-        <View style={styles.cardFooter}>
-          <View style={styles.userInfo}>
-            <Image
-              source={{ uri: item.user.avatar }}
-              style={styles.avatar}
-            />
-            <Text style={styles.userName} numberOfLines={1}>
-              {item.user.name}
-            </Text>
-          </View>
+        {/* 内容 */}
+        <View style={styles.cardContent}>
+          <Text style={styles.cardTitle} numberOfLines={5}>
+            {item.title}
+          </Text>
           
-          <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
-            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-              <Heart 
-                size={14} 
-                color={isLiked ? colors.accent : colors.textMuted}
-                fill={isLiked ? colors.accent : 'transparent'}
+          {/* 底部：用户信息 + 点赞 */}
+          <View style={styles.cardFooter}>
+            <View style={styles.userInfo}>
+              <Image
+                source={{ uri: item.user.avatar }}
+                style={styles.avatar}
               />
-            </Animated.View>
-            <Text style={[
-              styles.likeCount,
-              isLiked && { color: colors.accent }
-            ]}>
-              {likeCount}
-            </Text>
-          </Pressable>
+              <Text style={styles.userName} numberOfLines={1}>
+                {item.user.name}
+              </Text>
+            </View>
+            
+            <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
+              <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                <Heart 
+                  size={14} 
+                  color={isLiked ? colors.accent : colors.textMuted}
+                  fill={isLiked ? colors.accent : 'transparent'}
+                />
+              </Animated.View>
+              <Text style={[
+                styles.likeCount,
+                isLiked && { color: colors.accent }
+              ]}>
+                {likeCount}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -340,22 +378,24 @@ function MasonryFeed({
     <View style={styles.masonry}>
       {/* 左列 */}
       <View style={styles.column}>
-        {leftColumn.map((item) => (
+        {leftColumn.map((item, index) => (
           <FeedCard
             key={item.uid}
             item={item}
             onPress={() => onItemPress(item.uid)}
+            index={index * 2} // Approximate original index for staggering
           />
         ))}
       </View>
       
       {/* 右列 */}
       <View style={styles.column}>
-        {rightColumn.map((item) => (
+        {rightColumn.map((item, index) => (
           <FeedCard
             key={item.uid}
             item={item}
             onPress={() => onItemPress(item.uid)}
+            index={index * 2 + 1} // Approximate original index for staggering
           />
         ))}
       </View>
@@ -467,7 +507,153 @@ function CommentSection({ postId }: { postId: string }) {
 }
 
 // ============================================================
-function PostReader({
+// ============================================================
+// Page Item Component (for Vertical FlatList)
+// ============================================================
+type ReaderItem = 
+  | { type: 'page'; page: PostPage; index: number };
+
+const PageItem = React.memo(({ 
+  item, 
+  post,
+  isVisible,
+  containerHeight,
+  isLastPage
+}: { 
+  item: ReaderItem; 
+  post: Post;
+  isVisible: boolean; 
+  containerHeight: number;
+  isLastPage: boolean;
+}) => {
+  const isFirstPage = item.index === 0;
+  const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
+  const translateY = useRef(new Animated.Value(isFirstPage ? 0 : 50)).current;
+  const [revealed, setRevealed] = useState(isFirstPage);
+
+  useEffect(() => {
+    if (isVisible && !revealed) {
+      setRevealed(true);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.spring(translateY, {
+          toValue: 0,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isVisible]);
+
+  // Render content block helper
+  const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
+    const key = `${pageIdx}-${idx}`;
+    
+    // Skip h1 on the first page since we render the title in the header UI
+    if (pageIdx === 0 && block.type === 'h1') return null;
+
+    switch (block.type) {
+      case 'h1':
+        return <Text key={key} style={styles.blockH1}>{block.text}</Text>;
+      case 'h2':
+        return <Text key={key} style={styles.blockH2}>{block.text}</Text>;
+      case 'h3':
+        return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
+      case 'paragraph':
+        return <Text key={key} style={styles.blockParagraph}>{block.text}</Text>;
+      case 'image':
+        const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
+        if (!imageSource) return null;
+        return (
+          <Image
+            key={key}
+            source={imageSource}
+            style={styles.blockImage}
+            contentFit="cover"
+            transition={300}
+          />
+        );
+      case 'bullets':
+        return (
+          <View key={key} style={styles.blockBullets}>
+            {block.items?.map((item, bulletIdx) => (
+              <View key={bulletIdx} style={styles.bulletItem}>
+                <Text style={styles.bulletDot}>•</Text>
+                <Text style={styles.bulletText}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      case 'quote':
+        return (
+          <View key={key} style={styles.blockQuote}>
+            <View style={styles.quoteLine} />
+            <Text style={styles.quoteText}>{block.text}</Text>
+          </View>
+        );
+      case 'spacer':
+        const spacerHeight = block.size === 'sm' ? 12 : block.size === 'lg' ? 36 : 24;
+        return <View key={key} style={{ height: spacerHeight }} />;
+      default:
+        return null;
+    }
+  };
+
+  // Regular Page - Improved layout to prevent "stuck" pages and ensure smooth snapping
+  return (
+    <Animated.View style={{ 
+      opacity, 
+      transform: [{ translateY }], 
+      height: Math.floor(containerHeight), // Ensure integer height for precise snapping
+      overflow: 'hidden',
+    }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+        style={{ flex: 1 }}
+        bounces={false} 
+        overScrollMode="never"
+        scrollEventThrottle={16}
+        decelerationRate={0.85} // Match the outer list's heavy feel
+        contentContainerStyle={{ 
+          paddingTop: isFirstPage ? 0 : 20, 
+          paddingBottom: isLastPage ? 150 : 80, 
+          paddingHorizontal: 0 
+        }}
+      >
+        {isFirstPage && (
+          <View style={{ marginBottom: 20 }}>
+            <Image
+              source={getPostCoverImage(post)}
+              style={styles.coverImage}
+              contentFit="cover"
+              transition={300}
+            />
+            <View style={styles.titleContainer}>
+              <Text style={styles.postTitle}>{post.title}</Text>
+              <View style={styles.topicBadge}>
+                <Text style={styles.topicBadgeText}>#{post.topic}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        <View style={styles.blocksContainer}>
+          {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
+        </View>
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+// ============================================================
+// Single Post Reader (No internal list)
+// ============================================================
+function SinglePostReader({
   post,
   onClose,
 }: {
@@ -475,10 +661,34 @@ function PostReader({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [noteText, setNoteText] = useState('');
-  const [showNoteInput, setShowNoteInput] = useState(false);
+  const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
+  
+  // Header is 50, Bottom bar is 60, plus safe areas
+  const readerHeaderHeight = 50;
+  const bottomBarHeight = 60;
+  const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
+  
+  // Prepare list data: Combine header into first page
+  const readerData: ReaderItem[] = post.pages.map((p, i) => ({ 
+    type: 'page' as const, 
+    page: p, 
+    index: i 
+  }));
+
+  // Reset page indicator when post changes
+  useEffect(() => {
+    setCurrentPage(0);
+    currentPageRef.current = 0;
+    setVisiblePages(new Set([0]));
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    setShowComments(false); // Reset comments view on post change
+  }, [post.uid]);
+
+  const pageTextScale = useRef(new Animated.Value(1)).current;
+  const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
   
   // Like functionality
   const [isLiked, setIsLiked] = useState(!!post.isLiked);
@@ -491,16 +701,63 @@ function PostReader({
   const isBookmarked = isPostSaved(post.uid);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Notes functionality - using Context
-  const { addNote, getNotesForPost } = useNotes();
-  const postNotes = getNotesForPost(post.uid);
-  const [isSavingNote, setIsSavingNote] = useState(false);
-  
   // Save animation
   const saveScale = useRef(new Animated.Value(1)).current;
   
-  // Note animation
-  const noteScale = useRef(new Animated.Value(1)).current;
+  // Update dots animation when page changes
+  useEffect(() => {
+    // Animate the active dot and reset others
+    dotScales.forEach((scale, idx) => {
+      Animated.spring(scale, {
+        toValue: currentPage === idx ? 1.3 : 1,
+        friction: 5,
+        tension: 40,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [currentPage]);
+
+  // Viewability Config - reduced threshold to make it more responsive when scrolling back
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 40, 
+    minimumViewTime: 0,
+  }).current;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      // Find the page that is most visible (top-most in case of ties)
+      const visibleIndices = viewableItems.map((item: any) => item.index);
+      const newPage = Math.min(...visibleIndices);
+      
+      // Update revealed pages
+      setVisiblePages(prev => {
+        const next = new Set(prev);
+        visibleIndices.forEach((idx: number) => next.add(idx));
+        return next;
+      });
+      
+      if (newPage !== currentPageRef.current && newPage >= 0 && newPage < post.pages.length) {
+        currentPageRef.current = newPage;
+        setCurrentPage(newPage);
+        
+        // Animate page indicator text
+        pageTextScale.setValue(1);
+        Animated.sequence([
+          Animated.timing(pageTextScale, {
+            toValue: 1.4,
+            duration: 100,
+            useNativeDriver: true,
+          }),
+          Animated.spring(pageTextScale, {
+            toValue: 1,
+            friction: 3,
+            tension: 60,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    }
+  }).current;
 
   const handleLike = async () => {
     if (isLiking) return;
@@ -542,96 +799,25 @@ function PostReader({
       setIsLiking(false);
     }
   };
-  
-  // 记录每个页面分隔符的位置
-  const pagePositions = useRef<number[]>([0]);
 
-  // 渲染内容块
-  const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
-    const key = `${pageIdx}-${idx}`;
-    switch (block.type) {
-      case 'h1':
-        return <Text key={key} style={styles.blockH1}>{block.text}</Text>;
-      case 'h2':
-        return <Text key={key} style={styles.blockH2}>{block.text}</Text>;
-      case 'h3':
-        return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
-      case 'paragraph':
-        return <Text key={key} style={styles.blockParagraph}>{block.text}</Text>;
-      case 'image':
-        // 优先使用后端图片 URL，其次本地图片
-        const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
-        if (!imageSource) return null;
-        return (
-          <Image
-            key={key}
-            source={imageSource}
-            style={styles.blockImage}
-            contentFit="cover"
-            transition={300}
-          />
-        );
-      case 'bullets':
-        return (
-          <View key={key} style={styles.blockBullets}>
-            {block.items?.map((item, bulletIdx) => (
-              <View key={bulletIdx} style={styles.bulletItem}>
-                <Text style={styles.bulletDot}>•</Text>
-                <Text style={styles.bulletText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-        );
-      case 'quote':
-        return (
-          <View key={key} style={styles.blockQuote}>
-            <View style={styles.quoteLine} />
-            <Text style={styles.quoteText}>{block.text}</Text>
-          </View>
-        );
-      case 'spacer':
-        const spacerHeight = block.size === 'sm' ? 12 : block.size === 'lg' ? 36 : 24;
-        return <View key={key} style={{ height: spacerHeight }} />;
-      default:
-        return null;
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Check out this post on Sparks: ${post.title}\n\nSent from Sparks App`,
+        title: post.title,
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
     }
   };
 
-  // 处理滚动更新当前页码
-  const handleScroll = (event: any) => {
-    const y = event.nativeEvent.contentOffset.y;
-    // 找到当前所在页面
-    let page = 0;
-    for (let i = 0; i < pagePositions.current.length; i++) {
-      if (y >= pagePositions.current[i] - 100) {
-        page = i;
-      }
-    }
-    if (page !== currentPage) {
-      setCurrentPage(page);
-    }
-  };
-
-  // 处理收藏 - 带动画
   const handleBookmark = async () => {
     if (isSaving) return;
-    
     setIsSaving(true);
-    
-    // 弹性动画
     Animated.sequence([
-      Animated.spring(saveScale, {
-        toValue: 1.3,
-        useNativeDriver: true,
-        friction: 3,
-      }),
-      Animated.spring(saveScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 3,
-      }),
+      Animated.spring(saveScale, { toValue: 1.3, useNativeDriver: true, friction: 3 }),
+      Animated.spring(saveScale, { toValue: 1, useNativeDriver: true, friction: 3 }),
     ]).start();
-    
     try {
       await toggleSavePost(post);
     } catch (err) {
@@ -641,61 +827,21 @@ function PostReader({
     }
   };
 
-  // 处理分享
-  const handleShare = async () => {
-    try {
-      const result = await Share.share({
-        message: `Check out this post on Sparks: ${post.title}\n\nSent from Sparks App`,
-        title: post.title,
-      });
-      if (result.action === Share.sharedAction) {
-        if (result.activityType) {
-          // shared with activity type of result.activityType
-        } else {
-          // shared
-        }
-      } else if (result.action === Share.dismissedAction) {
-        // dismissed
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    }
-  };
+  const [showComments, setShowComments] = useState(false);
+  const commentSheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  // Handle send note
-  const handleSendNote = async () => {
-    if (!noteText.trim() || isSavingNote) return;
-    
-    setIsSavingNote(true);
-    
-    // Bounce animation
-    Animated.sequence([
-      Animated.spring(noteScale, {
-        toValue: 1.2,
-        useNativeDriver: true,
-        friction: 3,
-      }),
-      Animated.spring(noteScale, {
-        toValue: 1,
-        useNativeDriver: true,
-        friction: 3,
-      }),
-    ]).start();
-    
-    try {
-      await addNote(post.uid, post.title, noteText.trim());
-      setNoteText('');
-      setShowNoteInput(false);
-    } catch (err) {
-      console.error('Failed to save note:', err);
-    } finally {
-      setIsSavingNote(false);
-    }
-  };
+  useEffect(() => {
+    Animated.spring(commentSheetTranslateY, {
+      toValue: showComments ? 0 : SCREEN_HEIGHT,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 40,
+    }).start();
+  }, [showComments]);
 
   return (
     <KeyboardAvoidingView 
-      style={[styles.readerContainer, { paddingTop: insets.top }]}
+      style={[styles.readerContainer, { paddingTop: insets.top, width: SCREEN_WIDTH }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* 顶部栏 */}
@@ -707,120 +853,77 @@ function PostReader({
         {/* 页码指示器 */}
         <View style={styles.pageDotsHeader}>
           {post.pages.map((_, idx) => (
-            <View
+            <Animated.View
               key={idx}
-              style={[styles.dotSmall, currentPage === idx && styles.dotSmallActive]}
+              style={[
+                styles.dotSmall, 
+                currentPage === idx && styles.dotSmallActive,
+                { transform: [{ scale: dotScales[idx] || 1 }] }
+              ]}
             />
           ))}
         </View>
         
-        <Text style={styles.pageIndicator}>
+        <Animated.Text style={[
+          styles.pageIndicator,
+          { transform: [{ scale: pageTextScale }] }
+        ]}>
           {currentPage + 1}/{post.pages.length}
-        </Text>
+        </Animated.Text>
       </View>
 
-      {/* 连续滚动内容 */}
-      <ScrollView
-        ref={scrollViewRef}
+      {/* 垂直滚动内容 (使用 FlatList + snapToInterval) */}
+      <FlatList
+        ref={flatListRef}
+        data={readerData}
+        keyExtractor={(_, index) => `reader-item-${index}`}
+        renderItem={({ item, index }) => (
+          <PageItem 
+            item={item} 
+            post={post}
+            isVisible={visiblePages.has(index)}
+            containerHeight={Math.floor(containerHeight)}
+            isLastPage={index === readerData.length - 1}
+          />
+        )}
         style={styles.readerScroll}
-        contentContainerStyle={[styles.readerScrollContent, { paddingBottom: 20 }]}
         showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
+        pagingEnabled={false}
+        snapToInterval={Math.floor(containerHeight)}
+        snapToAlignment="start"
+        decelerationRate={0.85} // Lower value makes scrolling "heavier" and deceleration faster
+        disableIntervalMomentum={true} 
         scrollEventThrottle={16}
-      >
-        {/* 封面图 - 优先使用后端 URL */}
-        <Image
-          source={getPostCoverImage(post)}
-          style={styles.coverImage}
-          contentFit="cover"
-          transition={300}
-        />
-        
-        {/* 标题区域 */}
-        <View style={styles.titleContainer}>
-          <Text style={styles.postTitle}>{post.title}</Text>
-          <View style={styles.topicBadge}>
-            <Text style={styles.topicBadgeText}>#{post.topic}</Text>
-          </View>
-        </View>
-
-        {/* 所有页面内容 */}
-        {post.pages.map((page, pageIdx) => (
-          <View 
-            key={page.index}
-            onLayout={(e) => {
-              // 记录每页开始位置
-              pagePositions.current[pageIdx] = e.nativeEvent.layout.y;
-            }}
-          >
-            {/* 页面分隔符（第一页不显示） */}
-            {pageIdx > 0 && (
-              <View style={styles.pageDivider}>
-                <View style={styles.pageDividerLine} />
-                <Text style={styles.pageDividerText}>Page {pageIdx + 1}</Text>
-                <View style={styles.pageDividerLine} />
-              </View>
-            )}
-            
-            {/* 页面内容块 */}
-            <View style={styles.blocksContainer}>
-              {page.blocks.map((block, idx) => renderBlock(block, idx, pageIdx))}
-            </View>
-          </View>
-        ))}
-
-        {/* 文章结束 */}
-        <View style={styles.articleEnd}>
-          <Text style={styles.articleEndText}>— The End —</Text>
-        </View>
-
-        {/* Comment Section */}
-        <CommentSection postId={post.uid} />
-      </ScrollView>
+        getItemLayout={(data, index) => ({
+          length: Math.floor(containerHeight),
+          offset: Math.floor(containerHeight) * index,
+          index,
+        })}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0) setContainerHeight(height);
+        }}
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        removeClippedSubviews={false}
+      />
 
       {/* 底部操作栏 */}
       <View 
         style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
       >
-        {/* 笔记输入区域 - 占2/3宽度 */}
+        {/* 评论输入区域 - 占2/3宽度 */}
         <Pressable 
           style={styles.noteInputContainer}
-          onPress={() => setShowNoteInput(true)}
+          onPress={() => setShowComments(true)}
         >
-          {showNoteInput ? (
-            <View style={styles.noteInputWrapper}>
-              <TextInput
-                style={styles.noteInput}
-                placeholder="Write a note..."
-                placeholderTextColor={colors.textMuted}
-                value={noteText}
-                onChangeText={setNoteText}
-                autoFocus
-                multiline
-                maxLength={500}
-              />
-              {noteText.trim() ? (
-                <Animated.View style={{ transform: [{ scale: noteScale }] }}>
-                  <Pressable 
-                    style={[styles.sendButton, isSavingNote && styles.sendButtonDisabled]} 
-                    onPress={handleSendNote}
-                    disabled={isSavingNote}
-                  >
-                    <Send size={18} color="#fff" />
-                  </Pressable>
-                </Animated.View>
-              ) : (
-                <Pressable style={styles.closeNoteButton} onPress={() => setShowNoteInput(false)}>
-                  <X size={18} color={colors.textMuted} />
-                </Pressable>
-              )}
-            </View>
-          ) : (
-            <View style={styles.notePlaceholder}>
-              <Pencil size={16} color={colors.textMuted} />
-              <Text style={styles.notePlaceholderText}>Write a note...</Text>
-            </View>
-          )}
+          <View style={styles.notePlaceholder}>
+            <Pencil size={16} color={colors.textMuted} />
+            <Text style={styles.notePlaceholderText}>Write a comment...</Text>
+          </View>
         </Pressable>
 
         {/* 操作按钮区域 - 占1/3宽度 */}
@@ -881,7 +984,125 @@ function PostReader({
           </Pressable>
         </View>
       </View>
+
+      {/* Floating Comment Sheet */}
+      <Animated.View style={[
+        styles.commentSheet,
+        { 
+          transform: [{ translateY: commentSheetTranslateY }],
+          paddingBottom: insets.bottom + 20
+        }
+      ]}>
+        <View style={styles.commentSheetHeader}>
+          <View style={styles.commentSheetKnob} />
+          <Pressable style={styles.commentSheetClose} onPress={() => setShowComments(false)}>
+            <X size={20} color={colors.textMuted} />
+          </Pressable>
+        </View>
+        <ScrollView style={{ flex: 1 }}>
+          <CommentSection postId={post.uid} />
+        </ScrollView>
+      </Animated.View>
     </KeyboardAvoidingView>
+  );
+}
+
+// ============================================================
+// Post Loader (Fetches individual post)
+// ============================================================
+function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
+  const { post, status, error, refetch } = usePost(uid);
+
+  if (status === 'loading') {
+    return (
+      <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+        <LoadingScreen />
+        <Pressable style={styles.modalCloseButton} onPress={onClose}>
+          <X size={24} color={colors.text} />
+        </Pressable>
+      </View>
+    );
+  }
+  
+  if (status === 'error' || !post) {
+    return (
+      <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+        <ErrorScreen 
+          message={error || 'Failed to load post'} 
+          onRetry={refetch} 
+        />
+        <Pressable style={styles.modalCloseButton} onPress={onClose}>
+          <X size={24} color={colors.text} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return <SinglePostReader post={post} onClose={onClose} />;
+}
+
+// ============================================================
+// Post Swiper (Horizontal Feed)
+// ============================================================
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
+function PostSwiper({ 
+  items, 
+  initialIndex, 
+  onClose 
+}: { 
+  items: FeedItem[]; 
+  initialIndex: number; 
+  onClose: () => void; 
+}) {
+  const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
+
+  return (
+    <AnimatedFlatList
+      data={items}
+      horizontal
+      pagingEnabled
+      initialScrollIndex={initialIndex}
+      onScroll={Animated.event(
+        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+        { useNativeDriver: true }
+      )}
+      getItemLayout={(data: any, index: number) => ({
+        length: SCREEN_WIDTH,
+        offset: SCREEN_WIDTH * index,
+        index,
+      })}
+      renderItem={({ item, index }: { item: FeedItem, index: number }) => {
+        const inputRange = [
+          (index - 1) * SCREEN_WIDTH,
+          index * SCREEN_WIDTH,
+          (index + 1) * SCREEN_WIDTH,
+        ];
+        
+        const scale = scrollX.interpolate({
+          inputRange,
+          outputRange: [0.9, 1, 0.9],
+          extrapolate: 'clamp',
+        });
+        
+        const opacity = scrollX.interpolate({
+          inputRange,
+          outputRange: [0.6, 1, 0.6],
+          extrapolate: 'clamp',
+        });
+
+        return (
+          <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity }}>
+            <PostLoader uid={item.uid} onClose={onClose} />
+          </Animated.View>
+        );
+      }}
+      keyExtractor={(item: FeedItem) => item.uid}
+      showsHorizontalScrollIndicator={false}
+      windowSize={3}
+      initialNumToRender={1}
+      maxToRenderPerBatch={2}
+    />
   );
 }
 
@@ -1634,8 +1855,17 @@ function AppContent() {
   const [showLikesModal, setShowLikesModal] = useState(false);
   const [topTab, setTopTab] = useState('Discover');
   const [bottomTab, setBottomTab] = useState('explore');
-  
-  // Auth Hook
+
+  // 使用 hooks 获取数据
+  const { 
+    feedItems, 
+    status: feedStatus, 
+    error: feedError, 
+    refetch: refetchFeed 
+  } = useFeedItems();
+
+  const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
+
   const { token, user } = useAuth();
   
   // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
@@ -1651,21 +1881,6 @@ function AppContent() {
     }
     prevTokenRef.current = token;
   }, [token]);
-
-  // 使用 hooks 获取数据
-  const { 
-    feedItems, 
-    status: feedStatus, 
-    error: feedError, 
-    refetch: refetchFeed 
-  } = useFeedItems();
-  
-  const { 
-    post: selectedPost, 
-    status: postStatus, 
-    error: postError, 
-    refetch: refetchPost 
-  } = usePost(selectedPostUid);
 
   // 渲染当前页面内容
   const renderContent = () => {
@@ -1774,35 +1989,23 @@ function AppContent() {
           presentationStyle="fullScreen"
           onRequestClose={() => setSelectedPostUid(null)}
         >
-          {postStatus === 'loading' ? (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <LoadingScreen />
-              <Pressable 
-                style={styles.modalCloseButton} 
-                onPress={() => setSelectedPostUid(null)}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
-          ) : postStatus === 'error' ? (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <ErrorScreen 
-                message={postError || 'Failed to load post'} 
-                onRetry={refetchPost} 
-              />
-              <Pressable 
-                style={styles.modalCloseButton} 
-                onPress={() => setSelectedPostUid(null)}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
-          ) : selectedPost ? (
-            <PostReader
-              post={selectedPost}
+          {feedItems && feedItems.length > 0 && selectedPostUid ? (
+            <PostSwiper 
+              items={feedItems}
+              initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
             />
-          ) : null}
+          ) : (
+             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+               <LoadingScreen />
+               <Pressable 
+                 style={styles.modalCloseButton} 
+                 onPress={() => setSelectedPostUid(null)}
+               >
+                 <X size={24} color={colors.text} />
+               </Pressable>
+             </View>
+          )}
         </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -2040,9 +2243,45 @@ const styles = StyleSheet.create({
   },
   readerScroll: {
     flex: 1,
+    width: SCREEN_WIDTH,
   },
   readerScrollContent: {
     
+  },
+  closeButtonOverlay: {
+    position: 'absolute',
+    left: 8,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 22,
+  },
+  noteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  noteModalContent: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  noteModalInput: {
+    fontSize: 16,
+    color: colors.text,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  noteModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   pageDivider: {
     flexDirection: 'row',
@@ -2201,6 +2440,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: colors.border,
     gap: 8,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
   noteInputContainer: {
     flex: 1,
@@ -2691,6 +2935,41 @@ const styles = StyleSheet.create({
   // Send button disabled state
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+  
+  // Comment Sheet
+  commentSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: SCREEN_HEIGHT * 0.7,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 20,
+    zIndex: 100,
+  },
+  commentSheetHeader: {
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentSheetKnob: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+  },
+  commentSheetClose: {
+    position: 'absolute',
+    right: 16,
+    top: 10,
+    padding: 4,
   },
 
   // Comment Styles

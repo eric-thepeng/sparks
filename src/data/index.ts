@@ -405,7 +405,13 @@ function parseContentWithPageBreaks(content: string, title: string): PostPage[] 
  * 默认分页逻辑（每 8 段落一页）
  */
 function parseContentWithFallback(content: string, title: string): PostPage[] {
-  const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
+  // Split by double newlines first (standard paragraphs)
+  let paragraphs = content.split(/\n\n+/).filter(p => p.trim());
+  
+  // If we only have 1 big chunk, try splitting by single newlines if it's long
+  if (paragraphs.length === 1 && content.length > 500) {
+    paragraphs = content.split(/\n+/).filter(p => p.trim());
+  }
   
   if (paragraphs.length === 0) {
     return [{
@@ -417,7 +423,7 @@ function parseContentWithFallback(content: string, title: string): PostPage[] {
     }];
   }
 
-  const PARAGRAPHS_PER_PAGE = 8;
+  const PARAGRAPHS_PER_PAGE = 10;
   const pages: PostPage[] = [];
   
   for (let i = 0; i < paragraphs.length; i += PARAGRAPHS_PER_PAGE) {
