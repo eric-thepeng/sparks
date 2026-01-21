@@ -30,7 +30,6 @@ import {
   Heart, 
   ChevronLeft, 
   Search, 
-  Bell,
   LayoutGrid,
   Bookmark,
   BookmarkCheck,
@@ -115,26 +114,12 @@ const colors = {
 // ============================================================
 // 顶部导航 Tab
 // ============================================================
-function TopTabs({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
-  const tabs = ['Following', 'Discover', 'Nearby'];
-  
+function TopTabs() {
   return (
     <View style={styles.topTabs}>
-      {tabs.map((tab) => (
-        <Pressable
-          key={tab}
-          onPress={() => onTabChange(tab)}
-          style={styles.topTab}
-        >
-          <Text style={[
-            styles.topTabText,
-            activeTab === tab && styles.topTabTextActive
-          ]}>
-            {tab}
-          </Text>
-          {activeTab === tab && <View style={styles.topTabIndicator} />}
-        </Pressable>
-      ))}
+      <View style={styles.topTab}>
+        <Text style={styles.topTabTextActive}>Discover</Text>
+      </View>
     </View>
   );
 }
@@ -142,18 +127,16 @@ function TopTabs({ activeTab, onTabChange }: { activeTab: string; onTabChange: (
 // ============================================================
 // 顶部 Header
 // ============================================================
-function Header({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
+function Header() {
   return (
     <View style={styles.header}>
       <Pressable style={styles.headerIcon}>
         <Search size={22} color={colors.text} />
       </Pressable>
       
-      <TopTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <TopTabs />
       
-      <Pressable style={styles.headerIcon}>
-        <Bell size={22} color={colors.text} />
-      </Pressable>
+      <View style={{ width: 40 }} />
     </View>
   );
 }
@@ -1682,7 +1665,6 @@ function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
-  const [topTab, setTopTab] = useState('Discover');
   const [bottomTab, setBottomTab] = useState('explore');
 
   // 使用 hooks 获取数据
@@ -1719,7 +1701,7 @@ function AppContent() {
         if (feedStatus === 'loading' && feedItems.length === 0) {
           return (
             <>
-              <Header activeTab={topTab} onTabChange={setTopTab} />
+              <Header />
               <LoadingScreen />
             </>
           );
@@ -1729,7 +1711,7 @@ function AppContent() {
         if (feedStatus === 'error' && feedItems.length === 0) {
           return (
             <>
-              <Header activeTab={topTab} onTabChange={setTopTab} />
+              <Header />
               <ErrorScreen 
                 message={feedError || 'Unknown error'} 
                 onRetry={refetchFeed} 
@@ -1741,7 +1723,7 @@ function AppContent() {
         return (
           <>
             {/* 顶部 Header */}
-            <Header activeTab={topTab} onTabChange={setTopTab} />
+            <Header />
             
             {/* 信息流 */}
             <ScrollView
