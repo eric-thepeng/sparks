@@ -165,10 +165,9 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
   const insets = useSafeAreaInsets();
   
   const items = [
+    { key: 'explore', icon: Sparkles, label: '', isMain: true },
     { key: 'collection', icon: LayoutGrid, label: 'Collection' },
     { key: 'saved', icon: Bookmark, label: 'Saved' },
-    { key: 'explore', icon: Sparkles, label: '', isMain: true },
-    { key: 'notes', icon: FileText, label: 'Notes' },
     { key: 'me', icon: User, label: 'Me' },
   ];
   
@@ -1643,176 +1642,6 @@ function SavedScreen({
 }
 
 // ============================================================
-// Notes Screen
-// ============================================================
-function NotesScreen({ 
-  onPostPress 
-}: { 
-  onPostPress: (uid: string) => void;
-}) {
-  const insets = useSafeAreaInsets();
-  const { notes, isLoading, error, remove, clearAll, noteCount } = useNotesHook();
-  const isEmpty = notes.length === 0;
-  
-  // Delete note
-  const handleDeleteNote = useCallback((noteId: string, content: string) => {
-    Alert.alert(
-      'Delete Note',
-      `Delete this note?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: () => remove(noteId),
-        },
-      ]
-    );
-  }, [remove]);
-
-  // Clear all
-  const handleClearAll = useCallback(() => {
-    Alert.alert(
-      'Clear All Notes',
-      'Delete all notes? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete All', 
-          style: 'destructive',
-          onPress: () => clearAll(),
-        },
-      ]
-    );
-  }, [clearAll]);
-
-  // Format time
-  const formatTime = (isoString: string) => {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  // Render empty state
-  const renderEmptyState = () => (
-    <View style={styles.notesEmptyContainer}>
-      <View style={styles.notesEmptyIcon}>
-        <Pencil size={48} color={colors.primaryLight} strokeWidth={1.5} />
-      </View>
-      <Text style={styles.notesEmptyTitle}>No Notes Yet</Text>
-      <Text style={styles.notesEmptySubtitle}>
-        Write notes while reading posts{'\n'}to capture your thoughts
-      </Text>
-      <View style={styles.notesEmptyHint}>
-        <FileText size={16} color={colors.textMuted} />
-        <Text style={styles.notesEmptyHintText}>Start writing in any post</Text>
-      </View>
-    </View>
-  );
-
-  // Render note item
-  const renderNoteItem = ({ item, index }: { item: typeof notes[0]; index: number }) => {
-    return (
-      <View style={styles.noteCard}>
-        <Pressable 
-          style={styles.noteCardInner}
-          onPress={() => onPostPress(item.postUid)}
-        >
-          {/* Note content */}
-          <View style={styles.noteContent}>
-            <Text style={styles.noteText} numberOfLines={3}>
-              {item.content}
-            </Text>
-          </View>
-          
-          {/* Post info */}
-          <View style={styles.notePostInfo}>
-            <View style={styles.notePostBadge}>
-              <FileText size={12} color={colors.primary} />
-              <Text style={styles.notePostTitle} numberOfLines={1}>
-                {item.postTitle}
-              </Text>
-            </View>
-            <View style={styles.noteTimeRow}>
-              <Clock size={11} color={colors.textMuted} />
-              <Text style={styles.noteTimeText}>
-                {formatTime(item.updatedAt)}
-              </Text>
-            </View>
-          </View>
-          
-          {/* Delete button */}
-          <Pressable 
-            style={styles.noteDeleteButton}
-            onPress={() => handleDeleteNote(item.id, item.content)}
-            hitSlop={8}
-          >
-            <X size={16} color={colors.textMuted} />
-          </Pressable>
-        </Pressable>
-      </View>
-    );
-  };
-
-  return (
-    <View style={styles.notesContainer}>
-      {/* Header */}
-      <View style={styles.notesHeader}>
-        <View style={styles.notesHeaderLeft}>
-          <FileText size={24} color={colors.primary} />
-          <Text style={styles.notesHeaderTitle}>My Notes</Text>
-          {noteCount > 0 && (
-            <View style={styles.notesCountBadge}>
-              <Text style={styles.notesCountText}>{noteCount}</Text>
-            </View>
-          )}
-        </View>
-        
-        {noteCount > 0 && (
-          <Pressable 
-            style={styles.notesClearButton}
-            onPress={handleClearAll}
-          >
-            <Trash2 size={18} color={colors.textMuted} />
-          </Pressable>
-        )}
-      </View>
-
-      {/* Content */}
-      {isLoading ? (
-        <View style={styles.notesLoadingContainer}>
-          <Sparkles size={32} color={colors.primary} />
-          <Text style={styles.notesLoadingText}>Loading...</Text>
-        </View>
-      ) : isEmpty ? (
-        renderEmptyState()
-      ) : (
-        <FlatList
-          data={notes}
-          renderItem={renderNoteItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.notesListContent,
-            { paddingBottom: insets.bottom + 80 }
-          ]}
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.notesItemSeparator} />}
-        />
-      )}
-    </View>
-  );
-}
-
-// ============================================================
 // Loading Screen
 // ============================================================
 function LoadingScreen() {
@@ -1935,11 +1764,9 @@ function AppContent() {
           </>
         );
       case 'collection':
-        return <HistoryScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
+        return <PlaceholderScreen title="My Collections" />;
       case 'saved':
         return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
-      case 'notes':
-        return <NotesScreen onPostPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
         if (!token) return <AuthScreen />;
         if (showHistoryModal) {
@@ -2882,54 +2709,6 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 6,
     backgroundColor: colors.bg,
-  },
-  
-  // Notes Empty State
-  notesEmptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  notesEmptyIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primaryBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  notesEmptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  notesEmptySubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  notesEmptyHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.card,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  notesEmptyHintText: {
-    fontSize: 13,
-    color: colors.textMuted,
   },
   
   // Send button disabled state
