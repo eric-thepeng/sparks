@@ -47,6 +47,7 @@ export interface ApiRichPost {
   like_count?: number;
   collect_count?: number;
   created_at?: string;
+  is_liked?: boolean;
 }
 
 // ============================================================
@@ -95,6 +96,21 @@ export interface ApiError {
 export type RequestStatus = 'idle' | 'loading' | 'success' | 'error';
 
 // ============================================================
+// Comment Types
+// ============================================================
+
+export interface Comment {
+  id: string;
+  content: string;
+  created_at: string;
+  user: User; // The author of the comment
+}
+
+export interface CreateCommentRequest {
+  content: string;
+}
+
+// ============================================================
 // Auth / User Types
 // ============================================================
 
@@ -136,4 +152,22 @@ export interface UpdateUserRequest {
 export interface GoogleLoginRequest {
   idToken: string;
   userid?: string; // Optional suggestion
+}
+
+// ============================================================
+// Profile Collections (Likes/History)
+// ============================================================
+
+export interface ProfileItem {
+  itemId: string;
+  itemType: string;
+  title?: string;
+  thumbnail?: string;
+  createdAt?: string; // "liked date" or "visited time"
+  // Keep compatibility with ApiPost if needed, or mapping
+}
+
+export interface ProfileListResponse {
+  items: ProfileItem[];
+  nextCursor?: string;
 }

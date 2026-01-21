@@ -24,6 +24,7 @@ interface AuthContextType extends AuthState {
   loginGoogle: (data: GoogleLoginRequest) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
+  setError: (message: string) => void;
   clearError: () => void;
 }
 
@@ -257,6 +258,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       loginGoogle,
       logout, 
       updateProfile,
+      setError,
       clearError 
     }}>
       {children}

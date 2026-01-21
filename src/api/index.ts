@@ -13,7 +13,11 @@ import {
   AuthResponse,
   User,
   UpdateUserRequest,
-  GoogleLoginRequest
+  GoogleLoginRequest,
+  Comment,
+  CreateCommentRequest,
+  ProfileListResponse,
+  ProfileItem
 } from './types';
 import { config } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -87,8 +91,21 @@ async function request<T>(
         const errorText = await response.text();
         console.log(`[API] Error Response: ${errorText}`);
         const errorData = JSON.parse(errorText);
-        if (errorData && errorData.message) {
+        
+        // Handle Pydantic/FastAPI validation errors (array of details)
+        if (errorData && Array.isArray(errorData.detail)) {
+          // Extract 'msg' from each error detail and join them
+          errorMessage = errorData.detail
+            .map((err: any) => err.msg || JSON.stringify(err))
+            .join('\n');
+        } 
+        // Handle standard message format
+        else if (errorData && errorData.message) {
           errorMessage = errorData.message;
+        }
+        // Handle detail as string
+        else if (errorData && errorData.detail && typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
         }
       } catch (e) {
         // ignore json parse error
@@ -99,6 +116,11 @@ async function request<T>(
         status: response.status,
       };
       throw error;
+    }
+
+    // For 204 No Content
+    if (response.status === 204) {
+      return {} as T;
     }
 
     return await response.json();
@@ -247,6 +269,21 @@ export async function generatePost(
 }
 
 // ============================================================
+// Comment API
+// ============================================================
+
+export async function fetchComments(postId: string): Promise<Comment[]> {
+  return request<Comment[]>(`/posts/${postId}/comments`);
+}
+
+export async function createComment(postId: string, data: CreateCommentRequest): Promise<Comment> {
+  return request<Comment>(`/posts/${postId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// ============================================================
 // Saved Posts API
 // ============================================================
 
@@ -268,6 +305,51 @@ export async function unsavePostApi(postId: string): Promise<void> {
     method: 'DELETE'
   });
 }
+
+// ============================================================
+// Profile Collections API (History, Likes)
+// ============================================================
+
+export async function getMyLikes(limit: number = 20, cursor?: string): Promise<ProfileListResponse> {
+  const query = `limit=${limit}` + (cursor ? `&cursor=${cursor}` : '');
+  return request<ProfileListResponse>(`/me/likes?${query}`);
+}
+
+export async function likeItem(itemId: string, itemType: string = 'post'): Promise<void> {
+  return request<void>('/me/likes', {
+    method: 'POST',
+    body: JSON.stringify({ itemId, itemType })
+  });
+}
+
+export async function unlikeItem(itemId: string, itemType: string = 'post'): Promise<void> {
+  return request<void>('/me/likes', {
+    method: 'DELETE',
+    body: JSON.stringify({ itemId, itemType })
+  });
+}
+
+export async function getMyHistory(limit: number = 20, cursor?: string): Promise<ProfileListResponse> {
+  const query = `limit=${limit}` + (cursor ? `&cursor=${cursor}` : '');
+  return request<ProfileListResponse>(`/me/history?${query}`);
+}
+
+export async function recordHistory(itemId: string, itemType: string = 'post'): Promise<void> {
+  return request<void>('/me/history', {
+    method: 'POST',
+    body: JSON.stringify({ itemId, itemType })
+  });
+}
+
+export async function clearHistory(): Promise<void> {
+  return request<void>('/me/history/clear', {
+    method: 'DELETE'
+  });
+}
+
+// Backward compatibility or alias if needed, but updated to use new functions in ProfileScreen
+// export const fetchHistory = getMyHistory; 
+// export const fetchLikedPosts = getMyLikes;
 
 // 导出类型
 export * from './types';

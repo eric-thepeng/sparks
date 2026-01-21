@@ -47,6 +47,7 @@ export interface Post {
   likeCount?: number;
   collectCount?: number;
   createdAt?: string;
+  isLiked?: boolean;
 }
 
 export interface FeedItem {
@@ -130,8 +131,8 @@ function richPostToFeedItem(post: any, index: number): FeedItem {
     title,
     topic: post.topic || post.bucket_key || 'General',
     coverImage,
-    likes: post.like_count || Math.floor(Math.random() * 500) + 100,
-    isLiked: false,
+    likes: post.like_count || 0,
+    isLiked: !!post.is_liked,
     comments: post.collect_count ? Math.floor(post.collect_count * 0.3) : Math.floor(Math.random() * 50) + 10,
     user: {
       id: author,
@@ -190,8 +191,8 @@ function simplePostToFeedItem(post: any, index: number): FeedItem {
     title,
     topic: tags[0] || 'General',
     coverImage,
-    likes: post.like_count || Math.floor(Math.random() * 500) + 100,
-    isLiked: false,
+    likes: post.like_count || 0,
+    isLiked: !!post.is_liked,
     comments: post.collect_count ? Math.floor(post.collect_count * 0.3) : Math.floor(Math.random() * 50) + 10,
     user: {
       id: author,
@@ -265,6 +266,7 @@ function richPostToPost(post: any): Post {
     likeCount: post.like_count,
     collectCount: post.collect_count,
     createdAt: post.created_at,
+    isLiked: !!post.is_liked,
   };
 }
 
@@ -329,6 +331,7 @@ function simplePostToPost(post: any): Post {
     likeCount: post.like_count,
     collectCount: post.collect_count,
     createdAt: post.created_at,
+    isLiked: !!post.is_liked,
   };
 }
 

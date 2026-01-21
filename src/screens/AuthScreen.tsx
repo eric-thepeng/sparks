@@ -35,8 +35,8 @@ const colors = {
 
 export const AuthScreen = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const { login, signup, loginGoogle, isLoading, error, clearError } = useAuth();
-
+  const { login, signup, loginGoogle, isLoading, error, setError, clearError } = useAuth();
+  
   // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,31 +81,31 @@ export const AuthScreen = () => {
     // Password Validation
     // Simple length check only, let backend handle complexity
     if (password.length < 8) {
-      Alert.alert('Invalid Password', 'Password must be at least 8 characters.');
+      setError('Password must be at least 8 characters.');
       return;
     }
 
     try {
       if (isLogin) {
         if (!email || !password) {
-          Alert.alert('Error', 'Please fill in all fields');
+          setError('Please fill in all fields');
           return;
         }
         await login({ email, password });
       } else {
         // Signup
         if (!email || !password || !confirmPassword) {
-          Alert.alert('Error', 'Please fill in all fields');
+          setError('Please fill in all fields');
           return;
         }
         if (password !== confirmPassword) {
-          Alert.alert('Error', 'Passwords do not match');
+          setError('Passwords do not match');
           return;
         }
         // Removed complex regex check
         
         if (!agreeTerms) {
-          Alert.alert('Error', 'Please agree to the terms');
+          setError('Please agree to the terms');
           return;
         }
 

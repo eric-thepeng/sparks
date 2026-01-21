@@ -11,14 +11,24 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  FlatList,
+  RefreshControl,
   } from 'react-native';
   import { Image } from 'expo-image';
   // Use legacy import for getInfoAsync compatibility
   import * as FileSystem from 'expo-file-system/legacy';
   import * as ImageManipulator from 'expo-image-manipulator';
   import { useAuth } from '../context/AuthContext';
-  import { uploadImage } from '../api';
-  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon } from 'lucide-react-native';
+  import { 
+    uploadImage, 
+    getMyHistory, 
+    getMyLikes, 
+    unlikeItem, 
+    clearHistory,
+    ProfileItem,
+    ApiPost 
+  } from '../api';
+  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon, History as HistoryIcon, Heart, ChevronRight, Trash2 } from 'lucide-react-native';
 
 // Reusing colors
 const colors = {
@@ -34,7 +44,17 @@ const colors = {
   success: '#22c55e',
 };
 
-export const ProfileScreen = () => {
+export const ProfileScreen = ({ 
+  onItemPress,
+  onToggleLike,
+  onHistoryPress,
+  onLikesPress
+}: { 
+  onItemPress?: (id: string) => void;
+  onToggleLike?: () => void;
+  onHistoryPress?: () => void;
+  onLikesPress?: () => void;
+}) => {
   const { user, updateProfile, logout } = useAuth();
   
   // Edit Mode State
@@ -145,7 +165,7 @@ export const ProfileScreen = () => {
         bio: bio.trim(),
         photoUrl: finalPhotoUrl || undefined,
         // Include username to prevent backend reversion bug if it exists
-        username: user?.username 
+        // username: user?.username 
       });
       setIsEditing(false);
       Alert.alert('Success', 'Profile updated');
@@ -161,7 +181,7 @@ export const ProfileScreen = () => {
     if (user) {
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
-      setAvatar(user.avatar || null);
+      setAvatar(user.photoUrl || null);
     }
     setIsEditing(false);
   };
@@ -191,8 +211,91 @@ export const ProfileScreen = () => {
     ]);
   };
 
+  const renderProfileContent = () => (
+    <View style={styles.form}>
+      {/* Edit Mode: Display Name Input */}
+      {isEditing && (
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Display Name</Text>
+          <TextInput
+            style={styles.input}
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Your Name"
+          />
+        </View>
+      )}
+
+      {/* Bio Field (View/Edit) */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Bio</Text>
+        <TextInput
+          style={[styles.input, styles.textArea, !isEditing && styles.inputDisabled]}
+          value={bio}
+          onChangeText={setBio}
+          editable={isEditing}
+          placeholder={isEditing ? "Write something about yourself..." : "No bio yet."}
+          multiline
+          numberOfLines={4}
+        />
+      </View>
+
+      {/* Info Rows (ReadOnly) */}
+      <View style={styles.infoRow}>
+        <Globe size={16} color={colors.textMuted} />
+        <Text style={styles.infoText}>{user?.language || 'English'}</Text>
+      </View>
+      <View style={styles.infoRow}>
+        <Clock size={16} color={colors.textMuted} />
+        <Text style={styles.infoText}>{user?.timezone || 'UTC'}</Text>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.actions}>
+        {isEditing ? (
+          <View style={styles.editActions}>
+            <Pressable 
+              style={[styles.button, styles.cancelButton]} 
+              onPress={handleCancel}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+            
+            <Pressable 
+              style={[styles.button, styles.saveButton, { flex: 1 }]} 
+              onPress={handleSave}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : (
+                <>
+                  <Save size={18} color="#fff" />
+                  <Text style={styles.buttonText}>Save Changes</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable 
+            style={[styles.button, styles.editButton]} 
+            onPress={() => setIsEditing(true)}
+          >
+            <Text style={[styles.buttonText, { color: colors.text }]}>Edit Profile</Text>
+          </Pressable>
+        )}
+
+        {!isEditing && (
+          <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
+            <LogOut size={18} color={colors.error} />
+            <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       {/* Onboarding Modal */}
       <Modal
         visible={showOnboarding}
@@ -229,8 +332,20 @@ export const ProfileScreen = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Main Profile UI */}
+      {/* Header (Avatar & Name) - Always visible */}
       <View style={styles.header}>
+        {/* Top Right Actions */}
+        {!isEditing && (
+          <View style={styles.headerRight}>
+            <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
+              <HistoryIcon size={24} color={colors.text} />
+            </Pressable>
+            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
+              <Heart size={24} color={colors.text} />
+            </Pressable>
+          </View>
+        )}
+
         <Pressable onPress={pickImage} disabled={!isEditing} style={styles.avatarContainer}>
           {avatar ? (
             <Image source={{ uri: avatar }} style={styles.avatar} contentFit="cover" />
@@ -247,7 +362,7 @@ export const ProfileScreen = () => {
           )}
         </Pressable>
         
-        {/* View Mode: Name & ID */}
+        {/* Basic Info */}
         {!isEditing && (
           <View style={styles.headerInfo}>
             <Text style={styles.name}>{displayName || 'User'}</Text>
@@ -258,87 +373,14 @@ export const ProfileScreen = () => {
         )}
       </View>
 
-      <View style={styles.form}>
-        {/* Edit Mode: Display Name Input */}
-        {isEditing && (
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Display Name</Text>
-            <TextInput
-              style={styles.input}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Your Name"
-            />
-          </View>
-        )}
-
-        {/* Bio Field (View/Edit) */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Bio</Text>
-          <TextInput
-            style={[styles.input, styles.textArea, !isEditing && styles.inputDisabled]}
-            value={bio}
-            onChangeText={setBio}
-            editable={isEditing}
-            placeholder={isEditing ? "Write something about yourself..." : "No bio yet."}
-            multiline
-            numberOfLines={4}
-          />
-        </View>
-
-        {/* Info Rows (ReadOnly) */}
-        <View style={styles.infoRow}>
-          <Globe size={16} color={colors.textMuted} />
-          <Text style={styles.infoText}>{user?.language || 'English'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Clock size={16} color={colors.textMuted} />
-          <Text style={styles.infoText}>{user?.timezone || 'UTC'}</Text>
-        </View>
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {isEditing ? (
-            <View style={styles.editActions}>
-              <Pressable 
-                style={[styles.button, styles.cancelButton]} 
-                onPress={handleCancel}
-                disabled={loading}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              
-              <Pressable 
-                style={[styles.button, styles.saveButton, { flex: 1 }]} 
-                onPress={handleSave}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : (
-                  <>
-                    <Save size={18} color="#fff" />
-                    <Text style={styles.buttonText}>Save Changes</Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
-          ) : (
-            <Pressable 
-              style={[styles.button, styles.editButton]} 
-              onPress={() => setIsEditing(true)}
-            >
-              <Text style={[styles.buttonText, { color: colors.text }]}>Edit Profile</Text>
-            </Pressable>
-          )}
-
-          {!isEditing && (
-            <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
-              <LogOut size={18} color={colors.error} />
-              <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
-    </ScrollView>
+      {/* Content Area */}
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {renderProfileContent()}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -352,7 +394,28 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    paddingVertical: 24,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    position: 'relative',
+  },
+  headerRight: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerActionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatarContainer: {
     position: 'relative',
@@ -394,6 +457,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  activeTabText: {
+    color: colors.primary,
   },
   form: {
     gap: 20,
@@ -520,5 +610,157 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
+  },
+  // List Styles
+  listContainer: {
+    flex: 1,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 10,
+  },
+  listTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 8,
+  },
+  clearButtonText: {
+    fontSize: 14,
+    color: colors.error,
+    fontWeight: '600',
+  },
+  listContent: {
+    padding: 20,
+    paddingTop: 10,
+    gap: 16,
+  },
+  itemCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  itemCardMain: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+    alignItems: 'center',
+  },
+  itemImageContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.bg,
+    aspectRatio: 1, // Ensure it's always a square
+  },
+  itemImage: {
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.3 }], // Zoom in to remove any potential black bars/borders
+  },
+  itemPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemPlaceholderText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  itemInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  itemBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  itemDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  itemTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  actionButton: {
+    padding: 8,
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  likesToggleSection: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  likesToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+  },
+  likesToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  likesToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  likesInsideContent: {
+    paddingBottom: 20,
+  },
+  emptyLikesText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  loadMoreInline: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  loadMoreInlineText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
   },
 });

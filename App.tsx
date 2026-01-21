@@ -17,6 +17,9 @@ import {
   Platform,
   Animated,
   Alert,
+  RefreshControl,
+  ActivityIndicator,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,6 +57,17 @@ import {
   PostPage, 
   ContentBlock 
 } from './src/data';
+
+import { 
+  fetchComments, 
+  createComment, 
+  likeItem, 
+  unlikeItem,
+  getMyHistory,
+  getMyLikes,
+  clearHistory
+} from './src/api';
+import { Comment, ProfileItem } from './src/api/types';
 
 // Hooks
 import { useFeedItems, usePost, useSavedPosts, useNotesHook } from './src/hooks';
@@ -199,6 +213,58 @@ function FeedCard({
   item: FeedItem; 
   onPress: () => void;
 }) {
+  const [isLiked, setIsLiked] = useState(item.isLiked);
+  const [likeCount, setLikeCount] = useState(item.likes);
+  const [isLiking, setIsLiking] = useState(false);
+  const likeScale = useRef(new Animated.Value(1)).current;
+
+  // Sync with item prop if it changes (e.g. pull to refresh)
+  useEffect(() => {
+    setIsLiked(item.isLiked);
+    setLikeCount(item.likes);
+  }, [item.isLiked, item.likes]);
+
+  const handleLike = async () => {
+    if (isLiking) return;
+    setIsLiking(true);
+
+    // Optimistic Update
+    const prevIsLiked = isLiked;
+    const prevLikeCount = likeCount;
+    
+    setIsLiked(!prevIsLiked);
+    setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
+
+    // Animation
+    Animated.sequence([
+      Animated.spring(likeScale, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        speed: 50,
+      }),
+      Animated.spring(likeScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 50,
+      }),
+    ]).start();
+
+    try {
+      if (prevIsLiked) {
+        await unlikeItem(item.uid, 'post');
+      } else {
+        await likeItem(item.uid, 'post');
+      }
+    } catch (error) {
+      // Rollback
+      setIsLiked(prevIsLiked);
+      setLikeCount(prevLikeCount);
+      console.error('Like failed', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
       {/* 封面图 - 保持原始宽高比 */}
@@ -227,17 +293,19 @@ function FeedCard({
             </Text>
           </View>
           
-          <Pressable style={styles.likeButton}>
-            <Heart 
-              size={14} 
-              color={item.isLiked ? colors.accent : colors.textMuted}
-              fill={item.isLiked ? colors.accent : 'transparent'}
-            />
+          <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <Heart 
+                size={14} 
+                color={isLiked ? colors.accent : colors.textMuted}
+                fill={isLiked ? colors.accent : 'transparent'}
+              />
+            </Animated.View>
             <Text style={[
               styles.likeCount,
-              item.isLiked && { color: colors.accent }
+              isLiked && { color: colors.accent }
             ]}>
-              {item.likes}
+              {likeCount}
             </Text>
           </Pressable>
         </View>
@@ -298,6 +366,107 @@ function MasonryFeed({
 // ============================================================
 // 帖子阅读器 - 连续滚动
 // ============================================================
+// 评论区组件
+// ============================================================
+function CommentSection({ postId }: { postId: string }) {
+  const { user } = useAuth();
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
+  // Load comments on mount
+  useEffect(() => {
+    loadComments();
+  }, [postId]);
+
+  const loadComments = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchComments(postId);
+      setComments(data);
+    } catch (err) {
+      console.log('Failed to load comments (API might not be ready yet)');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!inputText.trim() || !user) return;
+    
+    setIsSending(true);
+    try {
+      const newComment = await createComment(postId, { content: inputText.trim() });
+      setComments([newComment, ...comments]);
+      setInputText('');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to post comment');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.commentsLoading}>
+        <Text style={styles.textSecondary}>Loading comments...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.commentSection}>
+      <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
+      
+      {/* Comment Input */}
+      {user ? (
+        <View style={styles.commentInputRow}>
+          <Image source={{ uri: user.photoUrl || undefined }} style={styles.commentAvatarSmall} />
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Add a comment..."
+            value={inputText}
+            onChangeText={setInputText}
+            maxLength={200}
+          />
+          {inputText.length > 0 && (
+            <Pressable onPress={handleSend} disabled={isSending}>
+              <Send size={20} color={colors.primary} />
+            </Pressable>
+          )}
+        </View>
+      ) : (
+        <View style={styles.commentLoginPrompt}>
+          <Text style={styles.textSecondary}>Log in to comment</Text>
+        </View>
+      )}
+
+      {/* Comment List */}
+      <View style={styles.commentList}>
+        {comments.map((item) => (
+          <View key={item.id} style={styles.commentItem}>
+            <Image source={{ uri: item.user?.photoUrl || undefined }} style={styles.commentAvatar} />
+            <View style={styles.commentContent}>
+              <View style={styles.commentUserRow}>
+                <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
+                <Text style={styles.commentTime}>
+                  {new Date(item.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+              <Text style={styles.commentText}>{item.content}</Text>
+            </View>
+          </View>
+        ))}
+        {comments.length === 0 && (
+          <Text style={styles.noComments}>No comments yet. Be the first!</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ============================================================
 function PostReader({
   post,
   onClose,
@@ -311,6 +480,12 @@ function PostReader({
   const [noteText, setNoteText] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   
+  // Like functionality
+  const [isLiked, setIsLiked] = useState(!!post.isLiked);
+  const [likeCount, setLikeCount] = useState(post.likeCount || 0);
+  const [isLiking, setIsLiking] = useState(false);
+  const likeScale = useRef(new Animated.Value(1)).current;
+
   // Save functionality - using Context
   const { isPostSaved, toggleSavePost } = useSaved();
   const isBookmarked = isPostSaved(post.uid);
@@ -326,6 +501,47 @@ function PostReader({
   
   // Note animation
   const noteScale = useRef(new Animated.Value(1)).current;
+
+  const handleLike = async () => {
+    if (isLiking) return;
+    setIsLiking(true);
+
+    // Optimistic Update
+    const prevIsLiked = isLiked;
+    const prevLikeCount = likeCount;
+    
+    setIsLiked(!prevIsLiked);
+    setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
+
+    // Animation
+    Animated.sequence([
+      Animated.spring(likeScale, {
+        toValue: 1.3,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+      Animated.spring(likeScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }),
+    ]).start();
+
+    try {
+      if (prevIsLiked) {
+        await unlikeItem(post.uid, 'post');
+      } else {
+        await likeItem(post.uid, 'post');
+      }
+    } catch (error) {
+      // Rollback
+      setIsLiked(prevIsLiked);
+      setLikeCount(prevLikeCount);
+      console.error('Like failed', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
   
   // 记录每个页面分隔符的位置
   const pagePositions = useRef<number[]>([0]);
@@ -426,9 +642,24 @@ function PostReader({
   };
 
   // 处理分享
-  const handleShare = () => {
-    // TODO: 实现分享功能
-    console.log('Share post:', post.uid);
+  const handleShare = async () => {
+    try {
+      const result = await Share.share({
+        message: `Check out this post on Sparks: ${post.title}\n\nSent from Sparks App`,
+        title: post.title,
+      });
+      if (result.action === Share.sharedAction) {
+        if (result.activityType) {
+          // shared with activity type of result.activityType
+        } else {
+          // shared
+        }
+      } else if (result.action === Share.dismissedAction) {
+        // dismissed
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
   };
 
   // Handle send note
@@ -542,6 +773,9 @@ function PostReader({
         <View style={styles.articleEnd}>
           <Text style={styles.articleEndText}>— The End —</Text>
         </View>
+
+        {/* Comment Section */}
+        <CommentSection postId={post.uid} />
       </ScrollView>
 
       {/* 底部操作栏 */}
@@ -591,6 +825,27 @@ function PostReader({
 
         {/* 操作按钮区域 - 占1/3宽度 */}
         <View style={styles.actionButtons}>
+          {/* 点赞按钮 */}
+          <Pressable 
+            style={styles.actionButton} 
+            onPress={handleLike}
+            disabled={isLiking}
+          >
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <Heart 
+                size={22} 
+                color={isLiked ? colors.accent : colors.textSecondary}
+                fill={isLiked ? colors.accent : 'transparent'}
+              />
+            </Animated.View>
+            <Text style={[
+              styles.actionButtonText,
+              isLiked && { color: colors.accent, fontWeight: '600' }
+            ]}>
+              {likeCount > 0 ? likeCount : 'Like'}
+            </Text>
+          </Pressable>
+
           {/* 收藏按钮 - 带动画 */}
           <Pressable 
             style={styles.actionButton} 
@@ -633,6 +888,347 @@ function PostReader({
 // ============================================================
 // 占位页面
 // ============================================================
+// ============================================================
+// 历史页面 - History Screen
+// ============================================================
+function HistoryScreen({ 
+  onItemPress,
+  onBack
+}: { 
+  onItemPress: (uid: string) => void;
+  onBack: () => void;
+}) {
+  const { user } = useAuth();
+  const [historyData, setHistoryData] = useState<ProfileItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [error, setError] = useState(false);
+
+  const loadHistory = useCallback(async (isRefresh = false) => {
+    if (!user) return;
+    if (!isRefresh && !nextCursor && historyData.length > 0) return;
+    if (!isRefresh && error) return;
+
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
+      
+      const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
+        const combined = isRefresh ? items : [...existingItems, ...items];
+        const seen = new Set();
+        return combined.filter(item => {
+          if (seen.has(item.itemId)) return false;
+          seen.add(item.itemId);
+          return true;
+        });
+      };
+
+      if (isRefresh) {
+        setHistoryData(processItems(response.items));
+      } else {
+        setHistoryData(prev => processItems(response.items, prev));
+      }
+      setNextCursor(response.nextCursor);
+    } catch (e) {
+      console.log('Failed to load history', e);
+      setError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user, nextCursor, historyData.length, error]);
+
+  useEffect(() => {
+    loadHistory(true);
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadHistory(true);
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert('Clear History', 'Are you sure you want to clear your entire history?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Clear', 
+        style: 'destructive',
+        onPress: async () => {
+          const prevData = [...historyData];
+          setHistoryData([]);
+          try {
+            await clearHistory();
+          } catch (error) {
+            setHistoryData(prevData);
+            Alert.alert('Error', 'Failed to clear history');
+          }
+        }
+      }
+    ]);
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
+  const renderHistoryItem = ({ item }: { item: ProfileItem }) => (
+    <View style={styles.historyCard}>
+      <Pressable 
+        style={styles.historyCardInner}
+        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
+      >
+        <View style={styles.historyImageContainer}>
+          {item.thumbnail ? (
+            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
+          ) : (
+            <View style={[styles.historyImage, styles.historyPlaceholder]}>
+              <Text style={styles.historyPlaceholderText}>
+                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.historyInfo}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyBadge}>{item.itemType}</Text>
+            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <Text style={styles.historyTitle} numberOfLines={2}>
+            {item.title || `${item.itemType} #${item.itemId}`}
+          </Text>
+        </View>
+      </Pressable>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.modalHeader}>
+        <Pressable 
+          style={styles.modalCloseButtonInline} 
+          onPress={onBack}
+        >
+          <ChevronLeft size={24} color={colors.text} />
+        </Pressable>
+        <Text style={styles.modalHeaderTitle}>History</Text>
+        <View style={styles.headerRightArea}>
+          {historyData.length > 0 && (
+            <Pressable onPress={handleClearHistory} style={styles.headerClearButton}>
+              <Text style={styles.headerClearButtonText}>Remove All</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <FlatList
+        data={historyData}
+        renderItem={renderHistoryItem}
+        keyExtractor={(item) => `history-${item.itemId}`}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+        onEndReached={() => loadHistory()}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          loading ? (
+            <ActivityIndicator style={{ margin: 24 }} color={colors.primary} />
+          ) : error ? (
+            <Pressable onPress={() => loadHistory()} style={styles.retryFooter}>
+              <Text style={styles.retryFooterText}>Load failed. Tap to retry</Text>
+            </Pressable>
+          ) : historyData.length > 0 ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>— End of History —</Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyState}>
+              <Clock size={48} color={colors.textMuted} strokeWidth={1.5} />
+              <Text style={styles.emptyStateText}>No history records yet</Text>
+            </View>
+          ) : null
+        }
+      />
+    </View>
+  );
+}
+
+// ============================================================
+// 点赞页面 - Likes Screen
+// ============================================================
+function LikesScreen({ 
+  onItemPress,
+  onToggleLike,
+  onBack
+}: { 
+  onItemPress: (uid: string) => void;
+  onToggleLike?: () => void;
+  onBack: () => void;
+}) {
+  const { user } = useAuth();
+  const [likesData, setLikesData] = useState<ProfileItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [error, setError] = useState(false);
+
+  const loadLikes = useCallback(async (isRefresh = false) => {
+    if (!user) return;
+    if (!isRefresh && !nextCursor && likesData.length > 0) return;
+    if (!isRefresh && error) return;
+
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await getMyLikes(20, isRefresh ? undefined : nextCursor);
+      
+      const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
+        const combined = isRefresh ? items : [...existingItems, ...items];
+        const seen = new Set();
+        return combined.filter(item => {
+          if (seen.has(item.itemId)) return false;
+          seen.add(item.itemId);
+          return true;
+        });
+      };
+
+      if (isRefresh) {
+        setLikesData(processItems(response.items));
+      } else {
+        setLikesData(prev => processItems(response.items, prev));
+      }
+      setNextCursor(response.nextCursor);
+    } catch (e) {
+      console.log('Failed to load likes', e);
+      setError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user, nextCursor, likesData.length, error]);
+
+  useEffect(() => {
+    loadLikes(true);
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadLikes(true);
+  };
+
+  const handleUnlike = async (itemId: string, itemType: string) => {
+    const prevData = [...likesData];
+    setLikesData(prev => prev.filter(item => item.itemId !== itemId));
+    try {
+      await unlikeItem(itemId, itemType);
+      onToggleLike?.();
+    } catch (error) {
+      setLikesData(prevData);
+      Alert.alert('Error', 'Failed to unlike item');
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
+  const renderLikeItem = ({ item }: { item: ProfileItem }) => (
+    <View style={styles.historyCard}>
+      <Pressable 
+        style={styles.historyCardInner}
+        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
+      >
+        <View style={styles.historyImageContainer}>
+          {item.thumbnail ? (
+            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
+          ) : (
+            <View style={[styles.historyImage, styles.historyPlaceholder]}>
+              <Text style={styles.historyPlaceholderText}>
+                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.historyInfo}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyBadge}>{item.itemType}</Text>
+            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <Text style={styles.historyTitle} numberOfLines={2}>
+            {item.title || `${item.itemType} #${item.itemId}`}
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable 
+        onPress={() => handleUnlike(item.itemId, item.itemType)}
+        style={({ pressed }) => [
+          styles.unlikeButton,
+          pressed && { transform: [{ scale: 0.92 }], opacity: 0.8 }
+        ]}
+      >
+        <Heart size={22} color={colors.accent} fill={colors.accent} />
+      </Pressable>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.modalHeader}>
+        <Pressable 
+          style={styles.modalCloseButtonInline} 
+          onPress={onBack}
+        >
+          <ChevronLeft size={24} color={colors.text} />
+        </Pressable>
+        <Text style={styles.modalHeaderTitle}>Likes</Text>
+        <View style={styles.headerRightArea} />
+      </View>
+
+      <FlatList
+        data={likesData}
+        renderItem={renderLikeItem}
+        keyExtractor={(item) => `like-${item.itemId}`}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+        onEndReached={() => loadLikes()}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          loading ? (
+            <ActivityIndicator style={{ margin: 24 }} color={colors.primary} />
+          ) : error ? (
+            <Pressable onPress={() => loadLikes()} style={styles.retryFooter}>
+              <Text style={styles.retryFooterText}>Load failed. Tap to retry</Text>
+            </Pressable>
+          ) : likesData.length > 0 ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>— End of Likes —</Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyState}>
+              <Heart size={48} color={colors.textMuted} strokeWidth={1.5} />
+              <Text style={styles.emptyStateText}>No liked posts yet</Text>
+            </View>
+          ) : null
+        }
+      />
+    </View>
+  );
+}
+
 function PlaceholderScreen({ title }: { title: string }) {
   return (
     <View style={styles.placeholder}>
@@ -1034,6 +1630,8 @@ function ErrorScreen({
 // ============================================================
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showLikesModal, setShowLikesModal] = useState(false);
   const [topTab, setTopTab] = useState('Discover');
   const [bottomTab, setBottomTab] = useState('explore');
   
@@ -1122,14 +1720,38 @@ function AppContent() {
           </>
         );
       case 'collection':
-        return <PlaceholderScreen title="Collection" />;
+        return <HistoryScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'saved':
         return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'notes':
         return <NotesScreen onPostPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
-        // Route protection / Auth flow
-        return token ? <ProfileScreen /> : <AuthScreen />;
+        if (!token) return <AuthScreen />;
+        if (showHistoryModal) {
+          return (
+            <HistoryScreen 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
+              onBack={() => setShowHistoryModal(false)}
+            />
+          );
+        }
+        if (showLikesModal) {
+          return (
+            <LikesScreen 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
+              onToggleLike={refetchFeed}
+              onBack={() => setShowLikesModal(false)}
+            />
+          );
+        }
+        return (
+          <ProfileScreen 
+            onItemPress={(uid) => setSelectedPostUid(uid)} 
+            onToggleLike={refetchFeed}
+            onHistoryPress={() => setShowHistoryModal(true)}
+            onLikesPress={() => setShowLikesModal(true)}
+          />
+        );
       default:
         return null;
     }
@@ -1581,7 +2203,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   noteInputContainer: {
-    flex: 3,
+    flex: 1,
     height: 44,
     backgroundColor: colors.bg,
     borderRadius: 22,
@@ -1590,7 +2212,7 @@ const styles = StyleSheet.create({
   noteInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
   },
   noteInput: {
@@ -1603,8 +2225,8 @@ const styles = StyleSheet.create({
   notePlaceholder: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    gap: 8,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   notePlaceholderText: {
     fontSize: 14,
@@ -1617,7 +2239,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
   closeNoteButton: {
     width: 32,
@@ -1626,18 +2248,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
   actionButtons: {
-    flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-around',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+    paddingLeft: 8,
   },
   actionButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    minWidth: 40,
   },
   actionButtonText: {
     fontSize: 10,
@@ -2068,5 +2691,271 @@ const styles = StyleSheet.create({
   // Send button disabled state
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+
+  // Comment Styles
+  commentSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 20,
+  },
+  commentHeader: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  commentAvatarSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.border,
+  },
+  commentInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: colors.bg,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    fontSize: 14,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  commentLoginPrompt: {
+    padding: 16,
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  commentsLoading: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  commentList: {
+    gap: 20,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.border,
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  commentUser: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  commentTime: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  commentText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  noComments: {
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingVertical: 20,
+  },
+
+  // Modal Header Styles
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    height: 56,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalCloseButtonInline: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerRightArea: {
+    minWidth: 44,
+    height: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingRight: 8,
+  },
+  headerClearButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  headerClearButtonText: {
+    fontSize: 14,
+    color: colors.error,
+    fontWeight: '600',
+  },
+
+  // ============================================================
+  // History & Likes Screen Styles
+  // ============================================================
+  historyCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: Platform.OS === 'ios' ? 0.5 : 0,
+    borderColor: colors.border,
+  },
+  historyCardInner: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
+  },
+  historyImageContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.bg,
+    aspectRatio: 1, // Ensure it's always a square
+  },
+  historyImage: {
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.3 }], // Zoom in to remove any potential black bars/borders
+  },
+  historyPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.border,
+  },
+  historyPlaceholderText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  historyInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  historyBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.primary,
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    overflow: 'hidden',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  historyDate: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 22,
+  },
+  unlikeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginLeft: 10,
+    borderWidth: 1,
+    borderColor: colors.accent + '20',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.accent,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  listTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.5,
+  },
+  emptyState: {
+    padding: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.textMuted,
+    marginTop: 12,
+    fontWeight: '500',
+  },
+  retryFooter: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  retryFooterText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '700',
   },
 });
