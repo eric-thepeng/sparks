@@ -72,7 +72,7 @@ import {
 import { Comment, ProfileItem } from './src/api/types';
 
 // Hooks
-import { useFeedItems, usePost, useSavedPosts, useNotesHook } from './src/hooks';
+import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
 import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth } from './src/context';
@@ -2586,134 +2586,6 @@ const styles = StyleSheet.create({
   savedEmptyHintText: {
     fontSize: 13,
     color: colors.textMuted,
-  },
-  
-  // ============================================================
-  // Notes Screen Styles
-  // ============================================================
-  notesContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  notesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.card,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  notesHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  notesHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  notesCountBadge: {
-    backgroundColor: colors.primaryBg,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  notesCountText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  notesClearButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.bg,
-  },
-  notesLoadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  notesLoadingText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  notesListContent: {
-    padding: 16,
-  },
-  notesItemSeparator: {
-    height: 12,
-  },
-  noteCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  noteCardInner: {
-    padding: 14,
-  },
-  noteContent: {
-    marginBottom: 12,
-    paddingRight: 24,
-  },
-  noteText: {
-    fontSize: 15,
-    color: colors.text,
-    lineHeight: 22,
-  },
-  notePostInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  notePostBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.primaryBg,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    flex: 1,
-    marginRight: 12,
-  },
-  notePostTitle: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.primary,
-    flex: 1,
-  },
-  noteTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  noteTimeText: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  noteDeleteButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: colors.bg,
-  },
-  
-  // Send button disabled state
-  sendButtonDisabled: {
-    opacity: 0.6,
   },
   
   // Comment Sheet
