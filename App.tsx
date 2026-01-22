@@ -44,6 +44,10 @@ import {
   Trash2,
   Clock,
   BookmarkPlus,
+  Bug,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
 // 数据层
@@ -75,7 +79,7 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -433,6 +437,7 @@ function MasonryFeed({
 // ============================================================
 function CommentSection({ postId }: { postId: string }) {
   const { user } = useAuth();
+  const { sendComment } = useRecommendation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -463,6 +468,8 @@ function CommentSection({ postId }: { postId: string }) {
       const newComment = await createComment(postId, { content: inputText.trim() });
       setComments([newComment, ...comments]);
       setInputText('');
+      // Send COMMENT signal for recommendation
+      sendComment(postId);
     } catch (err) {
       Alert.alert('Error', 'Failed to post comment');
     } finally {
@@ -692,6 +699,9 @@ function SinglePostReader({
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
   
+  // Recommendation signals
+  const { sendLike, sendSave, trackReadProgress, resetProgress } = useRecommendation();
+  
   // Header is 50, Bottom bar is 60, plus safe areas
   const readerHeaderHeight = 50;
   const bottomBarHeight = 60;
@@ -713,7 +723,8 @@ function SinglePostReader({
     setShowComments(false); // Reset comments view on post change
     setIsLiked(!!post.isLiked);
     setLikeCount(post.likeCount || 0);
-  }, [post.uid, post.isLiked, post.likeCount]);
+    resetProgress(post.uid); // Reset read progress tracking
+  }, [post.uid, post.isLiked, post.likeCount, resetProgress]);
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
@@ -744,6 +755,12 @@ function SinglePostReader({
       }).start();
     });
   }, [currentPage]);
+
+  // Track read progress for recommendation signals
+  useEffect(() => {
+    // currentPage is 0-based, trackReadProgress expects 1-based
+    trackReadProgress(post.uid, currentPage + 1, post.pages.length);
+  }, [currentPage, post.uid, post.pages.length, trackReadProgress]);
 
   // Viewability Config - reduced threshold to make it more responsive when scrolling back
   const viewabilityConfig = useRef({
@@ -835,6 +852,8 @@ function SinglePostReader({
         await unlikeItem(post.uid, 'post');
       } else {
         await likeItem(post.uid, 'post');
+        // Send LIKE signal for recommendation (only on like, not unlike)
+        sendLike(post.uid);
       }
       // Update hook state so it persists during swipes
       onLikeUpdate?.(!prevIsLiked, prevIsLiked ? prevLikeCount - 1 : prevLikeCount + 1);
@@ -868,6 +887,7 @@ function SinglePostReader({
 
   const handleBookmark = async () => {
     if (isSaving) return;
+    const wasBookmarked = isBookmarked;
     setIsSaving(true);
     Animated.sequence([
       Animated.spring(saveScale, { toValue: 1.3, useNativeDriver: true, friction: 3 }),
@@ -875,6 +895,10 @@ function SinglePostReader({
     ]).start();
     try {
       await toggleSavePost(post);
+      // Send SAVE signal for recommendation (only on save, not unsave)
+      if (!wasBookmarked) {
+        sendSave(post.uid);
+      }
     } catch (err) {
       console.error('Failed to toggle save:', err);
     } finally {
@@ -1075,6 +1099,16 @@ function PostLoader({
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
+  const { sendClick } = useRecommendation();
+
+  // 发送 CLICK 信号（帖子加载成功时）
+  useEffect(() => {
+    console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status });
+    if (post && status === 'success') {
+      console.log('[PostLoader] Calling sendClick for:', post.uid);
+      sendClick(post.uid);
+    }
+  }, [post?.uid, status, sendClick]);
 
   if (status === 'loading') {
     return (
@@ -1538,6 +1572,188 @@ function PlaceholderScreen({ title }: { title: string }) {
 }
 
 // ============================================================
+// Debug Panel - 推荐算法可视化
+// ============================================================
+function DebugPanel({ 
+  visible, 
+  onClose 
+}: { 
+  visible: boolean; 
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { state, resetRecommendation, isResetting } = useRecommendation();
+  const { bucketCount, clickCount, lastSignal } = state;
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Debug: 监控状态变化
+  useEffect(() => {
+    console.log('[DebugPanel] State updated:', { 
+      bucketCount: Object.keys(bucketCount).length, 
+      clickCount, 
+      lastSignal: lastSignal?.signalType 
+    });
+  }, [bucketCount, clickCount, lastSignal]);
+
+  // 计算总权重和每个 bucket 的百分比
+  const bucketEntries = Object.entries(bucketCount);
+  const totalWeight = bucketEntries.reduce((sum, [, weight]) => sum + weight, 0);
+  const maxWeight = Math.max(...bucketEntries.map(([, w]) => w), 1);
+  
+  // 距离下次 rebalance 的次数
+  const clicksToRebalance = 30 - (clickCount % 30);
+
+  // 格式化 bucket 名称
+  const formatBucketName = (name: string) => {
+    return name
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  // 获取 bucket 颜色
+  const getBucketColor = (index: number) => {
+    const hue = (index * 137.5) % 360; // Golden angle for good distribution
+    return `hsl(${hue}, 70%, 50%)`;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={[
+      styles.debugPanel,
+      { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }
+    ]}>
+      {/* Header */}
+      <View style={styles.debugHeader}>
+        <View style={styles.debugHeaderLeft}>
+          <Bug size={20} color={colors.primary} />
+          <Text style={styles.debugTitle}>Recommendation Debug</Text>
+        </View>
+        <View style={styles.debugHeaderRight}>
+          <Pressable 
+            style={styles.debugExpandButton}
+            onPress={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? (
+              <ChevronDown size={20} color={colors.textSecondary} />
+            ) : (
+              <ChevronUp size={20} color={colors.textSecondary} />
+            )}
+          </Pressable>
+          <Pressable style={styles.debugCloseButton} onPress={onClose}>
+            <X size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
+
+      {isExpanded && (
+        <ScrollView style={styles.debugContent} showsVerticalScrollIndicator={false}>
+          {/* Click Counter */}
+          <View style={styles.debugSection}>
+            <Text style={styles.debugSectionTitle}>Click Progress</Text>
+            <View style={styles.debugClickCounter}>
+              <View style={styles.debugClickBar}>
+                <View 
+                  style={[
+                    styles.debugClickProgress, 
+                    { width: `${((clickCount % 30) / 30) * 100}%` }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.debugClickText}>
+                {clickCount} clicks • {clicksToRebalance} to rebalance
+              </Text>
+            </View>
+          </View>
+
+          {/* Last Signal */}
+          {lastSignal && (
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>Last Signal</Text>
+              <View style={styles.debugLastSignal}>
+                <Text style={styles.debugSignalType}>{lastSignal.signalType}</Text>
+                <Text style={styles.debugSignalPost}>
+                  Post: {lastSignal.postId.slice(0, 12)}...
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Bucket Weights */}
+          <View style={styles.debugSection}>
+            <Text style={styles.debugSectionTitle}>
+              Bucket Weights ({bucketEntries.length})
+            </Text>
+            {bucketEntries.length > 0 ? (
+              <View style={styles.debugBucketList}>
+                {bucketEntries
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([bucket, weight], index) => {
+                    const percentage = totalWeight > 0 ? (weight / totalWeight) * 100 : 0;
+                    const barWidth = (weight / maxWeight) * 100;
+                    return (
+                      <View key={bucket} style={styles.debugBucketItem}>
+                        <View style={styles.debugBucketHeader}>
+                          <Text style={styles.debugBucketName} numberOfLines={1}>
+                            {formatBucketName(bucket)}
+                          </Text>
+                          <Text style={styles.debugBucketWeight}>
+                            {weight.toFixed(2)} ({percentage.toFixed(1)}%)
+                          </Text>
+                        </View>
+                        <View style={styles.debugBucketBarBg}>
+                          <View 
+                            style={[
+                              styles.debugBucketBar,
+                              { 
+                                width: `${barWidth}%`,
+                                backgroundColor: getBucketColor(index),
+                              }
+                            ]} 
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+              </View>
+            ) : (
+              <Text style={styles.debugEmptyText}>
+                No bucket data yet. Interact with posts to see weights.
+              </Text>
+            )}
+          </View>
+
+          {/* Reset Button */}
+          <View style={styles.debugSection}>
+            <Pressable 
+              style={[
+                styles.debugResetButton,
+                isResetting && styles.debugResetButtonDisabled
+              ]}
+              onPress={resetRecommendation}
+              disabled={isResetting}
+            >
+              <RefreshCw 
+                size={18} 
+                color="#fff" 
+                style={isResetting ? { opacity: 0.5 } : undefined}
+              />
+              <Text style={styles.debugResetText}>
+                {isResetting ? 'Resetting...' : 'Reset Recommendation State'}
+              </Text>
+            </Pressable>
+            <Text style={styles.debugResetHint}>
+              Clears history and resets all bucket weights to default
+            </Text>
+          </View>
+        </ScrollView>
+      )}
+    </Animated.View>
+  );
+}
+
+// ============================================================
 // 保存页面 - Saved Screen
 // ============================================================
 function SavedScreen({ 
@@ -1980,6 +2196,7 @@ function AppContent() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
 
   // 使用 hooks 获取数据
@@ -2184,6 +2401,22 @@ function AppContent() {
             onClose={() => setShowSearchModal(false)}
           />
         </Modal>
+
+        {/* Debug Panel */}
+        <DebugPanel 
+          visible={showDebugPanel} 
+          onClose={() => setShowDebugPanel(false)} 
+        />
+
+        {/* Debug Toggle Button (开发模式可见) */}
+        {__DEV__ && (
+          <Pressable 
+            style={styles.debugToggleButton}
+            onPress={() => setShowDebugPanel(!showDebugPanel)}
+          >
+            <Bug size={20} color="#fff" />
+          </Pressable>
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -2195,11 +2428,13 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <SavedProvider>
-        <NotesProvider>
-          <AppContent />
-        </NotesProvider>
-      </SavedProvider>
+      <RecommendationProvider>
+        <SavedProvider>
+          <NotesProvider>
+            <AppContent />
+          </NotesProvider>
+        </SavedProvider>
+      </RecommendationProvider>
     </AuthProvider>
   );
 }
@@ -3410,5 +3645,191 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '700',
+  },
+
+  // ============================================================
+  // Debug Panel Styles
+  // ============================================================
+  debugToggleButton: {
+    position: 'absolute',
+    bottom: 140,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 1000,
+  },
+  debugPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+    zIndex: 2000,
+    maxHeight: '70%',
+  },
+  debugHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  debugHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  debugHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  debugExpandButton: {
+    padding: 4,
+  },
+  debugCloseButton: {
+    padding: 4,
+  },
+  debugContent: {
+    padding: 16,
+  },
+  debugSection: {
+    marginBottom: 20,
+  },
+  debugSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  debugClickCounter: {
+    gap: 8,
+  },
+  debugClickBar: {
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  debugClickProgress: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  debugClickText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  debugLastSignal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.primaryBg,
+    padding: 12,
+    borderRadius: 10,
+  },
+  debugSignalType: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+    backgroundColor: colors.card,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  debugSignalPost: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  debugBucketList: {
+    gap: 12,
+  },
+  debugBucketItem: {
+    gap: 6,
+  },
+  debugBucketHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  debugBucketName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  debugBucketWeight: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  debugBucketBarBg: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  debugBucketBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  debugEmptyText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 20,
+  },
+  debugResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  debugResetButtonDisabled: {
+    opacity: 0.6,
+  },
+  debugResetText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  debugResetHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

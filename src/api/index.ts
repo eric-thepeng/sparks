@@ -17,7 +17,10 @@ import {
   Comment,
   CreateCommentRequest,
   ProfileListResponse,
-  ProfileItem
+  ProfileItem,
+  SignalType,
+  SignalResponse,
+  ResetRecommendationResponse
 } from './types';
 import { config } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -350,6 +353,45 @@ export async function clearHistory(): Promise<void> {
 // Backward compatibility or alias if needed, but updated to use new functions in ProfileScreen
 // export const fetchHistory = getMyHistory; 
 // export const fetchLikedPosts = getMyLikes;
+
+// ============================================================
+// Recommendation Signal API
+// ============================================================
+
+/**
+ * 发送用户交互信号
+ * 用于推荐算法追踪用户行为
+ * POST /api/signals
+ * 
+ * @returns SignalResponse 包含更新后的 bucket_count 和 click_count
+ */
+export async function sendSignal(postId: string, signalType: SignalType): Promise<SignalResponse> {
+  return request<SignalResponse>('/api/signals', {
+    method: 'POST',
+    body: JSON.stringify({ postId, signalType }),
+  });
+}
+
+/**
+ * 请求推荐帖子
+ * GET /posts/recommended?amount=N
+ * @param amount - 请求的帖子数量
+ */
+export async function requestRecommendedPosts(amount: number = 20): Promise<ApiPost[]> {
+  return request<ApiPost[]>(`/posts/recommended?amount=${amount}`);
+}
+
+/**
+ * 重置推荐状态（Debug 用）
+ * POST /api/debug/reset-recommendation
+ * 
+ * 功能：清空 history + 重置 bucket 权重为默认值
+ */
+export async function resetRecommendation(): Promise<ResetRecommendationResponse> {
+  return request<ResetRecommendationResponse>('/api/debug/reset-recommendation', {
+    method: 'POST',
+  });
+}
 
 // 导出类型
 export * from './types';
