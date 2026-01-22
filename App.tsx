@@ -2,7 +2,7 @@
  * Sparks - 小红书风格
  * 瀑布流信息流 + 帖子详情 + 翻页阅读 + 保存功能
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -112,32 +112,56 @@ const colors = {
   border: '#e2e8f0',
 };
 
+/**
+ * 格式化主题名称：替换下划线为空格并应用 Title Case
+ */
+const formatTopicName = (topic: string) => {
+  if (!topic) return '';
+  return topic
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 // ============================================================
 // 顶部导航 Tab
 // ============================================================
-function TopTabs() {
-  return (
-    <View style={styles.topTabs}>
-      <View style={styles.topTab}>
-        <Text style={styles.topTabTextActive}>Discover</Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================================
-// 顶部 Header
-// ============================================================
-function Header({ onSearchPress }: { onSearchPress?: () => void }) {
+function Header({ 
+  onSearchPress, 
+  onBack,
+  title = "Discover" 
+}: { 
+  onSearchPress?: () => void;
+  onBack?: () => void;
+  title?: string;
+}) {
   return (
     <View style={styles.header}>
-      <Pressable style={styles.headerIcon} onPress={onSearchPress}>
-        <Search size={22} color={colors.text} />
-      </Pressable>
+      <View style={{ width: 40 }}>
+        {onBack ? (
+          <Pressable style={styles.headerIcon} onPress={onBack}>
+            <ChevronLeft size={24} color={colors.text} />
+          </Pressable>
+        ) : onSearchPress ? (
+          <Pressable style={styles.headerIcon} onPress={onSearchPress}>
+            <Search size={22} color={colors.text} />
+          </Pressable>
+        ) : null}
+      </View>
       
-      <TopTabs />
+      <View style={styles.topTabs}>
+        <View style={styles.topTab}>
+          <Text style={styles.topTabTextActive} numberOfLines={1}>{title}</Text>
+        </View>
+      </View>
       
-      <View style={{ width: 40 }} />
+      <View style={{ width: 40 }}>
+        {onBack && onSearchPress && (
+          <Pressable style={styles.headerIcon} onPress={onSearchPress}>
+            <Search size={22} color={colors.text} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -636,7 +660,7 @@ const PageItem = React.memo(({
             <View style={styles.titleContainer}>
               <Text style={styles.postTitle}>{post.title}</Text>
               <View style={styles.topicBadge}>
-                <Text style={styles.topicBadgeText}>#{post.topic}</Text>
+                <Text style={styles.topicBadgeText}>#{formatTopicName(post.topic)}</Text>
               </View>
             </View>
           </View>
@@ -1616,7 +1640,7 @@ function SavedScreen({
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
               <View style={styles.savedTopicBadge}>
-                <Text style={styles.savedTopicText}>#{item.topic}</Text>
+                <Text style={styles.savedTopicText}>#{formatTopicName(item.topic)}</Text>
               </View>
             </View>
             
@@ -1869,10 +1893,90 @@ function SearchScreen({
 }
 
 // ============================================================
+// Collection Screen - Grouped by Topic
+// ============================================================
+function CollectionScreen({ 
+  items, 
+  onItemPress,
+  onTopicPress
+}: { 
+  items: FeedItem[]; 
+  onItemPress: (uid: string) => void;
+  onTopicPress: (topic: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  
+  // Group items by topic
+  const groupedItems = useMemo(() => {
+    const groups: { [key: string]: FeedItem[] } = {};
+    items.forEach(item => {
+      if (!groups[item.topic]) {
+        groups[item.topic] = [];
+      }
+      groups[item.topic].push(item);
+    });
+    return Object.entries(groups).map(([topic, items]) => ({ topic, items }));
+  }, [items]);
+
+  return (
+    <View style={styles.collectionContainer}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
+        {groupedItems.map(({ topic, items }) => (
+          <View key={topic} style={styles.collectionSection}>
+            {/* Section Header */}
+            <View style={styles.collectionHeader}>
+              <View style={styles.collectionHeaderLeft}>
+                <Text style={styles.collectionTitle}>{formatTopicName(topic)}</Text>
+                <Text style={styles.collectionSubtitle}>
+                  Top-rated lessons and quizzes on this topic
+                </Text>
+              </View>
+              <Pressable style={styles.seeAllButton} onPress={() => onTopicPress(topic)}>
+                <Text style={styles.seeAllText}>See all</Text>
+              </Pressable>
+            </View>
+
+            {/* Horizontal Scroll of Cards */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.collectionHorizontalScroll}
+            >
+              {items.map((item) => (
+                <Pressable 
+                  key={item.uid} 
+                  style={styles.collectionCard}
+                  onPress={() => onItemPress(item.uid)}
+                >
+                  <Image
+                    source={item.coverImage}
+                    style={styles.collectionCardImage}
+                    contentFit="cover"
+                  />
+                  <View style={styles.collectionCardContent}>
+                    <Text style={styles.collectionCardTitle} numberOfLines={2}>
+                      {item.title}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ============================================================
 // 主应用内容
 // ============================================================
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -1904,6 +2008,11 @@ function AppContent() {
     }
     prevTokenRef.current = token;
   }, [token]);
+
+  // Reset internal states when switching tabs
+  useEffect(() => {
+    setSelectedTopic(null);
+  }, [bottomTab]);
 
   // 渲染当前页面内容
   const renderContent = () => {
@@ -1958,7 +2067,36 @@ function AppContent() {
           </>
         );
       case 'collection':
-        return <PlaceholderScreen title="My Collections" />;
+        if (selectedTopic) {
+          const topicItems = feedItems.filter(item => item.topic === selectedTopic);
+          return (
+            <>
+              <Header 
+                title={formatTopicName(selectedTopic)} 
+                onBack={() => setSelectedTopic(null)}
+                onSearchPress={() => setShowSearchModal(true)} 
+              />
+              <ScrollView 
+                style={styles.collectionContainer}
+                contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <MasonryFeed items={topicItems} onItemPress={(uid) => setSelectedPostUid(uid)} />
+                <Text style={styles.endText}>— End of Topic —</Text>
+              </ScrollView>
+            </>
+          );
+        }
+        return (
+          <>
+            <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
+            <CollectionScreen 
+              items={feedItems} 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
+              onTopicPress={(topic) => setSelectedTopic(topic)}
+            />
+          </>
+        );
       case 'saved':
         return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
@@ -2563,6 +2701,84 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  // Collection Screen Styles
+  collectionContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  collectionSection: {
+    marginTop: 24,
+  },
+  collectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  collectionHeaderLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  collectionTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  collectionSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  seeAllButton: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  collectionHorizontalScroll: {
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+  collectionCard: {
+    width: 160,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginRight: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    // Shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    // Elevation for Android
+    elevation: 2,
+  },
+  collectionCardImage: {
+    width: '100%',
+    height: 160,
+    backgroundColor: colors.border,
+  },
+  collectionCardContent: {
+    padding: 12,
+    height: 60,
+    justifyContent: 'center',
+  },
+  collectionCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 18,
+  },
+  
   // Search Screen Styles
   searchContainer: {
     flex: 1,

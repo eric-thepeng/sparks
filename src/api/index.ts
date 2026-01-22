@@ -203,11 +203,8 @@ export async function loginWithGoogle(data: GoogleLoginRequest): Promise<AuthRes
  * GET /posts
  * 返回的可能是简单帖子或富文本帖子的混合数组
  */
-export async function fetchPosts(): Promise<ApiPost[]> {
-  // 注意：后端路径可能没有 prefix，这里假设 fetchPosts 使用原始路径，或者也需要 prefix
-  // 如果后端完全遵循 API contract，posts 应该在 {BASE}{PREFIX}/posts
-  // 之前的代码是 request<ApiPost[]>('/posts')，现在 request 自动加了 PREFIX
-  return request<ApiPost[]>('/posts');
+export async function fetchPosts(limit: number = 1000): Promise<ApiPost[]> {
+  return request<ApiPost[]>(`/posts?limit=${limit}`);
 }
 
 /**
