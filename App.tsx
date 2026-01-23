@@ -79,7 +79,7 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -1156,14 +1156,42 @@ function PostSwiper({
   items, 
   initialIndex, 
   onClose,
-  onFeedLikeUpdate
+  onFeedLikeUpdate,
+  onLoadMore
 }: { 
   items: FeedItem[]; 
   initialIndex: number; 
   onClose: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+  onLoadMore?: () => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const loadMoreTriggered = useRef(false);
+
+  // 检测是否接近列表末尾，触发加载更多
+  useEffect(() => {
+    const remainingItems = items.length - currentIndex - 1;
+    console.log('[PostSwiper] Current index:', currentIndex, 'Remaining:', remainingItems);
+    
+    if (remainingItems <= 2 && !loadMoreTriggered.current && onLoadMore) {
+      loadMoreTriggered.current = true;
+      console.log('[PostSwiper] Loading more posts...');
+      onLoadMore();
+      // 重置触发标记，允许再次触发
+      setTimeout(() => {
+        loadMoreTriggered.current = false;
+      }, 1000);
+    }
+  }, [currentIndex, items.length, onLoadMore]);
+
+  // 处理滑动结束，更新当前索引
+  const handleMomentumScrollEnd = useCallback((event: any) => {
+    const newIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < items.length) {
+      setCurrentIndex(newIndex);
+    }
+  }, [currentIndex, items.length]);
 
   return (
     <AnimatedFlatList
@@ -1175,6 +1203,7 @@ function PostSwiper({
         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
         { useNativeDriver: true }
       )}
+      onMomentumScrollEnd={handleMomentumScrollEnd}
       getItemLayout={(data: any, index: number) => ({
         length: SCREEN_WIDTH,
         offset: SCREEN_WIDTH * index,
@@ -2199,14 +2228,20 @@ function AppContent() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
 
-  // 使用 hooks 获取数据
+  // 使用帖子缓存系统
   const { 
-    feedItems, 
-    status: feedStatus, 
+    displayedPosts: feedItems, 
+    isLoading: feedLoading,
     error: feedError, 
     refetch: refetchFeed,
-    updateLocalLike: updateFeedLike
-  } = useFeedItems();
+    updateLocalLike: updateFeedLike,
+    consumeMultiple,
+    hasMore,
+    cacheStatus
+  } = usePostCache();
+  
+  // 兼容旧的 status 变量
+  const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
@@ -2258,6 +2293,17 @@ function AppContent() {
           );
         }
         
+        // 检测滚动到底部，加载更多帖子
+        const handleFeedScroll = (event: any) => {
+          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+          const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
+          
+          if (isNearBottom && hasMore && !feedLoading) {
+            console.log('[Feed] Near bottom, loading more...');
+            consumeMultiple(2);
+          }
+        };
+
         return (
           <>
             {/* 顶部 Header */}
@@ -2268,14 +2314,20 @@ function AppContent() {
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
+              onScroll={handleFeedScroll}
+              scrollEventThrottle={400}
             >
               <MasonryFeed 
                 items={feedItems} 
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
-              {feedStatus === 'loading' ? (
+              {feedLoading ? (
                 <View style={styles.loadingMore}>
                   <Text style={styles.loadingMoreText}>Loading...</Text>
+                </View>
+              ) : hasMore ? (
+                <View style={styles.loadingMore}>
+                  <Text style={styles.loadingMoreText}>Scroll for more • Cache: {cacheStatus.cachedCount}</Text>
                 </View>
               ) : (
                 <Text style={styles.endText}>— End of List —</Text>
@@ -2371,6 +2423,7 @@ function AppContent() {
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
               onFeedLikeUpdate={updateFeedLike}
+              onLoadMore={() => consumeMultiple(1)}
             />
           ) : (
              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -2429,11 +2482,13 @@ export default function App() {
   return (
     <AuthProvider>
       <RecommendationProvider>
-        <SavedProvider>
-          <NotesProvider>
-            <AppContent />
-          </NotesProvider>
-        </SavedProvider>
+        <PostCacheProvider>
+          <SavedProvider>
+            <NotesProvider>
+              <AppContent />
+            </NotesProvider>
+          </SavedProvider>
+        </PostCacheProvider>
       </RecommendationProvider>
     </AuthProvider>
   );
