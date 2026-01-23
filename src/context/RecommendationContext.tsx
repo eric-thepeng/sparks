@@ -51,6 +51,8 @@ interface RecommendationContextValue {
   resetProgress: (postId: string) => void;
   /** 重置推荐状态 */
   resetRecommendation: () => Promise<void>;
+  /** 从 API 响应更新状态 (用于 onboarding) */
+  updateFromResponse: (bucketCount: BucketCount, clickCount: number) => void;
 }
 
 const RecommendationContext = createContext<RecommendationContextValue | null>(null);
@@ -222,6 +224,21 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
+  /**
+   * 从 API 响应更新状态 (用于 onboarding)
+   */
+  const updateFromResponse = useCallback((bucketCount: BucketCount, clickCount: number) => {
+    console.log('[Recommendation] Updating state from response:', { bucketCount, clickCount });
+    setState({
+      bucketCount,
+      clickCount,
+      lastSignal: null,
+    });
+    // 清空本地去重缓存
+    sentClicks.current.clear();
+    readProgress.current.clear();
+  }, []);
+
   const value: RecommendationContextValue = {
     state,
     isResetting,
@@ -232,6 +249,7 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
     trackReadProgress,
     resetProgress,
     resetRecommendation,
+    updateFromResponse,
   };
 
   return (

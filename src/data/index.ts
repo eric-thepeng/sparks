@@ -580,3 +580,6 @@ export function getAllPostUids(): string[] {
 // ============================================================
 
 export { getCoverImage, getInlineImage, POST_IMAGES };
+
+// Bucket 数据
+export * from './buckets';

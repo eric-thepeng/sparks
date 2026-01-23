@@ -84,6 +84,7 @@ import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -1605,13 +1606,21 @@ function PlaceholderScreen({ title }: { title: string }) {
 // ============================================================
 function DebugPanel({ 
   visible, 
-  onClose 
+  onClose,
+  onResetComplete
 }: { 
   visible: boolean; 
   onClose: () => void;
+  onResetComplete?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { state, resetRecommendation, isResetting } = useRecommendation();
+  
+  // 包装 reset 函数，完成后调用 onResetComplete
+  const handleReset = useCallback(async () => {
+    await resetRecommendation();
+    onResetComplete?.();
+  }, [resetRecommendation, onResetComplete]);
   const { bucketCount, clickCount, lastSignal } = state;
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -1760,7 +1769,7 @@ function DebugPanel({
                 styles.debugResetButton,
                 isResetting && styles.debugResetButtonDisabled
               ]}
-              onPress={resetRecommendation}
+              onPress={handleReset}
               disabled={isResetting}
             >
               <RefreshCw 
@@ -2219,6 +2228,9 @@ function CollectionScreen({
 // ============================================================
 // 主应用内容
 // ============================================================
+// Onboarding 存储 key
+const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
+
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
@@ -2227,6 +2239,10 @@ function AppContent() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
+  
+  // 兴趣 Onboarding 状态
+  const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   // 使用帖子缓存系统
   const { 
@@ -2239,6 +2255,9 @@ function AppContent() {
     hasMore,
     cacheStatus
   } = usePostCache();
+  
+  // 收藏系统（用于刷新）
+  const { refreshSavedPosts } = useSaved();
   
   // 兼容旧的 status 变量
   const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
@@ -2260,6 +2279,54 @@ function AppContent() {
     }
     prevTokenRef.current = token;
   }, [token]);
+
+  // 检测是否需要显示兴趣 Onboarding
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (!token || !user) {
+        setOnboardingChecked(true);
+        return;
+      }
+      
+      try {
+        // 使用用户 ID 作为 key 的一部分，这样不同用户有独立的 onboarding 状态
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        const completed = await AsyncStorage.getItem(key);
+        
+        if (!completed) {
+          // 用户尚未完成 onboarding
+          console.log('[Onboarding] First time user, showing interests selection');
+          setShowInterestsOnboarding(true);
+        }
+      } catch (error) {
+        console.log('[Onboarding] Failed to check status:', error);
+      }
+      
+      setOnboardingChecked(true);
+    };
+    
+    checkOnboarding();
+  }, [token, user]);
+
+  // 完成 Onboarding 的回调
+  // 后端会清除所有用户数据（历史、收藏、点赞、评论），需要同步刷新前端状态
+  const handleOnboardingComplete = useCallback(async () => {
+    if (user) {
+      try {
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        await AsyncStorage.setItem(key, 'true');
+        console.log('[Onboarding] Marked as completed');
+      } catch (error) {
+        console.log('[Onboarding] Failed to save status:', error);
+      }
+    }
+    setShowInterestsOnboarding(false);
+    
+    // 刷新所有相关数据（后端会清空用户数据）
+    console.log('[Onboarding] Refreshing all user data...');
+    refetchFeed();           // 刷新帖子推荐
+    refreshSavedPosts();     // 刷新收藏列表（会变空）
+  }, [user, refetchFeed, refreshSavedPosts]);
 
   // Reset internal states when switching tabs
   useEffect(() => {
@@ -2402,6 +2469,18 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
+      {/* 兴趣 Onboarding Modal */}
+      <Modal
+        visible={showInterestsOnboarding}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {}} // 阻止关闭
+      >
+        <OnboardingScreen
+          onComplete={handleOnboardingComplete}
+        />
+      </Modal>
+
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
       
@@ -2458,7 +2537,13 @@ function AppContent() {
         {/* Debug Panel */}
         <DebugPanel 
           visible={showDebugPanel} 
-          onClose={() => setShowDebugPanel(false)} 
+          onClose={() => setShowDebugPanel(false)}
+          onResetComplete={() => {
+            // 后端会清空所有用户数据，同步刷新前端
+            console.log('[DebugPanel] Reset complete, refreshing all data...');
+            refetchFeed();
+            refreshSavedPosts();
+          }}
         />
 
         {/* Debug Toggle Button (开发模式可见) */}
