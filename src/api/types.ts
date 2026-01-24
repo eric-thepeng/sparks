@@ -104,6 +104,8 @@ export interface Comment {
   content: string;
   created_at: string;
   user: User; // The author of the comment
+  like_count?: number;
+  is_liked?: boolean;
 }
 
 export interface CreateCommentRequest {

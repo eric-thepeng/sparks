@@ -436,12 +436,13 @@ function MasonryFeed({
 // 评论区组件
 // ============================================================
 function CommentSection({ postId }: { postId: string }) {
-  const { user } = useAuth();
+  const { user, token, logout } = useAuth();
   const { sendComment } = useRecommendation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [sortBy, setSortBy] = useState<'time' | 'likes'>('time');
 
   // Load comments on mount
   useEffect(() => {
@@ -477,17 +478,81 @@ function CommentSection({ postId }: { postId: string }) {
     }
   };
 
+  const handleLikeComment = async (commentId: string) => {
+    if (!token) {
+      Alert.alert('Login Required', 'Please log in to like comments.');
+      return;
+    }
+
+    const commentIndex = comments.findIndex(c => c.id === commentId);
+    if (commentIndex === -1) return;
+
+    const comment = comments[commentIndex];
+    const wasLiked = !!comment.is_liked;
+
+    // Optimistic Update
+    const updatedComments = [...comments];
+    updatedComments[commentIndex] = {
+      ...comment,
+      is_liked: !wasLiked,
+      like_count: (comment.like_count || 0) + (wasLiked ? -1 : 1)
+    };
+    setComments(updatedComments);
+
+    try {
+      if (wasLiked) {
+        await unlikeItem(commentId, 'comment');
+      } else {
+        await likeItem(commentId, 'comment');
+      }
+    } catch (error: any) {
+      // Rollback
+      setComments(comments);
+      console.error('Comment like failed', error);
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Please log in again.');
+        logout();
+      }
+    }
+  };
+
+  const sortedComments = useMemo(() => {
+    const sorted = [...comments];
+    if (sortBy === 'likes') {
+      return sorted.sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+    }
+    return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [comments, sortBy]);
+
   if (isLoading) {
     return (
       <View style={styles.commentsLoading}>
-        <Text style={styles.textSecondary}>Loading comments...</Text>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={[styles.textSecondary, { marginTop: 8 }]}>Loading comments...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.commentSection}>
-      <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
+      <View style={styles.commentHeaderRow}>
+        <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
+        <View style={styles.commentSortContainer}>
+          <Pressable 
+            onPress={() => setSortBy('time')} 
+            style={[styles.sortButton, sortBy === 'time' && styles.sortButtonActive]}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'time' && styles.sortButtonTextActive]}>Newest</Text>
+          </Pressable>
+          <View style={styles.sortDivider} />
+          <Pressable 
+            onPress={() => setSortBy('likes')} 
+            style={[styles.sortButton, sortBy === 'likes' && styles.sortButtonActive]}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'likes' && styles.sortButtonTextActive]}>Top</Text>
+          </Pressable>
+        </View>
+      </View>
       
       {/* Comment Input */}
       {user ? (
@@ -499,9 +564,10 @@ function CommentSection({ postId }: { postId: string }) {
             value={inputText}
             onChangeText={setInputText}
             maxLength={200}
+            multiline
           />
           {inputText.length > 0 && (
-            <Pressable onPress={handleSend} disabled={isSending}>
+            <Pressable onPress={handleSend} disabled={isSending} style={styles.commentSendButton}>
               <Send size={20} color={colors.primary} />
             </Pressable>
           )}
@@ -514,15 +580,32 @@ function CommentSection({ postId }: { postId: string }) {
 
       {/* Comment List */}
       <View style={styles.commentList}>
-        {comments.map((item) => (
+        {sortedComments.map((item) => (
           <View key={item.id} style={styles.commentItem}>
             <Image source={{ uri: item.user?.photoUrl || undefined }} style={styles.commentAvatar} />
             <View style={styles.commentContent}>
               <View style={styles.commentUserRow}>
-                <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
-                <Text style={styles.commentTime}>
-                  {new Date(item.created_at).toLocaleDateString()}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
+                  <Text style={styles.commentTime}>
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Pressable 
+                  style={styles.commentLikeContainer} 
+                  onPress={() => handleLikeComment(item.id)}
+                >
+                  <Heart 
+                    size={14} 
+                    color={item.is_liked ? colors.accent : colors.textMuted} 
+                    fill={item.is_liked ? colors.accent : 'transparent'} 
+                  />
+                  {item.like_count !== undefined && item.like_count > 0 && (
+                    <Text style={[styles.commentLikeCount, item.is_liked && { color: colors.accent }]}>
+                      {item.like_count}
+                    </Text>
+                  )}
+                </Pressable>
               </View>
               <Text style={styles.commentText}>{item.content}</Text>
             </View>
@@ -595,7 +678,15 @@ const PageItem = React.memo(({
       case 'h3':
         return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
       case 'paragraph':
-        return <Text key={key} style={styles.blockParagraph}>{block.text}</Text>;
+        return (
+          <Text 
+            key={key} 
+            style={styles.blockParagraph}
+            allowFontScaling={false}
+          >
+            {block.text}
+          </Text>
+        );
       case 'image':
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
@@ -604,7 +695,7 @@ const PageItem = React.memo(({
             key={key}
             source={imageSource}
             style={styles.blockImage}
-            contentFit="cover"
+            contentFit="contain"
             transition={300}
           />
         );
@@ -640,7 +731,7 @@ const PageItem = React.memo(({
       opacity, 
       transform: [{ translateY }], 
       height: Math.floor(containerHeight), // Ensure integer height for precise snapping
-      overflow: 'hidden',
+      alignSelf: 'stretch',
     }}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
@@ -672,7 +763,7 @@ const PageItem = React.memo(({
             </View>
           </View>
         )}
-        <View style={styles.blocksContainer}>
+        <View style={[styles.blocksContainer, { paddingBottom: 40 }]}>
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
       </ScrollView>
@@ -920,7 +1011,7 @@ function SinglePostReader({
 
   return (
     <KeyboardAvoidingView 
-      style={[styles.readerContainer, { paddingTop: insets.top, width: SCREEN_WIDTH }]}
+      style={[styles.readerContainer, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* 顶部栏 */}
@@ -1180,7 +1271,8 @@ function PostSwiper({
         offset: SCREEN_WIDTH * index,
         index,
       })}
-      renderItem={({ item, index }: { item: FeedItem, index: number }) => {
+      renderItem={({ item, index }: { item: unknown, index: number }) => {
+        const feedItem = item as FeedItem;
         const inputRange = [
           (index - 1) * SCREEN_WIDTH,
           index * SCREEN_WIDTH,
@@ -1202,14 +1294,14 @@ function PostSwiper({
         return (
           <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity }}>
             <PostLoader 
-              uid={item.uid} 
+              uid={feedItem.uid} 
               onClose={onClose} 
               onFeedLikeUpdate={onFeedLikeUpdate}
             />
           </Animated.View>
         );
       }}
-      keyExtractor={(item: FeedItem) => item.uid}
+      keyExtractor={(item: unknown) => (item as FeedItem).uid}
       showsHorizontalScrollIndicator={false}
       windowSize={3}
       initialNumToRender={1}
@@ -1308,35 +1400,38 @@ function HistoryScreen({
     return date.toLocaleDateString();
   };
 
-  const renderHistoryItem = ({ item }: { item: ProfileItem }) => (
-    <View style={styles.historyCard}>
-      <Pressable 
-        style={styles.historyCardInner}
-        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
-      >
-        <View style={styles.historyImageContainer}>
-          {item.thumbnail ? (
-            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
-          ) : (
-            <View style={[styles.historyImage, styles.historyPlaceholder]}>
-              <Text style={styles.historyPlaceholderText}>
-                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.historyInfo}>
-          <View style={styles.historyHeader}>
-            <Text style={styles.historyBadge}>{item.itemType}</Text>
-            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+  const renderHistoryItem = ({ item }: { item: unknown }) => {
+    const historyItem = item as ProfileItem;
+    return (
+      <View style={styles.historyCard}>
+        <Pressable 
+          style={styles.historyCardInner}
+          onPress={() => historyItem.itemType === 'post' && onItemPress(historyItem.itemId)}
+        >
+          <View style={styles.historyImageContainer}>
+            {historyItem.thumbnail ? (
+              <Image source={{ uri: historyItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+            ) : (
+              <View style={[styles.historyImage, styles.historyPlaceholder]}>
+                <Text style={styles.historyPlaceholderText}>
+                  {historyItem.itemType?.substring(0, 1).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.historyTitle} numberOfLines={2}>
-            {item.title || `${item.itemType} #${item.itemId}`}
-          </Text>
-        </View>
-      </Pressable>
-    </View>
-  );
+          <View style={styles.historyInfo}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyBadge}>{historyItem.itemType}</Text>
+              <Text style={styles.historyDate}>{formatDate(historyItem.createdAt)}</Text>
+            </View>
+            <Text style={styles.historyTitle} numberOfLines={2}>
+              {historyItem.title || `${historyItem.itemType} #${historyItem.itemId}`}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1474,44 +1569,47 @@ function LikesScreen({
     return date.toLocaleDateString();
   };
 
-  const renderLikeItem = ({ item }: { item: ProfileItem }) => (
-    <View style={styles.historyCard}>
-      <Pressable 
-        style={styles.historyCardInner}
-        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
-      >
-        <View style={styles.historyImageContainer}>
-          {item.thumbnail ? (
-            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
-          ) : (
-            <View style={[styles.historyImage, styles.historyPlaceholder]}>
-              <Text style={styles.historyPlaceholderText}>
-                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.historyInfo}>
-          <View style={styles.historyHeader}>
-            <Text style={styles.historyBadge}>{item.itemType}</Text>
-            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+  const renderLikeItem = ({ item }: { item: unknown }) => {
+    const likeItem = item as ProfileItem;
+    return (
+      <View style={styles.historyCard}>
+        <Pressable 
+          style={styles.historyCardInner}
+          onPress={() => likeItem.itemType === 'post' && onItemPress(likeItem.itemId)}
+        >
+          <View style={styles.historyImageContainer}>
+            {likeItem.thumbnail ? (
+              <Image source={{ uri: likeItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+            ) : (
+              <View style={[styles.historyImage, styles.historyPlaceholder]}>
+                <Text style={styles.historyPlaceholderText}>
+                  {likeItem.itemType?.substring(0, 1).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.historyTitle} numberOfLines={2}>
-            {item.title || `${item.itemType} #${item.itemId}`}
-          </Text>
-        </View>
-      </Pressable>
-      <Pressable 
-        onPress={() => handleUnlike(item.itemId, item.itemType)}
-        style={({ pressed }) => [
-          styles.unlikeButton,
-          pressed && { transform: [{ scale: 0.92 }], opacity: 0.8 }
-        ]}
-      >
-        <Heart size={22} color={colors.accent} fill={colors.accent} />
-      </Pressable>
-    </View>
-  );
+          <View style={styles.historyInfo}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyBadge}>{likeItem.itemType}</Text>
+              <Text style={styles.historyDate}>{formatDate(likeItem.createdAt)}</Text>
+            </View>
+            <Text style={styles.historyTitle} numberOfLines={2}>
+              {likeItem.title || `${likeItem.itemType} #${likeItem.itemId}`}
+            </Text>
+          </View>
+        </Pressable>
+        <Pressable 
+          onPress={() => handleUnlike(likeItem.itemId, likeItem.itemType)}
+          style={({ pressed }) => [
+            styles.unlikeButton,
+            pressed && { transform: [{ scale: 0.92 }], opacity: 0.8 }
+          ]}
+        >
+          <Heart size={22} color={colors.accent} fill={colors.accent} />
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -1830,8 +1928,9 @@ function SavedScreen({
   );
 
   // 渲染保存项
-  const renderSavedItem = ({ item, index }: { item: typeof savedPosts[0]; index: number }) => {
-    const localCover = getPostCover(item.uid);
+  const renderSavedItem = ({ item, index }: { item: unknown; index: number }) => {
+    const savedItem = item as typeof savedPosts[0];
+    const localCover = getPostCover(savedItem.uid);
     
     return (
       <Animated.View 
@@ -1842,11 +1941,11 @@ function SavedScreen({
       >
         <Pressable 
           style={styles.savedCardInner}
-          onPress={() => onItemPress(item.uid)}
+          onPress={() => onItemPress(savedItem.uid)}
         >
           {/* 封面图 */}
           <Image
-            source={localCover || { uri: item.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(item.title.slice(0, 5))}` }}
+            source={localCover || { uri: savedItem.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` }}
             style={styles.savedCardImage}
             contentFit="cover"
             transition={200}
@@ -1856,19 +1955,19 @@ function SavedScreen({
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
               <View style={styles.savedTopicBadge}>
-                <Text style={styles.savedTopicText}>#{formatTopicName(item.topic)}</Text>
+                <Text style={styles.savedTopicText}>#{formatTopicName(savedItem.topic)}</Text>
               </View>
             </View>
             
             <Text style={styles.savedCardTitle} numberOfLines={2}>
-              {item.title}
+              {savedItem.title}
             </Text>
             
             <View style={styles.savedCardFooter}>
               <View style={styles.savedTimeRow}>
                 <Clock size={12} color={colors.textMuted} />
                 <Text style={styles.savedTimeText}>
-                  {formatSavedTime(item.savedAt)}
+                  {formatSavedTime(savedItem.savedAt)}
                 </Text>
               </View>
             </View>
@@ -1877,10 +1976,10 @@ function SavedScreen({
           {/* 删除按钮 */}
           <Pressable 
             style={styles.savedDeleteButton}
-            onPress={() => handleUnsave(item.uid, item.title)}
+            onPress={() => handleUnsave(savedItem.uid, savedItem.title)}
             hitSlop={8}
           >
-            <X size={18} color={colors.textMuted} />
+            <Trash2 size={18} color={colors.textMuted} />
           </Pressable>
         </Pressable>
       </Animated.View>
@@ -2635,6 +2734,7 @@ const styles = StyleSheet.create({
   readerContainer: {
     flex: 1,
     backgroundColor: colors.card,
+    alignSelf: 'stretch',
   },
   readerHeader: {
     flexDirection: 'row',
@@ -2655,7 +2755,8 @@ const styles = StyleSheet.create({
   },
   readerScroll: {
     flex: 1,
-    width: SCREEN_WIDTH,
+    alignSelf: 'stretch',
+    backgroundColor: colors.card,
   },
   readerScrollContent: {
     
@@ -2763,7 +2864,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   blocksContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    width: '100%',
   },
   blockH1: {
     fontSize: 22,
@@ -2793,7 +2895,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
-    marginBottom: 12,
+    marginBottom: 16,
+    flexShrink: 1,
+    width: '100%',
+    flexWrap: 'wrap',
   },
   blockBullets: {
     marginVertical: 12,
@@ -2836,10 +2941,9 @@ const styles = StyleSheet.create({
   },
   blockImage: {
     width: '100%',
-    height: 200,
+    aspectRatio: 1,
     borderRadius: 10,
     marginVertical: 12,
-    backgroundColor: colors.border,
   },
   
   // Post Bottom Bar
@@ -3397,7 +3501,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  commentSortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: 8,
+    padding: 2,
+  },
+  sortButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  sortButtonActive: {
+    backgroundColor: colors.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sortButtonText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  sortDivider: {
+    width: 1,
+    height: 10,
+    backgroundColor: colors.border,
+    marginHorizontal: 2,
   },
   commentInputRow: {
     flexDirection: 'row',
@@ -3413,14 +3557,20 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    height: 40,
+    minHeight: 40,
+    maxHeight: 100,
     backgroundColor: colors.bg,
     borderRadius: 20,
     paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 14,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  commentSendButton: {
+    padding: 4,
   },
   commentLoginPrompt: {
     padding: 16,
@@ -3463,6 +3613,18 @@ const styles = StyleSheet.create({
   commentTime: {
     fontSize: 12,
     color: colors.textMuted,
+    marginTop: 2,
+  },
+  commentLikeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+  },
+  commentLikeCount: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
   },
   commentText: {
     fontSize: 14,

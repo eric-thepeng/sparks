@@ -423,7 +423,7 @@ function parseContentWithFallback(content: string, title: string): PostPage[] {
     }];
   }
 
-  const PARAGRAPHS_PER_PAGE = 10;
+  const PARAGRAPHS_PER_PAGE = 1000; // Effectively no limit to page length
   const pages: PostPage[] = [];
   
   for (let i = 0; i < paragraphs.length; i += PARAGRAPHS_PER_PAGE) {
