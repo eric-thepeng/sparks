@@ -393,5 +393,39 @@ export async function resetRecommendation(): Promise<ResetRecommendationResponse
   });
 }
 
+// ============================================================
+// Onboarding API
+// ============================================================
+
+/**
+ * 兴趣等级类型
+ */
+export type InterestLevel = 'none' | 'interested' | 'super_interested';
+
+/**
+ * Onboarding 响应
+ */
+export interface OnboardingResponse {
+  ok: boolean;
+  bucket_count: Record<string, number>;
+  click_count: number;
+}
+
+/**
+ * 提交 Onboarding 兴趣选择
+ * POST /api/onboarding
+ * 
+ * @param interests - bucket ID 到兴趣等级的映射
+ * @returns OnboardingResponse 包含更新后的 bucket_count
+ */
+export async function submitOnboarding(
+  interests: Record<string, InterestLevel>
+): Promise<OnboardingResponse> {
+  return request<OnboardingResponse>('/api/onboarding', {
+    method: 'POST',
+    body: JSON.stringify({ interests }),
+  });
+}
+
 // 导出类型
 export * from './types';

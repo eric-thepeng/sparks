@@ -28,7 +28,8 @@ import {
     ProfileItem,
     ApiPost 
   } from '../api';
-  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon, History as HistoryIcon, Heart, ChevronRight, Trash2 } from 'lucide-react-native';
+  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon, History as HistoryIcon, Heart, ChevronRight, Trash2, Sparkles } from 'lucide-react-native';
+import { OnboardingScreen } from './OnboardingScreen';
 
 // Reusing colors
 const colors = {
@@ -66,9 +67,12 @@ export const ProfileScreen = ({
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState<string | null>(null);
 
-  // Onboarding State
+  // Onboarding State (name selection)
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingName, setOnboardingName] = useState('');
+  
+  // Interests Onboarding Modal
+  const [showInterestsModal, setShowInterestsModal] = useState(false);
 
   // Sync state with user data
   useEffect(() => {
@@ -285,10 +289,21 @@ export const ProfileScreen = ({
         )}
 
         {!isEditing && (
-          <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
-            <LogOut size={18} color={colors.error} />
-            <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
-          </Pressable>
+          <>
+            {/* Update Interests Button */}
+            <Pressable 
+              style={[styles.button, styles.interestsButton]} 
+              onPress={() => setShowInterestsModal(true)}
+            >
+              <Sparkles size={18} color={colors.primary} />
+              <Text style={[styles.buttonText, { color: colors.primary }]}>Update Interests</Text>
+            </Pressable>
+
+            <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
+              <LogOut size={18} color={colors.error} />
+              <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
+            </Pressable>
+          </>
         )}
       </View>
     </View>
@@ -296,7 +311,24 @@ export const ProfileScreen = ({
 
   return (
     <View style={styles.container}>
-      {/* Onboarding Modal */}
+      {/* Interests Selection Modal */}
+      <Modal
+        visible={showInterestsModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowInterestsModal(false)}
+      >
+        <OnboardingScreen
+          showCloseButton={true}
+          onClose={() => setShowInterestsModal(false)}
+          onComplete={() => {
+            setShowInterestsModal(false);
+            Alert.alert('Success', 'Your preferences have been updated');
+          }}
+        />
+      </Modal>
+
+      {/* Name Onboarding Modal */}
       <Modal
         visible={showOnboarding}
         animationType="slide"
@@ -563,6 +595,11 @@ const styles = StyleSheet.create({
   logoutButton: {
     backgroundColor: '#fef2f2',
     marginTop: 8,
+  },
+  interestsButton: {
+    backgroundColor: colors.primaryBg,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   buttonText: {
     fontSize: 16,

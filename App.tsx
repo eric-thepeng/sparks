@@ -79,11 +79,12 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -1247,14 +1248,42 @@ function PostSwiper({
   items, 
   initialIndex, 
   onClose,
-  onFeedLikeUpdate
+  onFeedLikeUpdate,
+  onLoadMore
 }: { 
   items: FeedItem[]; 
   initialIndex: number; 
   onClose: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+  onLoadMore?: () => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const loadMoreTriggered = useRef(false);
+
+  // 检测是否接近列表末尾，触发加载更多
+  useEffect(() => {
+    const remainingItems = items.length - currentIndex - 1;
+    console.log('[PostSwiper] Current index:', currentIndex, 'Remaining:', remainingItems);
+    
+    if (remainingItems <= 2 && !loadMoreTriggered.current && onLoadMore) {
+      loadMoreTriggered.current = true;
+      console.log('[PostSwiper] Loading more posts...');
+      onLoadMore();
+      // 重置触发标记，允许再次触发
+      setTimeout(() => {
+        loadMoreTriggered.current = false;
+      }, 1000);
+    }
+  }, [currentIndex, items.length, onLoadMore]);
+
+  // 处理滑动结束，更新当前索引
+  const handleMomentumScrollEnd = useCallback((event: any) => {
+    const newIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < items.length) {
+      setCurrentIndex(newIndex);
+    }
+  }, [currentIndex, items.length]);
 
   return (
     <AnimatedFlatList
@@ -1266,6 +1295,7 @@ function PostSwiper({
         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
         { useNativeDriver: true }
       )}
+      onMomentumScrollEnd={handleMomentumScrollEnd}
       getItemLayout={(data: any, index: number) => ({
         length: SCREEN_WIDTH,
         offset: SCREEN_WIDTH * index,
@@ -1674,13 +1704,21 @@ function PlaceholderScreen({ title }: { title: string }) {
 // ============================================================
 function DebugPanel({ 
   visible, 
-  onClose 
+  onClose,
+  onResetComplete
 }: { 
   visible: boolean; 
   onClose: () => void;
+  onResetComplete?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { state, resetRecommendation, isResetting } = useRecommendation();
+  
+  // 包装 reset 函数，完成后调用 onResetComplete
+  const handleReset = useCallback(async () => {
+    await resetRecommendation();
+    onResetComplete?.();
+  }, [resetRecommendation, onResetComplete]);
   const { bucketCount, clickCount, lastSignal } = state;
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -1829,7 +1867,7 @@ function DebugPanel({
                 styles.debugResetButton,
                 isResetting && styles.debugResetButtonDisabled
               ]}
-              onPress={resetRecommendation}
+              onPress={handleReset}
               disabled={isResetting}
             >
               <RefreshCw 
@@ -2289,6 +2327,9 @@ function CollectionScreen({
 // ============================================================
 // 主应用内容
 // ============================================================
+// Onboarding 存储 key
+const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
+
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
@@ -2297,15 +2338,28 @@ function AppContent() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
+  
+  // 兴趣 Onboarding 状态
+  const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  // 使用 hooks 获取数据
+  // 使用帖子缓存系统
   const { 
-    feedItems, 
-    status: feedStatus, 
+    displayedPosts: feedItems, 
+    isLoading: feedLoading,
     error: feedError, 
     refetch: refetchFeed,
-    updateLocalLike: updateFeedLike
-  } = useFeedItems();
+    updateLocalLike: updateFeedLike,
+    consumeMultiple,
+    hasMore,
+    cacheStatus
+  } = usePostCache();
+  
+  // 收藏系统（用于刷新）
+  const { refreshSavedPosts } = useSaved();
+  
+  // 兼容旧的 status 变量
+  const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
@@ -2324,6 +2378,54 @@ function AppContent() {
     }
     prevTokenRef.current = token;
   }, [token]);
+
+  // 检测是否需要显示兴趣 Onboarding
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (!token || !user) {
+        setOnboardingChecked(true);
+        return;
+      }
+      
+      try {
+        // 使用用户 ID 作为 key 的一部分，这样不同用户有独立的 onboarding 状态
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        const completed = await AsyncStorage.getItem(key);
+        
+        if (!completed) {
+          // 用户尚未完成 onboarding
+          console.log('[Onboarding] First time user, showing interests selection');
+          setShowInterestsOnboarding(true);
+        }
+      } catch (error) {
+        console.log('[Onboarding] Failed to check status:', error);
+      }
+      
+      setOnboardingChecked(true);
+    };
+    
+    checkOnboarding();
+  }, [token, user]);
+
+  // 完成 Onboarding 的回调
+  // 后端会清除所有用户数据（历史、收藏、点赞、评论），需要同步刷新前端状态
+  const handleOnboardingComplete = useCallback(async () => {
+    if (user) {
+      try {
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        await AsyncStorage.setItem(key, 'true');
+        console.log('[Onboarding] Marked as completed');
+      } catch (error) {
+        console.log('[Onboarding] Failed to save status:', error);
+      }
+    }
+    setShowInterestsOnboarding(false);
+    
+    // 刷新所有相关数据（后端会清空用户数据）
+    console.log('[Onboarding] Refreshing all user data...');
+    refetchFeed();           // 刷新帖子推荐
+    refreshSavedPosts();     // 刷新收藏列表（会变空）
+  }, [user, refetchFeed, refreshSavedPosts]);
 
   // Reset internal states when switching tabs
   useEffect(() => {
@@ -2357,6 +2459,17 @@ function AppContent() {
           );
         }
         
+        // 检测滚动到底部，加载更多帖子
+        const handleFeedScroll = (event: any) => {
+          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+          const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
+          
+          if (isNearBottom && hasMore && !feedLoading) {
+            console.log('[Feed] Near bottom, loading more...');
+            consumeMultiple(2);
+          }
+        };
+
         return (
           <>
             {/* 顶部 Header */}
@@ -2367,14 +2480,20 @@ function AppContent() {
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
+              onScroll={handleFeedScroll}
+              scrollEventThrottle={400}
             >
               <MasonryFeed 
                 items={feedItems} 
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
-              {feedStatus === 'loading' ? (
+              {feedLoading ? (
                 <View style={styles.loadingMore}>
                   <Text style={styles.loadingMoreText}>Loading...</Text>
+                </View>
+              ) : hasMore ? (
+                <View style={styles.loadingMore}>
+                  <Text style={styles.loadingMoreText}>Scroll for more • Cache: {cacheStatus.cachedCount}</Text>
                 </View>
               ) : (
                 <Text style={styles.endText}>— End of List —</Text>
@@ -2449,6 +2568,18 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
+      {/* 兴趣 Onboarding Modal */}
+      <Modal
+        visible={showInterestsOnboarding}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {}} // 阻止关闭
+      >
+        <OnboardingScreen
+          onComplete={handleOnboardingComplete}
+        />
+      </Modal>
+
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
       
@@ -2470,6 +2601,7 @@ function AppContent() {
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
               onFeedLikeUpdate={updateFeedLike}
+              onLoadMore={() => consumeMultiple(1)}
             />
           ) : (
              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -2504,7 +2636,13 @@ function AppContent() {
         {/* Debug Panel */}
         <DebugPanel 
           visible={showDebugPanel} 
-          onClose={() => setShowDebugPanel(false)} 
+          onClose={() => setShowDebugPanel(false)}
+          onResetComplete={() => {
+            // 后端会清空所有用户数据，同步刷新前端
+            console.log('[DebugPanel] Reset complete, refreshing all data...');
+            refetchFeed();
+            refreshSavedPosts();
+          }}
         />
 
         {/* Debug Toggle Button (开发模式可见) */}
@@ -2528,11 +2666,13 @@ export default function App() {
   return (
     <AuthProvider>
       <RecommendationProvider>
-        <SavedProvider>
-          <NotesProvider>
-            <AppContent />
-          </NotesProvider>
-        </SavedProvider>
+        <PostCacheProvider>
+          <SavedProvider>
+            <NotesProvider>
+              <AppContent />
+            </NotesProvider>
+          </SavedProvider>
+        </PostCacheProvider>
       </RecommendationProvider>
     </AuthProvider>
   );
