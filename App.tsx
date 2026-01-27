@@ -370,15 +370,11 @@ function FeedCard({
             {item.title}
           </Text>
           
-          {/* 底部：用户信息 + 点赞 */}
+          {/* 底部：话题标签 + 点赞 */}
           <View style={styles.cardFooter}>
-            <View style={styles.userInfo}>
-              <Image
-                source={{ uri: item.user.avatar }}
-                style={styles.avatar}
-              />
-              <Text style={styles.userName} numberOfLines={1}>
-                {item.user.name}
+            <View style={styles.topicInfo}>
+              <Text style={styles.topicName} numberOfLines={1}>
+                #{formatTopicName(item.topic)}
               </Text>
             </View>
             
@@ -773,7 +769,7 @@ const PageItem = React.memo(({
         }}
       >
         {isFirstPage && (
-          <View style={{ marginBottom: 20 }}>
+          <View style={{ marginBottom: 4 }}>
             <Image
               source={getPostCoverImage(post)}
               style={styles.coverImage}
@@ -1918,6 +1914,7 @@ function SavedScreen({
   onItemPress: (uid: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
   
   // 删除动画
@@ -1957,20 +1954,26 @@ function SavedScreen({
     return formatRelativeTime(isoString);
   };
 
-  // 渲染空状态
+  // 渲染空状态（未登录显示提示登录；已登录无收藏显示「无保存」）
   const renderEmptyState = () => (
     <View style={styles.savedEmptyContainer}>
       <View style={styles.savedEmptyIcon}>
         <BookmarkPlus size={48} color={colors.primaryLight} strokeWidth={1.5} />
       </View>
-      <Text style={styles.savedEmptyTitle}>No Saved Posts</Text>
-      <Text style={styles.savedEmptySubtitle}>
-        Tap Save while reading posts{'\n'}to revisit them anytime
+      <Text style={styles.savedEmptyTitle}>
+        {token ? 'No Saved Posts' : 'Please log in to use the saved tab'}
       </Text>
-      <View style={styles.savedEmptyHint}>
-        <Bookmark size={16} color={colors.textMuted} />
-        <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
-      </View>
+      {token ? (
+        <>
+          <Text style={styles.savedEmptySubtitle}>
+            Tap Save while reading posts{'\n'}to revisit them anytime
+          </Text>
+          <View style={styles.savedEmptyHint}>
+            <Bookmark size={16} color={colors.textMuted} />
+            <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 
@@ -1992,7 +1995,7 @@ function SavedScreen({
         >
           {/* 封面图 */}
           <Image
-            source={localCover || { uri: savedItem.coverImageUrl || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` }}
+            source={localCover || (savedItem.coverImageUri ? { uri: savedItem.coverImageUri } : { uri: `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` })}
             style={styles.savedCardImage}
             contentFit="cover"
             transition={300}
@@ -2826,23 +2829,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  topicInfo: {
     flex: 1,
     marginRight: 8,
   },
-  avatar: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.border,
-    marginRight: 4,
-  },
-  userName: {
+  topicName: {
     fontSize: 11,
-    color: colors.textSecondary,
-    flex: 1,
+    color: colors.primary,
+    fontWeight: '600',
   },
   likeButton: {
     flexDirection: 'row',
@@ -2991,7 +2985,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   titleContainer: {
-    padding: 16,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   postTitle: {
     fontSize: 22,
@@ -3044,7 +3040,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
-    marginBottom: 16,
+    marginBottom: 12,
     flexShrink: 1,
     width: '100%',
     flexWrap: 'wrap',
@@ -3092,7 +3088,8 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     borderRadius: 10,
-    marginVertical: 12,
+    marginTop: 0,
+    marginBottom: 12,
   },
   
   // Post Bottom Bar
@@ -3825,19 +3822,17 @@ const styles = StyleSheet.create({
   // ============================================================
   // History & Likes Screen Styles
   // ============================================================
+  listContent: {
+    paddingTop: 0,
+    paddingHorizontal: 0,
+  },
   historyCard: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: Platform.OS === 'ios' ? 0.5 : 0,
-    borderColor: colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
   },
   historyCardInner: {
     flex: 1,

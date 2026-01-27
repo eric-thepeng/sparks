@@ -214,12 +214,16 @@ export function SavedProvider({ children }: SavedProviderProps) {
       uid: post.uid,
       title: post.title,
       topic: post.topic,
-      coverImageUri: 'coverImage' in post && typeof post.coverImage === 'object' && 'uri' in post.coverImage 
-        ? (post.coverImage as { uri: string }).uri 
-        : undefined,
+      coverImageUri: 
+        ('coverImageUrl' in post && post.coverImageUrl) ? post.coverImageUrl :
+        ('coverImage' in post && typeof post.coverImage === 'object' && 'uri' in post.coverImage) 
+          ? (post.coverImage as { uri: string }).uri 
+          : undefined,
       savedAt: new Date().toISOString(),
       syncedToServer: false,
     };
+
+    console.log('[SavedContext] Saving post:', JSON.stringify(newSavedPost, null, 2));
 
     const updatedPosts = [newSavedPost, ...savedPosts];
     setSavedPosts(updatedPosts);
@@ -334,6 +338,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
     try {
       // 1. Fetch remote saved posts
       const remoteSavedPosts = await fetchSavedPostsApi();
+      console.log('[SavedContext] Remote saved posts:', JSON.stringify(remoteSavedPosts, null, 2));
       
       // 2. Convert remote posts to SavedPost format
       // All posts are RichPost format

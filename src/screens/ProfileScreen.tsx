@@ -28,7 +28,21 @@ import {
     ProfileItem,
     ApiPost 
   } from '../api';
-  import { Camera, LogOut, Save, X, Globe, Clock, User as UserIcon, History as HistoryIcon, Heart, ChevronRight, Trash2, Sparkles } from 'lucide-react-native';
+  import { 
+  Camera, 
+  LogOut, 
+  Save, 
+  X, 
+  Globe, 
+  Clock, 
+  User as UserIcon, 
+  History as HistoryIcon, 
+  Heart, 
+  ChevronRight, 
+  Trash2, 
+  Sparkles,
+  Pencil
+} from 'lucide-react-native';
 import { OnboardingScreen } from './OnboardingScreen';
 
 // Reusing colors
@@ -43,6 +57,56 @@ const colors = {
   border: '#e2e8f0',
   error: '#ef4444',
   success: '#22c55e',
+};
+
+// Formatting Helpers
+const formatLanguage = (langCode: string | null) => {
+  if (!langCode) return 'English';
+  
+  try {
+    // @ts-ignore
+    if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+      // @ts-ignore
+      const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
+      // zh-Hans-US -> zh-Hans
+      const parts = langCode.split('-');
+      // Try with more specific code first if it has script (e.g. zh-Hans)
+      let codeToUse = parts[0];
+      if (parts[1] && parts[1].length > 2) {
+        codeToUse = `${parts[0]}-${parts[1]}`;
+      }
+      
+      const name = displayNames.of(codeToUse);
+      if (name) return name;
+    }
+  } catch (e) {}
+
+  // Fallback map
+  const langMap: Record<string, string> = {
+    'zh': 'Chinese',
+    'en': 'English',
+    'ja': 'Japanese',
+    'ko': 'Korean',
+    'fr': 'French',
+    'de': 'German',
+    'es': 'Spanish',
+    'ru': 'Russian',
+    'pt': 'Portuguese',
+    'it': 'Italian',
+  };
+  
+  const base = langCode.split('-')[0].toLowerCase();
+  return langMap[base] || langCode;
+};
+
+const formatLocation = (timezone: string | null) => {
+  if (!timezone || timezone === 'UTC') return 'Global';
+  
+  // Asia/Shanghai -> Shanghai
+  // America/New_York -> New York
+  const parts = timezone.split('/');
+  const city = parts[parts.length - 1];
+  return city.replace(/_/g, ' ');
 };
 
 export const ProfileScreen = ({ 
@@ -247,11 +311,11 @@ export const ProfileScreen = ({
       {/* Info Rows (ReadOnly) */}
       <View style={styles.infoRow}>
         <Globe size={16} color={colors.textMuted} />
-        <Text style={styles.infoText}>{user?.language || 'English'}</Text>
+        <Text style={styles.infoText}>{formatLanguage(user?.language)}</Text>
       </View>
       <View style={styles.infoRow}>
         <Clock size={16} color={colors.textMuted} />
-        <Text style={styles.infoText}>{user?.timezone || 'UTC'}</Text>
+        <Text style={styles.infoText}>{formatLocation(user?.timezone)}</Text>
       </View>
 
       {/* Actions */}
@@ -280,15 +344,6 @@ export const ProfileScreen = ({
             </Pressable>
           </View>
         ) : (
-          <Pressable 
-            style={[styles.button, styles.editButton]} 
-            onPress={() => setIsEditing(true)}
-          >
-            <Text style={[styles.buttonText, { color: colors.text }]}>Edit Profile</Text>
-          </Pressable>
-        )}
-
-        {!isEditing && (
           <>
             {/* Update Interests Button */}
             <Pressable 
@@ -369,11 +424,17 @@ export const ProfileScreen = ({
         {/* Top Right Actions */}
         {!isEditing && (
           <View style={styles.headerRight}>
+            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
+              <Heart size={24} color={colors.text} />
+            </Pressable>
             <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
               <HistoryIcon size={24} color={colors.text} />
             </Pressable>
-            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
-              <Heart size={24} color={colors.text} />
+            <Pressable 
+              style={styles.headerActionButton} 
+              onPress={() => setIsEditing(true)}
+            >
+              <Pencil size={24} color={colors.error} />
             </Pressable>
           </View>
         )}
@@ -436,7 +497,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 20,
     right: 16,
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 8,
   },
   headerActionButton: {
@@ -575,11 +636,6 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
-  },
-  editButton: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   cancelButton: {
     backgroundColor: colors.bg,
