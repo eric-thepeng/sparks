@@ -26,10 +26,10 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { 
-  Heart, 
-  ChevronLeft, 
-  Search, 
+import {
+  Heart,
+  ChevronLeft,
+  Search,
   LayoutGrid,
   Bookmark,
   BookmarkCheck,
@@ -46,27 +46,28 @@ import {
 } from 'lucide-react-native';
 
 // 数据层
-import { 
-  getFeedItems, 
-  getPost, 
-  getPostCover, 
+import {
+  getFeedItems,
+  getPost,
+  getPostCover,
   getPostImage,
   getPostCoverImage,
   getBlockImage,
-  FeedItem, 
-  Post, 
-  PostPage, 
-  ContentBlock 
+  FeedItem,
+  Post,
+  PostPage,
+  ContentBlock
 } from './src/data';
 
-import { 
-  fetchComments, 
-  createComment, 
-  likeItem, 
+import {
+  fetchComments,
+  createComment,
+  likeItem,
   unlikeItem,
   getMyHistory,
   getMyLikes,
-  clearHistory
+  clearHistory,
+  recordHistory
 } from './src/api';
 import { Comment, ProfileItem } from './src/api/types';
 
@@ -133,9 +134,9 @@ function Header() {
       <Pressable style={styles.headerIcon}>
         <Search size={22} color={colors.text} />
       </Pressable>
-      
+
       <TopTabs />
-      
+
       <View style={{ width: 40 }} />
     </View>
   );
@@ -146,24 +147,24 @@ function Header() {
 // ============================================================
 function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
   const insets = useSafeAreaInsets();
-  
+
   const items = [
     { key: 'explore', icon: Sparkles, label: '', isMain: true },
     { key: 'collection', icon: LayoutGrid, label: 'Collection' },
     { key: 'saved', icon: Bookmark, label: 'Saved' },
     { key: 'me', icon: User, label: 'Me' },
   ];
-  
+
   return (
     <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;
-        
+
         if (item.isMain) {
           return (
-            <Pressable 
-              key={item.key} 
+            <Pressable
+              key={item.key}
               style={[styles.mainButton, isActive && styles.mainButtonActive]}
               onPress={() => onTabChange(item.key)}
             >
@@ -171,15 +172,15 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
             </Pressable>
           );
         }
-        
+
         return (
           <Pressable
             key={item.key}
             style={styles.navItem}
             onPress={() => onTabChange(item.key)}
           >
-            <Icon 
-              size={22} 
+            <Icon
+              size={22}
               color={isActive ? colors.primary : colors.textMuted}
             />
             <Text style={[
@@ -198,12 +199,12 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
 // ============================================================
 // Feed 卡片
 // ============================================================
-function FeedCard({ 
-  item, 
+function FeedCard({
+  item,
   onPress,
   index = 0,
-}: { 
-  item: FeedItem; 
+}: {
+  item: FeedItem;
   onPress: () => void;
   index?: number;
 }) {
@@ -211,7 +212,7 @@ function FeedCard({
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
-  
+
   // Entry Animation
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
@@ -249,7 +250,7 @@ function FeedCard({
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-    
+
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -293,13 +294,13 @@ function FeedCard({
           contentFit="cover"
           transition={200}
         />
-        
+
         {/* 内容 */}
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle} numberOfLines={5}>
             {item.title}
           </Text>
-          
+
           {/* 底部：用户信息 + 点赞 */}
           <View style={styles.cardFooter}>
             <View style={styles.userInfo}>
@@ -311,11 +312,11 @@ function FeedCard({
                 {item.user.name}
               </Text>
             </View>
-            
+
             <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
               <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-                <Heart 
-                  size={14} 
+                <Heart
+                  size={14}
                   color={isLiked ? colors.accent : colors.textMuted}
                   fill={isLiked ? colors.accent : 'transparent'}
                 />
@@ -337,17 +338,17 @@ function FeedCard({
 // ============================================================
 // 瀑布流 Feed
 // ============================================================
-function MasonryFeed({ 
-  items, 
-  onItemPress 
-}: { 
-  items: FeedItem[]; 
+function MasonryFeed({
+  items,
+  onItemPress
+}: {
+  items: FeedItem[];
   onItemPress: (uid: string) => void;
 }) {
   // 分配到两列
   const leftColumn: FeedItem[] = [];
   const rightColumn: FeedItem[] = [];
-  
+
   items.forEach((item, index) => {
     if (index % 2 === 0) {
       leftColumn.push(item);
@@ -355,7 +356,7 @@ function MasonryFeed({
       rightColumn.push(item);
     }
   });
-  
+
   return (
     <View style={styles.masonry}>
       {/* 左列 */}
@@ -369,7 +370,7 @@ function MasonryFeed({
           />
         ))}
       </View>
-      
+
       {/* 右列 */}
       <View style={styles.column}>
         {rightColumn.map((item, index) => (
@@ -416,7 +417,7 @@ function CommentSection({ postId }: { postId: string }) {
 
   const handleSend = async () => {
     if (!inputText.trim() || !user) return;
-    
+
     setIsSending(true);
     try {
       const newComment = await createComment(postId, { content: inputText.trim() });
@@ -440,7 +441,7 @@ function CommentSection({ postId }: { postId: string }) {
   return (
     <View style={styles.commentSection}>
       <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
-      
+
       {/* Comment Input */}
       {user ? (
         <View style={styles.commentInputRow}>
@@ -492,19 +493,19 @@ function CommentSection({ postId }: { postId: string }) {
 // ============================================================
 // Page Item Component (for Vertical FlatList)
 // ============================================================
-type ReaderItem = 
+type ReaderItem =
   | { type: 'page'; page: PostPage; index: number };
 
-const PageItem = React.memo(({ 
-  item, 
+const PageItem = React.memo(({
+  item,
   post,
   isVisible,
   containerHeight,
   isLastPage
-}: { 
-  item: ReaderItem; 
+}: {
+  item: ReaderItem;
   post: Post;
-  isVisible: boolean; 
+  isVisible: boolean;
   containerHeight: number;
   isLastPage: boolean;
 }) => {
@@ -535,7 +536,7 @@ const PageItem = React.memo(({
   // Render content block helper
   const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
     const key = `${pageIdx}-${idx}`;
-    
+
     // Skip h1 on the first page since we render the title in the header UI
     if (pageIdx === 0 && block.type === 'h1') return null;
 
@@ -547,18 +548,31 @@ const PageItem = React.memo(({
       case 'h3':
         return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
       case 'paragraph':
-        return <Text key={key} style={styles.blockParagraph}>{block.text}</Text>;
+        return (
+          <View key={key} style={{ width: '100%', marginBottom: 16 }}>
+            <Text
+              style={styles.blockParagraph}
+              allowFontScaling={false}
+            >
+              {block.text}
+            </Text>
+          </View>
+        );
       case 'image':
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
-          <Image
-            key={key}
-            source={imageSource}
-            style={styles.blockImage}
-            contentFit="cover"
-            transition={300}
-          />
+          <View key={key} style={{ marginBottom: 12 }}>
+            <Image
+              source={imageSource}
+              style={styles.blockImage}
+              contentFit="cover"
+              transition={300}
+            />
+            {block.text ? (
+              <Text style={styles.imageCaption}>{block.text}</Text>
+            ) : null}
+          </View>
         );
       case 'bullets':
         return (
@@ -588,24 +602,25 @@ const PageItem = React.memo(({
 
   // Regular Page - Improved layout to prevent "stuck" pages and ensure smooth snapping
   return (
-    <Animated.View style={{ 
-      opacity, 
-      transform: [{ translateY }], 
+    <Animated.View style={{
+      opacity,
+      transform: [{ translateY }],
       height: Math.floor(containerHeight), // Ensure integer height for precise snapping
       overflow: 'hidden',
     }}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        bounces={false} 
-        overScrollMode="never"
+        bounces={true}
+        overScrollMode="auto"
         scrollEventThrottle={16}
-        decelerationRate={0.85} // Match the outer list's heavy feel
-        contentContainerStyle={{ 
-          paddingTop: isFirstPage ? 0 : 20, 
-          paddingBottom: isLastPage ? 150 : 80, 
-          paddingHorizontal: 0 
+        decelerationRate="normal"
+        contentContainerStyle={{
+          flexGrow: 1, // Ensure container grows to fill/exceed screen
+          paddingTop: isFirstPage ? 0 : 20,
+          paddingBottom: isLastPage ? 150 : 100, // Increased bottom padding
+          paddingHorizontal: 0
         }}
       >
         {isFirstPage && (
@@ -647,17 +662,20 @@ function SinglePostReader({
   const [currentPage, setCurrentPage] = useState(0);
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
-  
+
+  // Recommendation signals
+  const { sendLike, sendSave, trackReadProgress, resetProgress, sendClick } = useRecommendation();
+
   // Header is 50, Bottom bar is 60, plus safe areas
   const readerHeaderHeight = 50;
   const bottomBarHeight = 60;
   const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
-  
+
   // Prepare list data: Combine header into first page
-  const readerData: ReaderItem[] = post.pages.map((p, i) => ({ 
-    type: 'page' as const, 
-    page: p, 
-    index: i 
+  const readerData: ReaderItem[] = post.pages.map((p, i) => ({
+    type: 'page' as const,
+    page: p,
+    index: i
   }));
 
   // Reset page indicator when post changes
@@ -667,11 +685,20 @@ function SinglePostReader({
     setVisiblePages(new Set([0]));
     flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     setShowComments(false); // Reset comments view on post change
-  }, [post.uid]);
+    setIsLiked(!!post.isLiked);
+    setLikeCount(post.likeCount || 0);
+    resetProgress(post.uid); // Reset read progress tracking
+
+    // Record history and send click signal
+    if (post.uid) {
+      recordHistory(post.uid).catch(err => console.log('Failed to record history', err));
+      sendClick(post.uid);
+    }
+  }, [post.uid, post.isLiked, post.likeCount, resetProgress, sendClick]);
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
-  
+
   // Like functionality
   const [isLiked, setIsLiked] = useState(!!post.isLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount || 0);
@@ -682,10 +709,10 @@ function SinglePostReader({
   const { isPostSaved, toggleSavePost } = useSaved();
   const isBookmarked = isPostSaved(post.uid);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Save animation
   const saveScale = useRef(new Animated.Value(1)).current;
-  
+
   // Update dots animation when page changes
   useEffect(() => {
     // Animate the active dot and reset others
@@ -701,7 +728,7 @@ function SinglePostReader({
 
   // Viewability Config - reduced threshold to make it more responsive when scrolling back
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 40, 
+    itemVisiblePercentThreshold: 40,
     minimumViewTime: 0,
   }).current;
 
@@ -710,18 +737,18 @@ function SinglePostReader({
       // Find the page that is most visible (top-most in case of ties)
       const visibleIndices = viewableItems.map((item: any) => item.index);
       const newPage = Math.min(...visibleIndices);
-      
+
       // Update revealed pages
       setVisiblePages(prev => {
         const next = new Set(prev);
         visibleIndices.forEach((idx: number) => next.add(idx));
         return next;
       });
-      
+
       if (newPage !== currentPageRef.current && newPage >= 0 && newPage < post.pages.length) {
         currentPageRef.current = newPage;
         setCurrentPage(newPage);
-        
+
         // Animate page indicator text
         pageTextScale.setValue(1);
         Animated.sequence([
@@ -748,7 +775,7 @@ function SinglePostReader({
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-    
+
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -822,7 +849,7 @@ function SinglePostReader({
   }, [showComments]);
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={[styles.readerContainer, { paddingTop: insets.top, width: SCREEN_WIDTH }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
@@ -831,21 +858,21 @@ function SinglePostReader({
         <Pressable onPress={onClose} style={styles.closeButton}>
           <ChevronLeft size={28} color={colors.text} />
         </Pressable>
-        
+
         {/* 页码指示器 */}
         <View style={styles.pageDotsHeader}>
           {post.pages.map((_, idx) => (
             <Animated.View
               key={idx}
               style={[
-                styles.dotSmall, 
+                styles.dotSmall,
                 currentPage === idx && styles.dotSmallActive,
                 { transform: [{ scale: dotScales[idx] || 1 }] }
               ]}
             />
           ))}
         </View>
-        
+
         <Animated.Text style={[
           styles.pageIndicator,
           { transform: [{ scale: pageTextScale }] }
@@ -860,21 +887,25 @@ function SinglePostReader({
         data={readerData}
         keyExtractor={(_, index) => `reader-item-${index}`}
         renderItem={({ item, index }) => (
-          <PageItem 
-            item={item} 
+          <PageItem
+            item={item}
             post={post}
             isVisible={visiblePages.has(index)}
             containerHeight={Math.floor(containerHeight)}
             isLastPage={index === readerData.length - 1}
+            onScrollStateChange={(canScrollParent) => {
+              // Optional: Implement lock if needed, but trying nestedScrollEnabled first
+            }}
           />
         )}
         style={styles.readerScroll}
         showsVerticalScrollIndicator={false}
         pagingEnabled={false}
+        nestedScrollEnabled={true}
         snapToInterval={Math.floor(containerHeight)}
         snapToAlignment="start"
         decelerationRate={0.85} // Lower value makes scrolling "heavier" and deceleration faster
-        disableIntervalMomentum={true} 
+        disableIntervalMomentum={true}
         scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
           length: Math.floor(containerHeight),
@@ -894,11 +925,11 @@ function SinglePostReader({
       />
 
       {/* 底部操作栏 */}
-      <View 
+      <View
         style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
       >
         {/* 评论输入区域 - 占2/3宽度 */}
-        <Pressable 
+        <Pressable
           style={styles.noteInputContainer}
           onPress={() => setShowComments(true)}
         >
@@ -911,14 +942,14 @@ function SinglePostReader({
         {/* 操作按钮区域 - 占1/3宽度 */}
         <View style={styles.actionButtons}>
           {/* 点赞按钮 */}
-          <Pressable 
-            style={styles.actionButton} 
+          <Pressable
+            style={styles.actionButton}
             onPress={handleLike}
             disabled={isLiking}
           >
             <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-              <Heart 
-                size={22} 
+              <Heart
+                size={22}
                 color={isLiked ? colors.accent : colors.textSecondary}
                 fill={isLiked ? colors.accent : 'transparent'}
               />
@@ -932,21 +963,21 @@ function SinglePostReader({
           </Pressable>
 
           {/* 收藏按钮 - 带动画 */}
-          <Pressable 
-            style={styles.actionButton} 
+          <Pressable
+            style={styles.actionButton}
             onPress={handleBookmark}
             disabled={isSaving}
           >
             <Animated.View style={{ transform: [{ scale: saveScale }] }}>
               {isBookmarked ? (
-                <BookmarkCheck 
-                  size={22} 
+                <BookmarkCheck
+                  size={22}
                   color={colors.primary}
                   fill={colors.primary}
                 />
               ) : (
-                <Bookmark 
-                  size={22} 
+                <Bookmark
+                  size={22}
                   color={colors.textSecondary}
                 />
               )}
@@ -970,7 +1001,7 @@ function SinglePostReader({
       {/* Floating Comment Sheet */}
       <Animated.View style={[
         styles.commentSheet,
-        { 
+        {
           transform: [{ translateY: commentSheetTranslateY }],
           paddingBottom: insets.bottom + 20
         }
@@ -992,8 +1023,39 @@ function SinglePostReader({
 // ============================================================
 // Post Loader (Fetches individual post)
 // ============================================================
-function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
-  const { post, status, error, refetch } = usePost(uid);
+function PostLoader({
+  uid,
+  onClose,
+  onFeedLikeUpdate
+}: {
+  uid: string,
+  onClose: () => void,
+  onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+}) {
+  const { post, status, error, refetch, updateLocalLike } = usePost(uid);
+  const { sendClick } = useRecommendation();
+
+  // 发送 CLICK 信号（帖子加载成功时）
+  useEffect(() => {
+    console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status });
+    if (post && status === 'success') {
+      console.log('[PostLoader] Calling sendClick for:', post.uid);
+
+      // Debug log for text content to verify truncation
+      post.pages.forEach((p, pi) => {
+        p.blocks.forEach((b, bi) => {
+          if (b.type === 'paragraph' && b.text) {
+            console.log(`[PostContent] Page ${pi} Block ${bi}: "${b.text.substring(0, 20)}..." (len: ${b.text.length})`);
+            if (b.text.endsWith('We a')) {
+              console.log('[PostContent] DETECTED TRUNCATION at "We a"');
+            }
+          }
+        });
+      });
+
+      sendClick(post.uid);
+    }
+  }, [post?.uid, status, sendClick]);
 
   if (status === 'loading') {
     return (
@@ -1005,13 +1067,13 @@ function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
       </View>
     );
   }
-  
+
   if (status === 'error' || !post) {
     return (
       <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
-        <ErrorScreen 
-          message={error || 'Failed to load post'} 
-          onRetry={refetch} 
+        <ErrorScreen
+          message={error || 'Failed to load post'}
+          onRetry={refetch}
         />
         <Pressable style={styles.modalCloseButton} onPress={onClose}>
           <X size={24} color={colors.text} />
@@ -1028,14 +1090,14 @@ function PostLoader({ uid, onClose }: { uid: string, onClose: () => void }) {
 // ============================================================
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
-function PostSwiper({ 
-  items, 
-  initialIndex, 
-  onClose 
-}: { 
-  items: FeedItem[]; 
-  initialIndex: number; 
-  onClose: () => void; 
+function PostSwiper({
+  items,
+  initialIndex,
+  onClose
+}: {
+  items: FeedItem[];
+  initialIndex: number;
+  onClose: () => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
 
@@ -1060,13 +1122,13 @@ function PostSwiper({
           index * SCREEN_WIDTH,
           (index + 1) * SCREEN_WIDTH,
         ];
-        
+
         const scale = scrollX.interpolate({
           inputRange,
           outputRange: [0.9, 1, 0.9],
           extrapolate: 'clamp',
         });
-        
+
         const opacity = scrollX.interpolate({
           inputRange,
           outputRange: [0.6, 1, 0.6],
@@ -1094,10 +1156,10 @@ function PostSwiper({
 // ============================================================
 // 历史页面 - History Screen
 // ============================================================
-function HistoryScreen({ 
+function HistoryScreen({
   onItemPress,
   onBack
-}: { 
+}: {
   onItemPress: (uid: string) => void;
   onBack: () => void;
 }) {
@@ -1108,16 +1170,20 @@ function HistoryScreen({
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
 
+  const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef(false);
+
   const loadHistory = useCallback(async (isRefresh = false) => {
     if (!user) return;
-    if (!isRefresh && !nextCursor && historyData.length > 0) return;
-    if (!isRefresh && error) return;
+    if (loadingRef.current) return;
+    if (!isRefresh && !hasMore) return;
 
+    loadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
-      
+
       const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
         const combined = isRefresh ? items : [...existingItems, ...items];
         const seen = new Set();
@@ -1133,15 +1199,18 @@ function HistoryScreen({
       } else {
         setHistoryData(prev => processItems(response.items, prev));
       }
+
       setNextCursor(response.nextCursor);
+      setHasMore(!!response.nextCursor);
     } catch (e) {
       console.log('Failed to load history', e);
       setError(true);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, nextCursor, historyData.length, error]);
+  }, [user, nextCursor, hasMore]);
 
   useEffect(() => {
     loadHistory(true);
@@ -1155,8 +1224,8 @@ function HistoryScreen({
   const handleClearHistory = () => {
     Alert.alert('Clear History', 'Are you sure you want to clear your entire history?', [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Clear', 
+      {
+        text: 'Clear',
         style: 'destructive',
         onPress: async () => {
           const prevData = [...historyData];
@@ -1180,7 +1249,7 @@ function HistoryScreen({
 
   const renderHistoryItem = ({ item }: { item: ProfileItem }) => (
     <View style={styles.historyCard}>
-      <Pressable 
+      <Pressable
         style={styles.historyCardInner}
         onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
       >
@@ -1211,8 +1280,8 @@ function HistoryScreen({
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable 
-          style={styles.modalCloseButtonInline} 
+        <Pressable
+          style={styles.modalCloseButtonInline}
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -1266,11 +1335,11 @@ function HistoryScreen({
 // ============================================================
 // 点赞页面 - Likes Screen
 // ============================================================
-function LikesScreen({ 
+function LikesScreen({
   onItemPress,
   onToggleLike,
   onBack
-}: { 
+}: {
   onItemPress: (uid: string) => void;
   onToggleLike?: () => void;
   onBack: () => void;
@@ -1282,16 +1351,20 @@ function LikesScreen({
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
 
+  const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef(false);
+
   const loadLikes = useCallback(async (isRefresh = false) => {
     if (!user) return;
-    if (!isRefresh && !nextCursor && likesData.length > 0) return;
-    if (!isRefresh && error) return;
+    if (loadingRef.current) return;
+    if (!isRefresh && !hasMore) return;
 
+    loadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyLikes(20, isRefresh ? undefined : nextCursor);
-      
+
       const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
         const combined = isRefresh ? items : [...existingItems, ...items];
         const seen = new Set();
@@ -1308,14 +1381,16 @@ function LikesScreen({
         setLikesData(prev => processItems(response.items, prev));
       }
       setNextCursor(response.nextCursor);
+      setHasMore(!!response.nextCursor);
     } catch (e) {
       console.log('Failed to load likes', e);
       setError(true);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, nextCursor, likesData.length, error]);
+  }, [user, nextCursor, hasMore]);
 
   useEffect(() => {
     loadLikes(true);
@@ -1346,7 +1421,7 @@ function LikesScreen({
 
   const renderLikeItem = ({ item }: { item: ProfileItem }) => (
     <View style={styles.historyCard}>
-      <Pressable 
+      <Pressable
         style={styles.historyCardInner}
         onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
       >
@@ -1371,7 +1446,7 @@ function LikesScreen({
           </Text>
         </View>
       </Pressable>
-      <Pressable 
+      <Pressable
         onPress={() => handleUnlike(item.itemId, item.itemType)}
         style={({ pressed }) => [
           styles.unlikeButton,
@@ -1386,8 +1461,8 @@ function LikesScreen({
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable 
-          style={styles.modalCloseButtonInline} 
+        <Pressable
+          style={styles.modalCloseButtonInline}
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -1444,14 +1519,14 @@ function PlaceholderScreen({ title }: { title: string }) {
 // ============================================================
 // 保存页面 - Saved Screen
 // ============================================================
-function SavedScreen({ 
-  onItemPress 
-}: { 
+function SavedScreen({
+  onItemPress
+}: {
   onItemPress: (uid: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
-  
+
   // 删除动画
   const handleUnsave = useCallback((uid: string, title: string) => {
     Alert.alert(
@@ -1459,8 +1534,8 @@ function SavedScreen({
       `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
           onPress: () => unsave(uid),
         },
@@ -1475,8 +1550,8 @@ function SavedScreen({
       'Remove all saved posts? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove All', 
+        {
+          text: 'Remove All',
           style: 'destructive',
           onPress: () => clearAll(),
         },
@@ -1520,15 +1595,15 @@ function SavedScreen({
   // 渲染保存项
   const renderSavedItem = ({ item, index }: { item: typeof savedPosts[0]; index: number }) => {
     const localCover = getPostCover(item.uid);
-    
+
     return (
-      <Animated.View 
+      <Animated.View
         style={[
           styles.savedCard,
           { opacity: 1 }
         ]}
       >
-        <Pressable 
+        <Pressable
           style={styles.savedCardInner}
           onPress={() => onItemPress(item.uid)}
         >
@@ -1539,7 +1614,7 @@ function SavedScreen({
             contentFit="cover"
             transition={200}
           />
-          
+
           {/* 内容 */}
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
@@ -1547,11 +1622,11 @@ function SavedScreen({
                 <Text style={styles.savedTopicText}>#{item.topic}</Text>
               </View>
             </View>
-            
+
             <Text style={styles.savedCardTitle} numberOfLines={2}>
               {item.title}
             </Text>
-            
+
             <View style={styles.savedCardFooter}>
               <View style={styles.savedTimeRow}>
                 <Clock size={12} color={colors.textMuted} />
@@ -1561,9 +1636,9 @@ function SavedScreen({
               </View>
             </View>
           </View>
-          
+
           {/* 删除按钮 */}
-          <Pressable 
+          <Pressable
             style={styles.savedDeleteButton}
             onPress={() => handleUnsave(item.uid, item.title)}
             hitSlop={8}
@@ -1588,9 +1663,9 @@ function SavedScreen({
             </View>
           )}
         </View>
-        
+
         {savedCount > 0 && (
-          <Pressable 
+          <Pressable
             style={styles.savedClearButton}
             onPress={handleClearAll}
           >
@@ -1639,11 +1714,11 @@ function LoadingScreen() {
 // ============================================================
 // Error 状态组件
 // ============================================================
-function ErrorScreen({ 
-  message, 
-  onRetry 
-}: { 
-  message: string; 
+function ErrorScreen({
+  message,
+  onRetry
+}: {
+  message: string;
   onRetry: () => void;
 }) {
   return (
@@ -1668,17 +1743,17 @@ function AppContent() {
   const [bottomTab, setBottomTab] = useState('explore');
 
   // 使用 hooks 获取数据
-  const { 
-    feedItems, 
-    status: feedStatus, 
-    error: feedError, 
-    refetch: refetchFeed 
+  const {
+    feedItems,
+    status: feedStatus,
+    error: feedError,
+    refetch: refetchFeed
   } = useFeedItems();
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
   const { token, user } = useAuth();
-  
+
   // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
   // But if we just logged in, we might want to switch tab to 'me' if not already?
   // The requirement says "After login/signup, redirect to /profile."
@@ -1706,33 +1781,33 @@ function AppContent() {
             </>
           );
         }
-        
+
         // 处理错误状态
         if (feedStatus === 'error' && feedItems.length === 0) {
           return (
             <>
               <Header />
-              <ErrorScreen 
-                message={feedError || 'Unknown error'} 
-                onRetry={refetchFeed} 
+              <ErrorScreen
+                message={feedError || 'Unknown error'}
+                onRetry={refetchFeed}
               />
             </>
           );
         }
-        
+
         return (
           <>
             {/* 顶部 Header */}
             <Header />
-            
+
             {/* 信息流 */}
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <MasonryFeed 
-                items={feedItems} 
+              <MasonryFeed
+                items={feedItems}
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
               {feedStatus === 'loading' ? (
@@ -1753,24 +1828,24 @@ function AppContent() {
         if (!token) return <AuthScreen />;
         if (showHistoryModal) {
           return (
-            <HistoryScreen 
-              onItemPress={(uid) => setSelectedPostUid(uid)} 
+            <HistoryScreen
+              onItemPress={(uid) => setSelectedPostUid(uid)}
               onBack={() => setShowHistoryModal(false)}
             />
           );
         }
         if (showLikesModal) {
           return (
-            <LikesScreen 
-              onItemPress={(uid) => setSelectedPostUid(uid)} 
+            <LikesScreen
+              onItemPress={(uid) => setSelectedPostUid(uid)}
               onToggleLike={refetchFeed}
               onBack={() => setShowLikesModal(false)}
             />
           );
         }
         return (
-          <ProfileScreen 
-            onItemPress={(uid) => setSelectedPostUid(uid)} 
+          <ProfileScreen
+            onItemPress={(uid) => setSelectedPostUid(uid)}
             onToggleLike={refetchFeed}
             onHistoryPress={() => setShowHistoryModal(true)}
             onLikesPress={() => setShowLikesModal(true)}
@@ -1785,7 +1860,7 @@ function AppContent() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
-      
+
         {renderContent()}
 
         {/* 底部导航 */}
@@ -1799,21 +1874,21 @@ function AppContent() {
           onRequestClose={() => setSelectedPostUid(null)}
         >
           {feedItems && feedItems.length > 0 && selectedPostUid ? (
-            <PostSwiper 
+            <PostSwiper
               items={feedItems}
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
             />
           ) : (
-             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-               <LoadingScreen />
-               <Pressable 
-                 style={styles.modalCloseButton} 
-                 onPress={() => setSelectedPostUid(null)}
-               >
-                 <X size={24} color={colors.text} />
-               </Pressable>
-             </View>
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <LoadingScreen />
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
           )}
         </Modal>
       </SafeAreaView>
@@ -1844,7 +1919,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  
+
   // Header
   header: {
     flexDirection: 'row',
@@ -1859,7 +1934,7 @@ const styles = StyleSheet.create({
   headerIcon: {
     padding: 8,
   },
-  
+
   // Top Tabs
   topTabs: {
     flexDirection: 'row',
@@ -1887,7 +1962,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 2,
   },
-  
+
   // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
@@ -1929,7 +2004,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
     transform: [{ scale: 1.05 }],
   },
-  
+
   // Scroll
   scroll: {
     flex: 1,
@@ -1939,7 +2014,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-  
+
   // Masonry
   masonry: {
     flexDirection: 'row',
@@ -1949,7 +2024,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: COLUMN_GAP,
   },
-  
+
   // Card
   card: {
     backgroundColor: colors.card,
@@ -2002,14 +2077,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-  
+
   endText: {
     textAlign: 'center',
     color: colors.textMuted,
     fontSize: 13,
     paddingVertical: 24,
   },
-  
+
   // Placeholder
   placeholder: {
     flex: 1,
@@ -2027,7 +2102,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textMuted,
   },
-  
+
   // Reader
   readerContainer: {
     flex: 1,
@@ -2055,7 +2130,7 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
   },
   readerScrollContent: {
-    
+
   },
   closeButtonOverlay: {
     position: 'absolute',
@@ -2160,7 +2235,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   blocksContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    width: '100%',
+    paddingBottom: 40, // Add explicit padding inside container
   },
   blockH1: {
     fontSize: 22,
@@ -2190,7 +2267,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
+    // marginBottom moved to container
+  },
+  imageCaption: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
     marginBottom: 12,
+    fontStyle: 'italic',
   },
   blockBullets: {
     marginVertical: 12,
@@ -2233,12 +2318,11 @@ const styles = StyleSheet.create({
   },
   blockImage: {
     width: '100%',
-    height: 200,
+    aspectRatio: 1.5,
     borderRadius: 10,
-    marginVertical: 12,
-    backgroundColor: colors.border,
+    marginVertical: 4,
   },
-  
+
   // Post Bottom Bar
   postBottomBar: {
     flexDirection: 'row',
@@ -2320,7 +2404,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  
+
   // Loading
   loadingContainer: {
     flex: 1,
@@ -2341,7 +2425,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  
+
   // Error
   errorContainer: {
     flex: 1,
@@ -2377,7 +2461,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  
+
   // Modal close button
   modalCloseButton: {
     position: 'absolute',
@@ -2392,7 +2476,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  
+
   // ============================================================
   // Saved Screen 样式
   // ============================================================
@@ -2521,7 +2605,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.bg,
   },
-  
+
   // Empty State
   savedEmptyContainer: {
     flex: 1,
@@ -2569,7 +2653,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
-  
+
   // Comment Sheet
   commentSheet: {
     position: 'absolute',
