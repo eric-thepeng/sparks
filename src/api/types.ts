@@ -104,6 +104,8 @@ export interface Comment {
   content: string;
   created_at: string;
   user: User; // The author of the comment
+  like_count?: number;
+  is_liked?: boolean;
 }
 
 export interface CreateCommentRequest {
@@ -170,4 +172,55 @@ export interface ProfileItem {
 export interface ProfileListResponse {
   items: ProfileItem[];
   nextCursor?: string;
+}
+
+// ============================================================
+// Recommendation Signal Types
+// ============================================================
+
+/**
+ * 用户交互信号类型 - 与后端统一
+ * 用于推荐算法追踪用户行为
+ */
+export enum SignalType {
+  CLICK = 'click',                           // 点击帖子
+  LIKE = 'like',                             // 点赞
+  COMMENT = 'comment',                       // 评论
+  SAVE = 'save',                             // 收藏
+  READ_TO_SECOND = 'read_to_second',         // 读完第二页
+  READ_ALMOST_COMPLETE = 'read_almost_complete', // 读完 3/4 页数
+}
+
+/**
+ * 发送信号请求参数
+ */
+export interface SendSignalRequest {
+  postId: string;
+  signalType: SignalType;
+}
+
+/**
+ * Bucket 权重记录
+ * key: bucket 名称 (如 "design_product_hci")
+ * value: 权重值
+ */
+export type BucketCount = Record<string, number>;
+
+/**
+ * 发送信号响应
+ */
+export interface SignalResponse {
+  ok: boolean;
+  bucket_count: BucketCount;
+  click_count: number;
+}
+
+/**
+ * 重置推荐状态响应
+ */
+export interface ResetRecommendationResponse {
+  ok: boolean;
+  message: string;
+  bucket_count: BucketCount;
+  click_count: number;
 }

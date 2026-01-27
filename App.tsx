@@ -2,7 +2,7 @@
  * Sparks - 小红书风格
  * 瀑布流信息流 + 帖子详情 + 翻页阅读 + 保存功能
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,10 +26,11 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import {
-  Heart,
-  ChevronLeft,
-  Search,
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { 
+  Heart, 
+  ChevronLeft, 
+  Search, 
   LayoutGrid,
   Bookmark,
   BookmarkCheck,
@@ -43,31 +44,34 @@ import {
   Trash2,
   Clock,
   BookmarkPlus,
+  Bug,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
 // 数据层
-import {
-  getFeedItems,
-  getPost,
-  getPostCover,
+import { 
+  getFeedItems, 
+  getPost, 
+  getPostCover, 
   getPostImage,
   getPostCoverImage,
   getBlockImage,
-  FeedItem,
-  Post,
-  PostPage,
-  ContentBlock
+  FeedItem, 
+  Post, 
+  PostPage, 
+  ContentBlock 
 } from './src/data';
 
-import {
-  fetchComments,
-  createComment,
-  likeItem,
+import { 
+  fetchComments, 
+  createComment, 
+  likeItem, 
   unlikeItem,
   getMyHistory,
   getMyLikes,
-  clearHistory,
-  recordHistory
+  clearHistory
 } from './src/api';
 import { Comment, ProfileItem } from './src/api/types';
 
@@ -75,11 +79,12 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const COLUMN_GAP = 8;
@@ -112,32 +117,56 @@ const colors = {
   border: '#e2e8f0',
 };
 
+/**
+ * 格式化主题名称：替换下划线为空格并应用 Title Case
+ */
+const formatTopicName = (topic: string) => {
+  if (!topic) return '';
+  return topic
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 // ============================================================
 // 顶部导航 Tab
 // ============================================================
-function TopTabs() {
-  return (
-    <View style={styles.topTabs}>
-      <View style={styles.topTab}>
-        <Text style={styles.topTabTextActive}>Discover</Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================================
-// 顶部 Header
-// ============================================================
-function Header() {
+function Header({ 
+  onSearchPress, 
+  onBack,
+  title = "Discover" 
+}: { 
+  onSearchPress?: () => void;
+  onBack?: () => void;
+  title?: string;
+}) {
   return (
     <View style={styles.header}>
-      <Pressable style={styles.headerIcon}>
-        <Search size={22} color={colors.text} />
-      </Pressable>
-
-      <TopTabs />
-
-      <View style={{ width: 40 }} />
+      <View style={{ width: 40 }}>
+        {onBack ? (
+          <Pressable style={styles.headerIcon} onPress={onBack}>
+            <ChevronLeft size={24} color={colors.text} />
+          </Pressable>
+        ) : onSearchPress ? (
+          <Pressable style={styles.headerIcon} onPress={onSearchPress}>
+            <Search size={22} color={colors.text} />
+          </Pressable>
+        ) : null}
+      </View>
+      
+      <View style={styles.topTabs}>
+        <View style={styles.topTab}>
+          <Text style={styles.topTabTextActive} numberOfLines={1}>{title}</Text>
+        </View>
+      </View>
+      
+      <View style={{ width: 40 }}>
+        {onBack && onSearchPress && (
+          <Pressable style={styles.headerIcon} onPress={onSearchPress}>
+            <Search size={22} color={colors.text} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -147,24 +176,24 @@ function Header() {
 // ============================================================
 function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
   const insets = useSafeAreaInsets();
-
+  
   const items = [
     { key: 'explore', icon: Sparkles, label: '', isMain: true },
     { key: 'collection', icon: LayoutGrid, label: 'Collection' },
     { key: 'saved', icon: Bookmark, label: 'Saved' },
     { key: 'me', icon: User, label: 'Me' },
   ];
-
+  
   return (
     <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;
-
+        
         if (item.isMain) {
           return (
-            <Pressable
-              key={item.key}
+            <Pressable 
+              key={item.key} 
               style={[styles.mainButton, isActive && styles.mainButtonActive]}
               onPress={() => onTabChange(item.key)}
             >
@@ -172,15 +201,15 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
             </Pressable>
           );
         }
-
+        
         return (
           <Pressable
             key={item.key}
             style={styles.navItem}
             onPress={() => onTabChange(item.key)}
           >
-            <Icon
-              size={22}
+            <Icon 
+              size={22} 
               color={isActive ? colors.primary : colors.textMuted}
             />
             <Text style={[
@@ -199,20 +228,21 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
 // ============================================================
 // Feed 卡片
 // ============================================================
-function FeedCard({
-  item,
+function FeedCard({ 
+  item, 
   onPress,
   index = 0,
-}: {
-  item: FeedItem;
+}: { 
+  item: FeedItem; 
   onPress: () => void;
   index?: number;
 }) {
+  const { token, logout } = useAuth();
   const [isLiked, setIsLiked] = useState(item.isLiked);
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
-
+  
   // Entry Animation
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
@@ -245,12 +275,22 @@ function FeedCard({
 
   const handleLike = async () => {
     if (isLiking) return;
+
+    if (!token) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to like posts.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setIsLiking(true);
 
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-
+    
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -274,11 +314,16 @@ function FeedCard({
       } else {
         await likeItem(item.uid, 'post');
       }
-    } catch (error) {
+    } catch (error: any) {
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
       console.error('Like failed', error);
+
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        logout();
+      }
     } finally {
       setIsLiking(false);
     }
@@ -294,13 +339,13 @@ function FeedCard({
           contentFit="cover"
           transition={200}
         />
-
+        
         {/* 内容 */}
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle} numberOfLines={5}>
             {item.title}
           </Text>
-
+          
           {/* 底部：用户信息 + 点赞 */}
           <View style={styles.cardFooter}>
             <View style={styles.userInfo}>
@@ -312,11 +357,11 @@ function FeedCard({
                 {item.user.name}
               </Text>
             </View>
-
+            
             <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
               <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-                <Heart
-                  size={14}
+                <Heart 
+                  size={14} 
                   color={isLiked ? colors.accent : colors.textMuted}
                   fill={isLiked ? colors.accent : 'transparent'}
                 />
@@ -338,17 +383,17 @@ function FeedCard({
 // ============================================================
 // 瀑布流 Feed
 // ============================================================
-function MasonryFeed({
-  items,
-  onItemPress
-}: {
-  items: FeedItem[];
+function MasonryFeed({ 
+  items, 
+  onItemPress 
+}: { 
+  items: FeedItem[]; 
   onItemPress: (uid: string) => void;
 }) {
   // 分配到两列
   const leftColumn: FeedItem[] = [];
   const rightColumn: FeedItem[] = [];
-
+  
   items.forEach((item, index) => {
     if (index % 2 === 0) {
       leftColumn.push(item);
@@ -356,7 +401,7 @@ function MasonryFeed({
       rightColumn.push(item);
     }
   });
-
+  
   return (
     <View style={styles.masonry}>
       {/* 左列 */}
@@ -370,7 +415,7 @@ function MasonryFeed({
           />
         ))}
       </View>
-
+      
       {/* 右列 */}
       <View style={styles.column}>
         {rightColumn.map((item, index) => (
@@ -392,11 +437,13 @@ function MasonryFeed({
 // 评论区组件
 // ============================================================
 function CommentSection({ postId }: { postId: string }) {
-  const { user } = useAuth();
+  const { user, token, logout } = useAuth();
+  const { sendComment } = useRecommendation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [sortBy, setSortBy] = useState<'time' | 'likes'>('time');
 
   // Load comments on mount
   useEffect(() => {
@@ -417,12 +464,14 @@ function CommentSection({ postId }: { postId: string }) {
 
   const handleSend = async () => {
     if (!inputText.trim() || !user) return;
-
+    
     setIsSending(true);
     try {
       const newComment = await createComment(postId, { content: inputText.trim() });
       setComments([newComment, ...comments]);
       setInputText('');
+      // Send COMMENT signal for recommendation
+      sendComment(postId);
     } catch (err) {
       Alert.alert('Error', 'Failed to post comment');
     } finally {
@@ -430,18 +479,82 @@ function CommentSection({ postId }: { postId: string }) {
     }
   };
 
+  const handleLikeComment = async (commentId: string) => {
+    if (!token) {
+      Alert.alert('Login Required', 'Please log in to like comments.');
+      return;
+    }
+
+    const commentIndex = comments.findIndex(c => c.id === commentId);
+    if (commentIndex === -1) return;
+
+    const comment = comments[commentIndex];
+    const wasLiked = !!comment.is_liked;
+
+    // Optimistic Update
+    const updatedComments = [...comments];
+    updatedComments[commentIndex] = {
+      ...comment,
+      is_liked: !wasLiked,
+      like_count: (comment.like_count || 0) + (wasLiked ? -1 : 1)
+    };
+    setComments(updatedComments);
+
+    try {
+      if (wasLiked) {
+        await unlikeItem(commentId, 'comment');
+      } else {
+        await likeItem(commentId, 'comment');
+      }
+    } catch (error: any) {
+      // Rollback
+      setComments(comments);
+      console.error('Comment like failed', error);
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Please log in again.');
+        logout();
+      }
+    }
+  };
+
+  const sortedComments = useMemo(() => {
+    const sorted = [...comments];
+    if (sortBy === 'likes') {
+      return sorted.sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+    }
+    return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [comments, sortBy]);
+
   if (isLoading) {
     return (
       <View style={styles.commentsLoading}>
-        <Text style={styles.textSecondary}>Loading comments...</Text>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={[styles.textSecondary, { marginTop: 8 }]}>Loading comments...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.commentSection}>
-      <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
-
+      <View style={styles.commentHeaderRow}>
+        <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
+        <View style={styles.commentSortContainer}>
+          <Pressable 
+            onPress={() => setSortBy('time')} 
+            style={[styles.sortButton, sortBy === 'time' && styles.sortButtonActive]}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'time' && styles.sortButtonTextActive]}>Newest</Text>
+          </Pressable>
+          <View style={styles.sortDivider} />
+          <Pressable 
+            onPress={() => setSortBy('likes')} 
+            style={[styles.sortButton, sortBy === 'likes' && styles.sortButtonActive]}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'likes' && styles.sortButtonTextActive]}>Top</Text>
+          </Pressable>
+        </View>
+      </View>
+      
       {/* Comment Input */}
       {user ? (
         <View style={styles.commentInputRow}>
@@ -452,9 +565,10 @@ function CommentSection({ postId }: { postId: string }) {
             value={inputText}
             onChangeText={setInputText}
             maxLength={200}
+            multiline
           />
           {inputText.length > 0 && (
-            <Pressable onPress={handleSend} disabled={isSending}>
+            <Pressable onPress={handleSend} disabled={isSending} style={styles.commentSendButton}>
               <Send size={20} color={colors.primary} />
             </Pressable>
           )}
@@ -467,15 +581,32 @@ function CommentSection({ postId }: { postId: string }) {
 
       {/* Comment List */}
       <View style={styles.commentList}>
-        {comments.map((item) => (
+        {sortedComments.map((item) => (
           <View key={item.id} style={styles.commentItem}>
             <Image source={{ uri: item.user?.photoUrl || undefined }} style={styles.commentAvatar} />
             <View style={styles.commentContent}>
               <View style={styles.commentUserRow}>
-                <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
-                <Text style={styles.commentTime}>
-                  {new Date(item.created_at).toLocaleDateString()}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
+                  <Text style={styles.commentTime}>
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Pressable 
+                  style={styles.commentLikeContainer} 
+                  onPress={() => handleLikeComment(item.id)}
+                >
+                  <Heart 
+                    size={14} 
+                    color={item.is_liked ? colors.accent : colors.textMuted} 
+                    fill={item.is_liked ? colors.accent : 'transparent'} 
+                  />
+                  {item.like_count !== undefined && item.like_count > 0 && (
+                    <Text style={[styles.commentLikeCount, item.is_liked && { color: colors.accent }]}>
+                      {item.like_count}
+                    </Text>
+                  )}
+                </Pressable>
               </View>
               <Text style={styles.commentText}>{item.content}</Text>
             </View>
@@ -493,19 +624,19 @@ function CommentSection({ postId }: { postId: string }) {
 // ============================================================
 // Page Item Component (for Vertical FlatList)
 // ============================================================
-type ReaderItem =
+type ReaderItem = 
   | { type: 'page'; page: PostPage; index: number };
 
-const PageItem = React.memo(({
-  item,
+const PageItem = React.memo(({ 
+  item, 
   post,
   isVisible,
   containerHeight,
   isLastPage
-}: {
-  item: ReaderItem;
+}: { 
+  item: ReaderItem; 
   post: Post;
-  isVisible: boolean;
+  isVisible: boolean; 
   containerHeight: number;
   isLastPage: boolean;
 }) => {
@@ -536,7 +667,7 @@ const PageItem = React.memo(({
   // Render content block helper
   const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
     const key = `${pageIdx}-${idx}`;
-
+    
     // Skip h1 on the first page since we render the title in the header UI
     if (pageIdx === 0 && block.type === 'h1') return null;
 
@@ -549,30 +680,25 @@ const PageItem = React.memo(({
         return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
       case 'paragraph':
         return (
-          <View key={key} style={{ width: '100%', marginBottom: 16 }}>
-            <Text
-              style={styles.blockParagraph}
-              allowFontScaling={false}
-            >
-              {block.text}
-            </Text>
-          </View>
+          <Text 
+            key={key} 
+            style={styles.blockParagraph}
+            allowFontScaling={false}
+          >
+            {block.text}
+          </Text>
         );
       case 'image':
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
-          <View key={key} style={{ marginBottom: 12 }}>
-            <Image
-              source={imageSource}
-              style={styles.blockImage}
-              contentFit="cover"
-              transition={300}
-            />
-            {block.text ? (
-              <Text style={styles.imageCaption}>{block.text}</Text>
-            ) : null}
-          </View>
+          <Image
+            key={key}
+            source={imageSource}
+            style={styles.blockImage}
+            contentFit="contain"
+            transition={300}
+          />
         );
       case 'bullets':
         return (
@@ -602,25 +728,24 @@ const PageItem = React.memo(({
 
   // Regular Page - Improved layout to prevent "stuck" pages and ensure smooth snapping
   return (
-    <Animated.View style={{
-      opacity,
-      transform: [{ translateY }],
+    <Animated.View style={{ 
+      opacity, 
+      transform: [{ translateY }], 
       height: Math.floor(containerHeight), // Ensure integer height for precise snapping
-      overflow: 'hidden',
+      alignSelf: 'stretch',
     }}>
-      <ScrollView
+      <ScrollView 
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        bounces={true}
-        overScrollMode="auto"
+        bounces={false} 
+        overScrollMode="never"
         scrollEventThrottle={16}
-        decelerationRate="normal"
-        contentContainerStyle={{
-          flexGrow: 1, // Ensure container grows to fill/exceed screen
-          paddingTop: isFirstPage ? 0 : 20,
-          paddingBottom: isLastPage ? 150 : 100, // Increased bottom padding
-          paddingHorizontal: 0
+        decelerationRate={0.85} // Match the outer list's heavy feel
+        contentContainerStyle={{ 
+          paddingTop: isFirstPage ? 0 : 20, 
+          paddingBottom: isLastPage ? 150 : 80, 
+          paddingHorizontal: 0 
         }}
       >
         {isFirstPage && (
@@ -634,12 +759,12 @@ const PageItem = React.memo(({
             <View style={styles.titleContainer}>
               <Text style={styles.postTitle}>{post.title}</Text>
               <View style={styles.topicBadge}>
-                <Text style={styles.topicBadgeText}>#{post.topic}</Text>
+                <Text style={styles.topicBadgeText}>#{formatTopicName(post.topic)}</Text>
               </View>
             </View>
           </View>
         )}
-        <View style={styles.blocksContainer}>
+        <View style={[styles.blocksContainer, { paddingBottom: 40 }]}>
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
       </ScrollView>
@@ -653,29 +778,32 @@ const PageItem = React.memo(({
 function SinglePostReader({
   post,
   onClose,
+  onLikeUpdate,
 }: {
   post: Post;
   onClose: () => void;
+  onLikeUpdate?: (isLiked: boolean, likeCount: number) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { token, logout } = useAuth();
   const flatListRef = useRef<FlatList>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
-
+  
   // Recommendation signals
-  const { sendLike, sendSave, trackReadProgress, resetProgress, sendClick } = useRecommendation();
-
+  const { sendLike, sendSave, trackReadProgress, resetProgress } = useRecommendation();
+  
   // Header is 50, Bottom bar is 60, plus safe areas
   const readerHeaderHeight = 50;
   const bottomBarHeight = 60;
   const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
-
+  
   // Prepare list data: Combine header into first page
-  const readerData: ReaderItem[] = post.pages.map((p, i) => ({
-    type: 'page' as const,
-    page: p,
-    index: i
+  const readerData: ReaderItem[] = post.pages.map((p, i) => ({ 
+    type: 'page' as const, 
+    page: p, 
+    index: i 
   }));
 
   // Reset page indicator when post changes
@@ -688,17 +816,11 @@ function SinglePostReader({
     setIsLiked(!!post.isLiked);
     setLikeCount(post.likeCount || 0);
     resetProgress(post.uid); // Reset read progress tracking
-
-    // Record history and send click signal
-    if (post.uid) {
-      recordHistory(post.uid).catch(err => console.log('Failed to record history', err));
-      sendClick(post.uid);
-    }
-  }, [post.uid, post.isLiked, post.likeCount, resetProgress, sendClick]);
+  }, [post.uid, post.isLiked, post.likeCount, resetProgress]);
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
-
+  
   // Like functionality
   const [isLiked, setIsLiked] = useState(!!post.isLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount || 0);
@@ -709,10 +831,10 @@ function SinglePostReader({
   const { isPostSaved, toggleSavePost } = useSaved();
   const isBookmarked = isPostSaved(post.uid);
   const [isSaving, setIsSaving] = useState(false);
-
+  
   // Save animation
   const saveScale = useRef(new Animated.Value(1)).current;
-
+  
   // Update dots animation when page changes
   useEffect(() => {
     // Animate the active dot and reset others
@@ -726,9 +848,15 @@ function SinglePostReader({
     });
   }, [currentPage]);
 
+  // Track read progress for recommendation signals
+  useEffect(() => {
+    // currentPage is 0-based, trackReadProgress expects 1-based
+    trackReadProgress(post.uid, currentPage + 1, post.pages.length);
+  }, [currentPage, post.uid, post.pages.length, trackReadProgress]);
+
   // Viewability Config - reduced threshold to make it more responsive when scrolling back
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 40,
+    itemVisiblePercentThreshold: 40, 
     minimumViewTime: 0,
   }).current;
 
@@ -737,18 +865,18 @@ function SinglePostReader({
       // Find the page that is most visible (top-most in case of ties)
       const visibleIndices = viewableItems.map((item: any) => item.index);
       const newPage = Math.min(...visibleIndices);
-
+      
       // Update revealed pages
       setVisiblePages(prev => {
         const next = new Set(prev);
         visibleIndices.forEach((idx: number) => next.add(idx));
         return next;
       });
-
+      
       if (newPage !== currentPageRef.current && newPage >= 0 && newPage < post.pages.length) {
         currentPageRef.current = newPage;
         setCurrentPage(newPage);
-
+        
         // Animate page indicator text
         pageTextScale.setValue(1);
         Animated.sequence([
@@ -770,12 +898,30 @@ function SinglePostReader({
 
   const handleLike = async () => {
     if (isLiking) return;
+    
+    if (!token) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to like posts.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Login', onPress: () => {
+            onClose();
+            // We need a way to switch to 'me' tab. 
+            // In this monolithic App.tsx, we can't easily do it from here without passing props.
+            // But for now, just informing the user is better than a silent fail or rollback.
+          }}
+        ]
+      );
+      return;
+    }
+
     setIsLiking(true);
 
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-
+    
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -798,12 +944,23 @@ function SinglePostReader({
         await unlikeItem(post.uid, 'post');
       } else {
         await likeItem(post.uid, 'post');
+        // Send LIKE signal for recommendation (only on like, not unlike)
+        sendLike(post.uid);
       }
-    } catch (error) {
+      // Update hook state so it persists during swipes
+      onLikeUpdate?.(!prevIsLiked, prevIsLiked ? prevLikeCount - 1 : prevLikeCount + 1);
+    } catch (error: any) {
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
       console.error('Like failed', error);
+
+      if (error?.status === 401) {
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        logout();
+      } else {
+        Alert.alert('Error', error?.message || 'Failed to update like status');
+      }
     } finally {
       setIsLiking(false);
     }
@@ -822,6 +979,7 @@ function SinglePostReader({
 
   const handleBookmark = async () => {
     if (isSaving) return;
+    const wasBookmarked = isBookmarked;
     setIsSaving(true);
     Animated.sequence([
       Animated.spring(saveScale, { toValue: 1.3, useNativeDriver: true, friction: 3 }),
@@ -829,6 +987,10 @@ function SinglePostReader({
     ]).start();
     try {
       await toggleSavePost(post);
+      // Send SAVE signal for recommendation (only on save, not unsave)
+      if (!wasBookmarked) {
+        sendSave(post.uid);
+      }
     } catch (err) {
       console.error('Failed to toggle save:', err);
     } finally {
@@ -849,8 +1011,8 @@ function SinglePostReader({
   }, [showComments]);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.readerContainer, { paddingTop: insets.top, width: SCREEN_WIDTH }]}
+    <KeyboardAvoidingView 
+      style={[styles.readerContainer, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* 顶部栏 */}
@@ -858,21 +1020,21 @@ function SinglePostReader({
         <Pressable onPress={onClose} style={styles.closeButton}>
           <ChevronLeft size={28} color={colors.text} />
         </Pressable>
-
+        
         {/* 页码指示器 */}
         <View style={styles.pageDotsHeader}>
           {post.pages.map((_, idx) => (
             <Animated.View
               key={idx}
               style={[
-                styles.dotSmall,
+                styles.dotSmall, 
                 currentPage === idx && styles.dotSmallActive,
                 { transform: [{ scale: dotScales[idx] || 1 }] }
               ]}
             />
           ))}
         </View>
-
+        
         <Animated.Text style={[
           styles.pageIndicator,
           { transform: [{ scale: pageTextScale }] }
@@ -887,25 +1049,21 @@ function SinglePostReader({
         data={readerData}
         keyExtractor={(_, index) => `reader-item-${index}`}
         renderItem={({ item, index }) => (
-          <PageItem
-            item={item}
+          <PageItem 
+            item={item} 
             post={post}
             isVisible={visiblePages.has(index)}
             containerHeight={Math.floor(containerHeight)}
             isLastPage={index === readerData.length - 1}
-            onScrollStateChange={(canScrollParent) => {
-              // Optional: Implement lock if needed, but trying nestedScrollEnabled first
-            }}
           />
         )}
         style={styles.readerScroll}
         showsVerticalScrollIndicator={false}
         pagingEnabled={false}
-        nestedScrollEnabled={true}
         snapToInterval={Math.floor(containerHeight)}
         snapToAlignment="start"
         decelerationRate={0.85} // Lower value makes scrolling "heavier" and deceleration faster
-        disableIntervalMomentum={true}
+        disableIntervalMomentum={true} 
         scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
           length: Math.floor(containerHeight),
@@ -925,11 +1083,11 @@ function SinglePostReader({
       />
 
       {/* 底部操作栏 */}
-      <View
+      <View 
         style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
       >
         {/* 评论输入区域 - 占2/3宽度 */}
-        <Pressable
+        <Pressable 
           style={styles.noteInputContainer}
           onPress={() => setShowComments(true)}
         >
@@ -942,14 +1100,14 @@ function SinglePostReader({
         {/* 操作按钮区域 - 占1/3宽度 */}
         <View style={styles.actionButtons}>
           {/* 点赞按钮 */}
-          <Pressable
-            style={styles.actionButton}
+          <Pressable 
+            style={styles.actionButton} 
             onPress={handleLike}
             disabled={isLiking}
           >
             <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-              <Heart
-                size={22}
+              <Heart 
+                size={22} 
                 color={isLiked ? colors.accent : colors.textSecondary}
                 fill={isLiked ? colors.accent : 'transparent'}
               />
@@ -963,21 +1121,21 @@ function SinglePostReader({
           </Pressable>
 
           {/* 收藏按钮 - 带动画 */}
-          <Pressable
-            style={styles.actionButton}
+          <Pressable 
+            style={styles.actionButton} 
             onPress={handleBookmark}
             disabled={isSaving}
           >
             <Animated.View style={{ transform: [{ scale: saveScale }] }}>
               {isBookmarked ? (
-                <BookmarkCheck
-                  size={22}
+                <BookmarkCheck 
+                  size={22} 
                   color={colors.primary}
                   fill={colors.primary}
                 />
               ) : (
-                <Bookmark
-                  size={22}
+                <Bookmark 
+                  size={22} 
                   color={colors.textSecondary}
                 />
               )}
@@ -1001,7 +1159,7 @@ function SinglePostReader({
       {/* Floating Comment Sheet */}
       <Animated.View style={[
         styles.commentSheet,
-        {
+        { 
           transform: [{ translateY: commentSheetTranslateY }],
           paddingBottom: insets.bottom + 20
         }
@@ -1023,12 +1181,12 @@ function SinglePostReader({
 // ============================================================
 // Post Loader (Fetches individual post)
 // ============================================================
-function PostLoader({
-  uid,
+function PostLoader({ 
+  uid, 
   onClose,
   onFeedLikeUpdate
-}: {
-  uid: string,
+}: { 
+  uid: string, 
   onClose: () => void,
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
 }) {
@@ -1040,19 +1198,6 @@ function PostLoader({
     console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status });
     if (post && status === 'success') {
       console.log('[PostLoader] Calling sendClick for:', post.uid);
-
-      // Debug log for text content to verify truncation
-      post.pages.forEach((p, pi) => {
-        p.blocks.forEach((b, bi) => {
-          if (b.type === 'paragraph' && b.text) {
-            console.log(`[PostContent] Page ${pi} Block ${bi}: "${b.text.substring(0, 20)}..." (len: ${b.text.length})`);
-            if (b.text.endsWith('We a')) {
-              console.log('[PostContent] DETECTED TRUNCATION at "We a"');
-            }
-          }
-        });
-      });
-
       sendClick(post.uid);
     }
   }, [post?.uid, status, sendClick]);
@@ -1067,13 +1212,13 @@ function PostLoader({
       </View>
     );
   }
-
+  
   if (status === 'error' || !post) {
     return (
       <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
-        <ErrorScreen
-          message={error || 'Failed to load post'}
-          onRetry={refetch}
+        <ErrorScreen 
+          message={error || 'Failed to load post'} 
+          onRetry={refetch} 
         />
         <Pressable style={styles.modalCloseButton} onPress={onClose}>
           <X size={24} color={colors.text} />
@@ -1082,7 +1227,16 @@ function PostLoader({
     );
   }
 
-  return <SinglePostReader post={post} onClose={onClose} />;
+  return (
+    <SinglePostReader 
+      post={post} 
+      onClose={onClose} 
+      onLikeUpdate={(isLiked, count) => {
+        updateLocalLike(isLiked, count);
+        onFeedLikeUpdate?.(uid, isLiked, count);
+      }} 
+    />
+  );
 }
 
 // ============================================================
@@ -1090,16 +1244,46 @@ function PostLoader({
 // ============================================================
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
-function PostSwiper({
-  items,
-  initialIndex,
-  onClose
-}: {
-  items: FeedItem[];
-  initialIndex: number;
+function PostSwiper({ 
+  items, 
+  initialIndex, 
+  onClose,
+  onFeedLikeUpdate,
+  onLoadMore
+}: { 
+  items: FeedItem[]; 
+  initialIndex: number; 
   onClose: () => void;
+  onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+  onLoadMore?: () => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const loadMoreTriggered = useRef(false);
+
+  // 检测是否接近列表末尾，触发加载更多
+  useEffect(() => {
+    const remainingItems = items.length - currentIndex - 1;
+    console.log('[PostSwiper] Current index:', currentIndex, 'Remaining:', remainingItems);
+    
+    if (remainingItems <= 2 && !loadMoreTriggered.current && onLoadMore) {
+      loadMoreTriggered.current = true;
+      console.log('[PostSwiper] Loading more posts...');
+      onLoadMore();
+      // 重置触发标记，允许再次触发
+      setTimeout(() => {
+        loadMoreTriggered.current = false;
+      }, 1000);
+    }
+  }, [currentIndex, items.length, onLoadMore]);
+
+  // 处理滑动结束，更新当前索引
+  const handleMomentumScrollEnd = useCallback((event: any) => {
+    const newIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < items.length) {
+      setCurrentIndex(newIndex);
+    }
+  }, [currentIndex, items.length]);
 
   return (
     <AnimatedFlatList
@@ -1111,24 +1295,26 @@ function PostSwiper({
         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
         { useNativeDriver: true }
       )}
+      onMomentumScrollEnd={handleMomentumScrollEnd}
       getItemLayout={(data: any, index: number) => ({
         length: SCREEN_WIDTH,
         offset: SCREEN_WIDTH * index,
         index,
       })}
-      renderItem={({ item, index }: { item: FeedItem, index: number }) => {
+      renderItem={({ item, index }: { item: unknown, index: number }) => {
+        const feedItem = item as FeedItem;
         const inputRange = [
           (index - 1) * SCREEN_WIDTH,
           index * SCREEN_WIDTH,
           (index + 1) * SCREEN_WIDTH,
         ];
-
+        
         const scale = scrollX.interpolate({
           inputRange,
           outputRange: [0.9, 1, 0.9],
           extrapolate: 'clamp',
         });
-
+        
         const opacity = scrollX.interpolate({
           inputRange,
           outputRange: [0.6, 1, 0.6],
@@ -1137,11 +1323,15 @@ function PostSwiper({
 
         return (
           <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity }}>
-            <PostLoader uid={item.uid} onClose={onClose} />
+            <PostLoader 
+              uid={feedItem.uid} 
+              onClose={onClose} 
+              onFeedLikeUpdate={onFeedLikeUpdate}
+            />
           </Animated.View>
         );
       }}
-      keyExtractor={(item: FeedItem) => item.uid}
+      keyExtractor={(item: unknown) => (item as FeedItem).uid}
       showsHorizontalScrollIndicator={false}
       windowSize={3}
       initialNumToRender={1}
@@ -1156,10 +1346,10 @@ function PostSwiper({
 // ============================================================
 // 历史页面 - History Screen
 // ============================================================
-function HistoryScreen({
+function HistoryScreen({ 
   onItemPress,
   onBack
-}: {
+}: { 
   onItemPress: (uid: string) => void;
   onBack: () => void;
 }) {
@@ -1170,20 +1360,16 @@ function HistoryScreen({
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
 
-  const [hasMore, setHasMore] = useState(true);
-  const loadingRef = useRef(false);
-
   const loadHistory = useCallback(async (isRefresh = false) => {
     if (!user) return;
-    if (loadingRef.current) return;
-    if (!isRefresh && !hasMore) return;
+    if (!isRefresh && !nextCursor && historyData.length > 0) return;
+    if (!isRefresh && error) return;
 
-    loadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
-
+      
       const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
         const combined = isRefresh ? items : [...existingItems, ...items];
         const seen = new Set();
@@ -1199,18 +1385,15 @@ function HistoryScreen({
       } else {
         setHistoryData(prev => processItems(response.items, prev));
       }
-
       setNextCursor(response.nextCursor);
-      setHasMore(!!response.nextCursor);
     } catch (e) {
       console.log('Failed to load history', e);
       setError(true);
     } finally {
-      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, nextCursor, hasMore]);
+  }, [user, nextCursor, historyData.length, error]);
 
   useEffect(() => {
     loadHistory(true);
@@ -1224,8 +1407,8 @@ function HistoryScreen({
   const handleClearHistory = () => {
     Alert.alert('Clear History', 'Are you sure you want to clear your entire history?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
+      { 
+        text: 'Clear', 
         style: 'destructive',
         onPress: async () => {
           const prevData = [...historyData];
@@ -1247,41 +1430,44 @@ function HistoryScreen({
     return date.toLocaleDateString();
   };
 
-  const renderHistoryItem = ({ item }: { item: ProfileItem }) => (
-    <View style={styles.historyCard}>
-      <Pressable
-        style={styles.historyCardInner}
-        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
-      >
-        <View style={styles.historyImageContainer}>
-          {item.thumbnail ? (
-            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
-          ) : (
-            <View style={[styles.historyImage, styles.historyPlaceholder]}>
-              <Text style={styles.historyPlaceholderText}>
-                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.historyInfo}>
-          <View style={styles.historyHeader}>
-            <Text style={styles.historyBadge}>{item.itemType}</Text>
-            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+  const renderHistoryItem = ({ item }: { item: unknown }) => {
+    const historyItem = item as ProfileItem;
+    return (
+      <View style={styles.historyCard}>
+        <Pressable 
+          style={styles.historyCardInner}
+          onPress={() => historyItem.itemType === 'post' && onItemPress(historyItem.itemId)}
+        >
+          <View style={styles.historyImageContainer}>
+            {historyItem.thumbnail ? (
+              <Image source={{ uri: historyItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+            ) : (
+              <View style={[styles.historyImage, styles.historyPlaceholder]}>
+                <Text style={styles.historyPlaceholderText}>
+                  {historyItem.itemType?.substring(0, 1).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.historyTitle} numberOfLines={2}>
-            {item.title || `${item.itemType} #${item.itemId}`}
-          </Text>
-        </View>
-      </Pressable>
-    </View>
-  );
+          <View style={styles.historyInfo}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyBadge}>{historyItem.itemType}</Text>
+              <Text style={styles.historyDate}>{formatDate(historyItem.createdAt)}</Text>
+            </View>
+            <Text style={styles.historyTitle} numberOfLines={2}>
+              {historyItem.title || `${historyItem.itemType} #${historyItem.itemId}`}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable
-          style={styles.modalCloseButtonInline}
+        <Pressable 
+          style={styles.modalCloseButtonInline} 
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -1290,7 +1476,7 @@ function HistoryScreen({
         <View style={styles.headerRightArea}>
           {historyData.length > 0 && (
             <Pressable onPress={handleClearHistory} style={styles.headerClearButton}>
-              <Text style={styles.headerClearButtonText}>Remove All</Text>
+              <Trash2 size={20} color={colors.textMuted} />
             </Pressable>
           )}
         </View>
@@ -1335,11 +1521,11 @@ function HistoryScreen({
 // ============================================================
 // 点赞页面 - Likes Screen
 // ============================================================
-function LikesScreen({
+function LikesScreen({ 
   onItemPress,
   onToggleLike,
   onBack
-}: {
+}: { 
   onItemPress: (uid: string) => void;
   onToggleLike?: () => void;
   onBack: () => void;
@@ -1351,20 +1537,16 @@ function LikesScreen({
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [error, setError] = useState(false);
 
-  const [hasMore, setHasMore] = useState(true);
-  const loadingRef = useRef(false);
-
   const loadLikes = useCallback(async (isRefresh = false) => {
     if (!user) return;
-    if (loadingRef.current) return;
-    if (!isRefresh && !hasMore) return;
+    if (!isRefresh && !nextCursor && likesData.length > 0) return;
+    if (!isRefresh && error) return;
 
-    loadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyLikes(20, isRefresh ? undefined : nextCursor);
-
+      
       const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
         const combined = isRefresh ? items : [...existingItems, ...items];
         const seen = new Set();
@@ -1381,16 +1563,14 @@ function LikesScreen({
         setLikesData(prev => processItems(response.items, prev));
       }
       setNextCursor(response.nextCursor);
-      setHasMore(!!response.nextCursor);
     } catch (e) {
       console.log('Failed to load likes', e);
       setError(true);
     } finally {
-      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, nextCursor, hasMore]);
+  }, [user, nextCursor, likesData.length, error]);
 
   useEffect(() => {
     loadLikes(true);
@@ -1419,50 +1599,53 @@ function LikesScreen({
     return date.toLocaleDateString();
   };
 
-  const renderLikeItem = ({ item }: { item: ProfileItem }) => (
-    <View style={styles.historyCard}>
-      <Pressable
-        style={styles.historyCardInner}
-        onPress={() => item.itemType === 'post' && onItemPress(item.itemId)}
-      >
-        <View style={styles.historyImageContainer}>
-          {item.thumbnail ? (
-            <Image source={{ uri: item.thumbnail }} style={styles.historyImage} contentFit="cover" />
-          ) : (
-            <View style={[styles.historyImage, styles.historyPlaceholder]}>
-              <Text style={styles.historyPlaceholderText}>
-                {item.itemType?.substring(0, 1).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.historyInfo}>
-          <View style={styles.historyHeader}>
-            <Text style={styles.historyBadge}>{item.itemType}</Text>
-            <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+  const renderLikeItem = ({ item }: { item: unknown }) => {
+    const likeItem = item as ProfileItem;
+    return (
+      <View style={styles.historyCard}>
+        <Pressable 
+          style={styles.historyCardInner}
+          onPress={() => likeItem.itemType === 'post' && onItemPress(likeItem.itemId)}
+        >
+          <View style={styles.historyImageContainer}>
+            {likeItem.thumbnail ? (
+              <Image source={{ uri: likeItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+            ) : (
+              <View style={[styles.historyImage, styles.historyPlaceholder]}>
+                <Text style={styles.historyPlaceholderText}>
+                  {likeItem.itemType?.substring(0, 1).toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.historyTitle} numberOfLines={2}>
-            {item.title || `${item.itemType} #${item.itemId}`}
-          </Text>
-        </View>
-      </Pressable>
-      <Pressable
-        onPress={() => handleUnlike(item.itemId, item.itemType)}
-        style={({ pressed }) => [
-          styles.unlikeButton,
-          pressed && { transform: [{ scale: 0.92 }], opacity: 0.8 }
-        ]}
-      >
-        <Heart size={22} color={colors.accent} fill={colors.accent} />
-      </Pressable>
-    </View>
-  );
+          <View style={styles.historyInfo}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyBadge}>{likeItem.itemType}</Text>
+              <Text style={styles.historyDate}>{formatDate(likeItem.createdAt)}</Text>
+            </View>
+            <Text style={styles.historyTitle} numberOfLines={2}>
+              {likeItem.title || `${likeItem.itemType} #${likeItem.itemId}`}
+            </Text>
+          </View>
+        </Pressable>
+        <Pressable 
+          onPress={() => handleUnlike(likeItem.itemId, likeItem.itemType)}
+          style={({ pressed }) => [
+            styles.unlikeButton,
+            pressed && { transform: [{ scale: 0.92 }], opacity: 0.8 }
+          ]}
+        >
+          <Heart size={22} color={colors.accent} fill={colors.accent} />
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable
-          style={styles.modalCloseButtonInline}
+        <Pressable 
+          style={styles.modalCloseButtonInline} 
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -1517,16 +1700,206 @@ function PlaceholderScreen({ title }: { title: string }) {
 }
 
 // ============================================================
+// Debug Panel - 推荐算法可视化
+// ============================================================
+function DebugPanel({ 
+  visible, 
+  onClose,
+  onResetComplete
+}: { 
+  visible: boolean; 
+  onClose: () => void;
+  onResetComplete?: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { state, resetRecommendation, isResetting } = useRecommendation();
+  
+  // 包装 reset 函数，完成后调用 onResetComplete
+  const handleReset = useCallback(async () => {
+    await resetRecommendation();
+    onResetComplete?.();
+  }, [resetRecommendation, onResetComplete]);
+  const { bucketCount, clickCount, lastSignal } = state;
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Debug: 监控状态变化
+  useEffect(() => {
+    console.log('[DebugPanel] State updated:', { 
+      bucketCount: Object.keys(bucketCount).length, 
+      clickCount, 
+      lastSignal: lastSignal?.signalType 
+    });
+  }, [bucketCount, clickCount, lastSignal]);
+
+  // 计算总权重和每个 bucket 的百分比
+  const bucketEntries = Object.entries(bucketCount);
+  const totalWeight = bucketEntries.reduce((sum, [, weight]) => sum + weight, 0);
+  const maxWeight = Math.max(...bucketEntries.map(([, w]) => w), 1);
+  
+  // 距离下次 rebalance 的次数
+  const clicksToRebalance = 30 - (clickCount % 30);
+
+  // 格式化 bucket 名称
+  const formatBucketName = (name: string) => {
+    return name
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  // 获取 bucket 颜色
+  const getBucketColor = (index: number) => {
+    const hue = (index * 137.5) % 360; // Golden angle for good distribution
+    return `hsl(${hue}, 70%, 50%)`;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={[
+      styles.debugPanel,
+      { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }
+    ]}>
+      {/* Header */}
+      <View style={styles.debugHeader}>
+        <View style={styles.debugHeaderLeft}>
+          <Bug size={20} color={colors.primary} />
+          <Text style={styles.debugTitle}>Recommendation Debug</Text>
+        </View>
+        <View style={styles.debugHeaderRight}>
+          <Pressable 
+            style={styles.debugExpandButton}
+            onPress={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? (
+              <ChevronDown size={20} color={colors.textSecondary} />
+            ) : (
+              <ChevronUp size={20} color={colors.textSecondary} />
+            )}
+          </Pressable>
+          <Pressable style={styles.debugCloseButton} onPress={onClose}>
+            <X size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
+
+      {isExpanded && (
+        <ScrollView style={styles.debugContent} showsVerticalScrollIndicator={false}>
+          {/* Click Counter */}
+          <View style={styles.debugSection}>
+            <Text style={styles.debugSectionTitle}>Click Progress</Text>
+            <View style={styles.debugClickCounter}>
+              <View style={styles.debugClickBar}>
+                <View 
+                  style={[
+                    styles.debugClickProgress, 
+                    { width: `${((clickCount % 30) / 30) * 100}%` }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.debugClickText}>
+                {clickCount} clicks • {clicksToRebalance} to rebalance
+              </Text>
+            </View>
+          </View>
+
+          {/* Last Signal */}
+          {lastSignal && (
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>Last Signal</Text>
+              <View style={styles.debugLastSignal}>
+                <Text style={styles.debugSignalType}>{lastSignal.signalType}</Text>
+                <Text style={styles.debugSignalPost}>
+                  Post: {lastSignal.postId.slice(0, 12)}...
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Bucket Weights */}
+          <View style={styles.debugSection}>
+            <Text style={styles.debugSectionTitle}>
+              Bucket Weights ({bucketEntries.length})
+            </Text>
+            {bucketEntries.length > 0 ? (
+              <View style={styles.debugBucketList}>
+                {bucketEntries
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([bucket, weight], index) => {
+                    const percentage = totalWeight > 0 ? (weight / totalWeight) * 100 : 0;
+                    const barWidth = (weight / maxWeight) * 100;
+                    return (
+                      <View key={bucket} style={styles.debugBucketItem}>
+                        <View style={styles.debugBucketHeader}>
+                          <Text style={styles.debugBucketName} numberOfLines={1}>
+                            {formatBucketName(bucket)}
+                          </Text>
+                          <Text style={styles.debugBucketWeight}>
+                            {weight.toFixed(2)} ({percentage.toFixed(1)}%)
+                          </Text>
+                        </View>
+                        <View style={styles.debugBucketBarBg}>
+                          <View 
+                            style={[
+                              styles.debugBucketBar,
+                              { 
+                                width: `${barWidth}%`,
+                                backgroundColor: getBucketColor(index),
+                              }
+                            ]} 
+                          />
+                        </View>
+                      </View>
+                    );
+                  })}
+              </View>
+            ) : (
+              <Text style={styles.debugEmptyText}>
+                No bucket data yet. Interact with posts to see weights.
+              </Text>
+            )}
+          </View>
+
+          {/* Reset Button */}
+          <View style={styles.debugSection}>
+            <Pressable 
+              style={[
+                styles.debugResetButton,
+                isResetting && styles.debugResetButtonDisabled
+              ]}
+              onPress={handleReset}
+              disabled={isResetting}
+            >
+              <RefreshCw 
+                size={18} 
+                color="#fff" 
+                style={isResetting ? { opacity: 0.5 } : undefined}
+              />
+              <Text style={styles.debugResetText}>
+                {isResetting ? 'Resetting...' : 'Reset Recommendation State'}
+              </Text>
+            </Pressable>
+            <Text style={styles.debugResetHint}>
+              Clears history and resets all bucket weights to default
+            </Text>
+          </View>
+        </ScrollView>
+      )}
+    </Animated.View>
+  );
+}
+
+// ============================================================
 // 保存页面 - Saved Screen
 // ============================================================
-function SavedScreen({
-  onItemPress
-}: {
+function SavedScreen({ 
+  onItemPress 
+}: { 
   onItemPress: (uid: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
-
+  
   // 删除动画
   const handleUnsave = useCallback((uid: string, title: string) => {
     Alert.alert(
@@ -1534,8 +1907,8 @@ function SavedScreen({
       `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
+        { 
+          text: 'Remove', 
           style: 'destructive',
           onPress: () => unsave(uid),
         },
@@ -1550,8 +1923,8 @@ function SavedScreen({
       'Remove all saved posts? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove All',
+        { 
+          text: 'Remove All', 
           style: 'destructive',
           onPress: () => clearAll(),
         },
@@ -1593,57 +1966,58 @@ function SavedScreen({
   );
 
   // 渲染保存项
-  const renderSavedItem = ({ item, index }: { item: typeof savedPosts[0]; index: number }) => {
-    const localCover = getPostCover(item.uid);
-
+  const renderSavedItem = ({ item, index }: { item: unknown; index: number }) => {
+    const savedItem = item as typeof savedPosts[0];
+    const localCover = getPostCover(savedItem.uid);
+    
     return (
-      <Animated.View
+      <Animated.View 
         style={[
           styles.savedCard,
           { opacity: 1 }
         ]}
       >
-        <Pressable
+        <Pressable 
           style={styles.savedCardInner}
-          onPress={() => onItemPress(item.uid)}
+          onPress={() => onItemPress(savedItem.uid)}
         >
           {/* 封面图 */}
           <Image
-            source={localCover || { uri: item.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(item.title.slice(0, 5))}` }}
+            source={localCover || { uri: savedItem.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` }}
             style={styles.savedCardImage}
             contentFit="cover"
             transition={200}
           />
-
+          
           {/* 内容 */}
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
               <View style={styles.savedTopicBadge}>
-                <Text style={styles.savedTopicText}>#{item.topic}</Text>
+                <Text style={styles.savedTopicText}>#{formatTopicName(savedItem.topic)}</Text>
               </View>
             </View>
-
+            
             <Text style={styles.savedCardTitle} numberOfLines={2}>
-              {item.title}
+              {savedItem.title}
             </Text>
-
+            
             <View style={styles.savedCardFooter}>
               <View style={styles.savedTimeRow}>
                 <Clock size={12} color={colors.textMuted} />
                 <Text style={styles.savedTimeText}>
-                  {formatSavedTime(item.savedAt)}
+                  {formatSavedTime(savedItem.savedAt)}
                 </Text>
               </View>
             </View>
           </View>
-
+          
           {/* 删除按钮 */}
-          <Pressable
+          <Pressable 
             style={styles.savedDeleteButton}
-            onPress={() => handleUnsave(item.uid, item.title)}
+            onPress={() => handleUnsave(savedItem.uid, savedItem.title)}
             hitSlop={8}
           >
-            <X size={18} color={colors.textMuted} />
+            <Trash2 size={18} color={colors.textMuted} />
           </Pressable>
         </Pressable>
       </Animated.View>
@@ -1663,9 +2037,9 @@ function SavedScreen({
             </View>
           )}
         </View>
-
+        
         {savedCount > 0 && (
-          <Pressable
+          <Pressable 
             style={styles.savedClearButton}
             onPress={handleClearAll}
           >
@@ -1714,11 +2088,11 @@ function LoadingScreen() {
 // ============================================================
 // Error 状态组件
 // ============================================================
-function ErrorScreen({
-  message,
-  onRetry
-}: {
-  message: string;
+function ErrorScreen({ 
+  message, 
+  onRetry 
+}: { 
+  message: string; 
   onRetry: () => void;
 }) {
   return (
@@ -1734,26 +2108,263 @@ function ErrorScreen({
 }
 
 // ============================================================
+// 搜索页面 - Search Screen
+// ============================================================
+function SearchScreen({ 
+  items, 
+  onItemPress, 
+  onClose 
+}: { 
+  items: FeedItem[]; 
+  onItemPress: (uid: string) => void;
+  onClose: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const insets = useSafeAreaInsets();
+  
+  // 加载搜索历史
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('search_history');
+        if (saved) setHistory(JSON.parse(saved));
+      } catch (e) {}
+    };
+    loadHistory();
+  }, []);
+
+  // 过滤结果
+  const filteredItems = searchQuery.trim() === '' 
+    ? [] 
+    : items.filter(item => 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.topic.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+  const handleSearch = async (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed && !history.includes(trimmed)) {
+      const newHistory = [trimmed, ...history].slice(0, 10);
+      setHistory(newHistory);
+      try {
+        await AsyncStorage.setItem('search_history', JSON.stringify(newHistory));
+      } catch (e) {}
+    }
+  };
+
+  const clearHistory = async () => {
+    setHistory([]);
+    try {
+      await AsyncStorage.removeItem('search_history');
+    } catch (e) {}
+  };
+
+  return (
+    <View style={[styles.searchContainer, { paddingTop: insets.top }]}>
+      {/* 搜索栏 */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchFieldContainer}>
+          <Search size={18} color={colors.textMuted} style={styles.searchIconSmall} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search posts or topics..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={() => handleSearch(searchQuery)}
+            autoFocus
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
+              <X size={16} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable onPress={onClose} style={styles.cancelSearchButton}>
+          <Text style={styles.cancelSearchText}>Cancel</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView 
+        style={{ flex: 1 }} 
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {searchQuery.trim() === '' ? (
+          // 搜索历史
+          <View style={styles.searchHistoryContainer}>
+            <View style={styles.searchHistoryHeader}>
+              <Text style={styles.searchHistoryTitle}>Recent Searches</Text>
+              {history.length > 0 && (
+                <Pressable onPress={clearHistory}>
+                  <Trash2 size={16} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+            <View style={styles.searchHistoryTags}>
+              {history.length > 0 ? (
+                history.map((item, index) => (
+                  <Pressable 
+                    key={index} 
+                    style={styles.historyTag}
+                    onPress={() => {
+                      setSearchQuery(item);
+                      handleSearch(item);
+                    }}
+                  >
+                    <Clock size={12} color={colors.textMuted} style={{ marginRight: 6 }} />
+                    <Text style={styles.historyTagText}>{item}</Text>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.noHistoryText}>No recent searches</Text>
+              )}
+            </View>
+          </View>
+        ) : (
+          // 搜索结果
+          <View style={{ paddingHorizontal: 8, paddingTop: 12 }}>
+            {filteredItems.length > 0 ? (
+              <MasonryFeed 
+                items={filteredItems} 
+                onItemPress={(uid) => {
+                  handleSearch(searchQuery);
+                  onItemPress(uid);
+                }} 
+              />
+            ) : (
+              <View style={styles.noResultsContainer}>
+                <Text style={styles.noResultsText}>No results found for "{searchQuery}"</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ============================================================
+// Collection Screen - Grouped by Topic
+// ============================================================
+function CollectionScreen({ 
+  items, 
+  onItemPress,
+  onTopicPress
+}: { 
+  items: FeedItem[]; 
+  onItemPress: (uid: string) => void;
+  onTopicPress: (topic: string) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  
+  // Group items by topic
+  const groupedItems = useMemo(() => {
+    const groups: { [key: string]: FeedItem[] } = {};
+    items.forEach(item => {
+      if (!groups[item.topic]) {
+        groups[item.topic] = [];
+      }
+      groups[item.topic].push(item);
+    });
+    return Object.entries(groups).map(([topic, items]) => ({ topic, items }));
+  }, [items]);
+
+  return (
+    <View style={styles.collectionContainer}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
+        {groupedItems.map(({ topic, items }) => (
+          <View key={topic} style={styles.collectionSection}>
+            {/* Section Header */}
+            <View style={styles.collectionHeader}>
+              <View style={styles.collectionHeaderLeft}>
+                <Text style={styles.collectionTitle}>{formatTopicName(topic)}</Text>
+                <Text style={styles.collectionSubtitle}>
+                  Top-rated lessons and quizzes on this topic
+                </Text>
+              </View>
+              <Pressable style={styles.seeAllButton} onPress={() => onTopicPress(topic)}>
+                <Text style={styles.seeAllText}>See all</Text>
+              </Pressable>
+            </View>
+
+            {/* Horizontal Scroll of Cards */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.collectionHorizontalScroll}
+            >
+              {items.map((item) => (
+                <Pressable 
+                  key={item.uid} 
+                  style={styles.collectionCard}
+                  onPress={() => onItemPress(item.uid)}
+                >
+                  <Image
+                    source={item.coverImage}
+                    style={styles.collectionCardImage}
+                    contentFit="cover"
+                  />
+                  <View style={styles.collectionCardContent}>
+                    <Text style={styles.collectionCardTitle} numberOfLines={2}>
+                      {item.title}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ============================================================
 // 主应用内容
 // ============================================================
+// Onboarding 存储 key
+const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
+
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
+  
+  // 兴趣 Onboarding 状态
+  const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  // 使用 hooks 获取数据
-  const {
-    feedItems,
-    status: feedStatus,
-    error: feedError,
-    refetch: refetchFeed
-  } = useFeedItems();
+  // 使用帖子缓存系统
+  const { 
+    displayedPosts: feedItems, 
+    isLoading: feedLoading,
+    error: feedError, 
+    refetch: refetchFeed,
+    updateLocalLike: updateFeedLike,
+    consumeMultiple,
+    hasMore,
+    cacheStatus
+  } = usePostCache();
+  
+  // 收藏系统（用于刷新）
+  const { refreshSavedPosts } = useSaved();
+  
+  // 兼容旧的 status 变量
+  const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
   const { token, user } = useAuth();
-
+  
   // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
   // But if we just logged in, we might want to switch tab to 'me' if not already?
   // The requirement says "After login/signup, redirect to /profile."
@@ -1768,6 +2379,59 @@ function AppContent() {
     prevTokenRef.current = token;
   }, [token]);
 
+  // 检测是否需要显示兴趣 Onboarding
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (!token || !user) {
+        setOnboardingChecked(true);
+        return;
+      }
+      
+      try {
+        // 使用用户 ID 作为 key 的一部分，这样不同用户有独立的 onboarding 状态
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        const completed = await AsyncStorage.getItem(key);
+        
+        if (!completed) {
+          // 用户尚未完成 onboarding
+          console.log('[Onboarding] First time user, showing interests selection');
+          setShowInterestsOnboarding(true);
+        }
+      } catch (error) {
+        console.log('[Onboarding] Failed to check status:', error);
+      }
+      
+      setOnboardingChecked(true);
+    };
+    
+    checkOnboarding();
+  }, [token, user]);
+
+  // 完成 Onboarding 的回调
+  // 后端会清除所有用户数据（历史、收藏、点赞、评论），需要同步刷新前端状态
+  const handleOnboardingComplete = useCallback(async () => {
+    if (user) {
+      try {
+        const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
+        await AsyncStorage.setItem(key, 'true');
+        console.log('[Onboarding] Marked as completed');
+      } catch (error) {
+        console.log('[Onboarding] Failed to save status:', error);
+      }
+    }
+    setShowInterestsOnboarding(false);
+    
+    // 刷新所有相关数据（后端会清空用户数据）
+    console.log('[Onboarding] Refreshing all user data...');
+    refetchFeed();           // 刷新帖子推荐
+    refreshSavedPosts();     // 刷新收藏列表（会变空）
+  }, [user, refetchFeed, refreshSavedPosts]);
+
+  // Reset internal states when switching tabs
+  useEffect(() => {
+    setSelectedTopic(null);
+  }, [bottomTab]);
+
   // 渲染当前页面内容
   const renderContent = () => {
     switch (bottomTab) {
@@ -1776,43 +2440,60 @@ function AppContent() {
         if (feedStatus === 'loading' && feedItems.length === 0) {
           return (
             <>
-              <Header />
+              <Header onSearchPress={() => setShowSearchModal(true)} />
               <LoadingScreen />
             </>
           );
         }
-
+        
         // 处理错误状态
         if (feedStatus === 'error' && feedItems.length === 0) {
           return (
             <>
-              <Header />
-              <ErrorScreen
-                message={feedError || 'Unknown error'}
-                onRetry={refetchFeed}
+              <Header onSearchPress={() => setShowSearchModal(true)} />
+              <ErrorScreen 
+                message={feedError || 'Unknown error'} 
+                onRetry={refetchFeed} 
               />
             </>
           );
         }
+        
+        // 检测滚动到底部，加载更多帖子
+        const handleFeedScroll = (event: any) => {
+          const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+          const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
+          
+          if (isNearBottom && hasMore && !feedLoading) {
+            console.log('[Feed] Near bottom, loading more...');
+            consumeMultiple(2);
+          }
+        };
 
         return (
           <>
             {/* 顶部 Header */}
-            <Header />
-
+            <Header onSearchPress={() => setShowSearchModal(true)} />
+            
             {/* 信息流 */}
             <ScrollView
               style={styles.scroll}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
+              onScroll={handleFeedScroll}
+              scrollEventThrottle={400}
             >
-              <MasonryFeed
-                items={feedItems}
+              <MasonryFeed 
+                items={feedItems} 
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
-              {feedStatus === 'loading' ? (
+              {feedLoading ? (
                 <View style={styles.loadingMore}>
                   <Text style={styles.loadingMoreText}>Loading...</Text>
+                </View>
+              ) : hasMore ? (
+                <View style={styles.loadingMore}>
+                  <Text style={styles.loadingMoreText}>Scroll for more • Cache: {cacheStatus.cachedCount}</Text>
                 </View>
               ) : (
                 <Text style={styles.endText}>— End of List —</Text>
@@ -1821,31 +2502,60 @@ function AppContent() {
           </>
         );
       case 'collection':
-        return <PlaceholderScreen title="My Collections" />;
+        if (selectedTopic) {
+          const topicItems = feedItems.filter(item => item.topic === selectedTopic);
+          return (
+            <>
+              <Header 
+                title={formatTopicName(selectedTopic)} 
+                onBack={() => setSelectedTopic(null)}
+                onSearchPress={() => setShowSearchModal(true)} 
+              />
+              <ScrollView 
+                style={styles.collectionContainer}
+                contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <MasonryFeed items={topicItems} onItemPress={(uid) => setSelectedPostUid(uid)} />
+                <Text style={styles.endText}>— End of Topic —</Text>
+              </ScrollView>
+            </>
+          );
+        }
+        return (
+          <>
+            <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
+            <CollectionScreen 
+              items={feedItems} 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
+              onTopicPress={(topic) => setSelectedTopic(topic)}
+            />
+          </>
+        );
       case 'saved':
         return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
       case 'me':
         if (!token) return <AuthScreen />;
         if (showHistoryModal) {
           return (
-            <HistoryScreen
-              onItemPress={(uid) => setSelectedPostUid(uid)}
+            <HistoryScreen 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
               onBack={() => setShowHistoryModal(false)}
             />
           );
         }
         if (showLikesModal) {
           return (
-            <LikesScreen
-              onItemPress={(uid) => setSelectedPostUid(uid)}
+            <LikesScreen 
+              onItemPress={(uid) => setSelectedPostUid(uid)} 
               onToggleLike={refetchFeed}
               onBack={() => setShowLikesModal(false)}
             />
           );
         }
         return (
-          <ProfileScreen
-            onItemPress={(uid) => setSelectedPostUid(uid)}
+          <ProfileScreen 
+            onItemPress={(uid) => setSelectedPostUid(uid)} 
             onToggleLike={refetchFeed}
             onHistoryPress={() => setShowHistoryModal(true)}
             onLikesPress={() => setShowLikesModal(true)}
@@ -1858,9 +2568,21 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
+      {/* 兴趣 Onboarding Modal */}
+      <Modal
+        visible={showInterestsOnboarding}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {}} // 阻止关闭
+      >
+        <OnboardingScreen
+          onComplete={handleOnboardingComplete}
+        />
+      </Modal>
+
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
-
+      
         {renderContent()}
 
         {/* 底部导航 */}
@@ -1874,23 +2596,64 @@ function AppContent() {
           onRequestClose={() => setSelectedPostUid(null)}
         >
           {feedItems && feedItems.length > 0 && selectedPostUid ? (
-            <PostSwiper
+            <PostSwiper 
               items={feedItems}
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
+              onFeedLikeUpdate={updateFeedLike}
+              onLoadMore={() => consumeMultiple(1)}
             />
           ) : (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <LoadingScreen />
-              <Pressable
-                style={styles.modalCloseButton}
-                onPress={() => setSelectedPostUid(null)}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
+             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+               <LoadingScreen />
+               <Pressable 
+                 style={styles.modalCloseButton} 
+                 onPress={() => setSelectedPostUid(null)}
+               >
+                 <X size={24} color={colors.text} />
+               </Pressable>
+             </View>
           )}
         </Modal>
+
+        {/* 搜索 Modal */}
+        <Modal
+          visible={showSearchModal}
+          animationType="fade"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowSearchModal(false)}
+        >
+          <SearchScreen 
+            items={feedItems}
+            onItemPress={(uid) => {
+              setShowSearchModal(false);
+              setSelectedPostUid(uid);
+            }}
+            onClose={() => setShowSearchModal(false)}
+          />
+        </Modal>
+
+        {/* Debug Panel */}
+        <DebugPanel 
+          visible={showDebugPanel} 
+          onClose={() => setShowDebugPanel(false)}
+          onResetComplete={() => {
+            // 后端会清空所有用户数据，同步刷新前端
+            console.log('[DebugPanel] Reset complete, refreshing all data...');
+            refetchFeed();
+            refreshSavedPosts();
+          }}
+        />
+
+        {/* Debug Toggle Button (开发模式可见) */}
+        {__DEV__ && (
+          <Pressable 
+            style={styles.debugToggleButton}
+            onPress={() => setShowDebugPanel(!showDebugPanel)}
+          >
+            <Bug size={20} color="#fff" />
+          </Pressable>
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -1902,11 +2665,15 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <SavedProvider>
-        <NotesProvider>
-          <AppContent />
-        </NotesProvider>
-      </SavedProvider>
+      <RecommendationProvider>
+        <PostCacheProvider>
+          <SavedProvider>
+            <NotesProvider>
+              <AppContent />
+            </NotesProvider>
+          </SavedProvider>
+        </PostCacheProvider>
+      </RecommendationProvider>
     </AuthProvider>
   );
 }
@@ -1919,7 +2686,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-
+  
   // Header
   header: {
     flexDirection: 'row',
@@ -1934,7 +2701,7 @@ const styles = StyleSheet.create({
   headerIcon: {
     padding: 8,
   },
-
+  
   // Top Tabs
   topTabs: {
     flexDirection: 'row',
@@ -1962,7 +2729,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 2,
   },
-
+  
   // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
@@ -2004,7 +2771,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
     transform: [{ scale: 1.05 }],
   },
-
+  
   // Scroll
   scroll: {
     flex: 1,
@@ -2014,7 +2781,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-
+  
   // Masonry
   masonry: {
     flexDirection: 'row',
@@ -2024,7 +2791,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: COLUMN_GAP,
   },
-
+  
   // Card
   card: {
     backgroundColor: colors.card,
@@ -2077,14 +2844,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-
+  
   endText: {
     textAlign: 'center',
     color: colors.textMuted,
     fontSize: 13,
     paddingVertical: 24,
   },
-
+  
   // Placeholder
   placeholder: {
     flex: 1,
@@ -2102,11 +2869,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textMuted,
   },
-
+  
   // Reader
   readerContainer: {
     flex: 1,
     backgroundColor: colors.card,
+    alignSelf: 'stretch',
   },
   readerHeader: {
     flexDirection: 'row',
@@ -2127,10 +2895,11 @@ const styles = StyleSheet.create({
   },
   readerScroll: {
     flex: 1,
-    width: SCREEN_WIDTH,
+    alignSelf: 'stretch',
+    backgroundColor: colors.card,
   },
   readerScrollContent: {
-
+    
   },
   closeButtonOverlay: {
     position: 'absolute',
@@ -2237,7 +3006,6 @@ const styles = StyleSheet.create({
   blocksContainer: {
     paddingHorizontal: 20,
     width: '100%',
-    paddingBottom: 40, // Add explicit padding inside container
   },
   blockH1: {
     fontSize: 22,
@@ -2267,15 +3035,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
-    // marginBottom moved to container
-  },
-  imageCaption: {
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 12,
-    fontStyle: 'italic',
+    marginBottom: 16,
+    flexShrink: 1,
+    width: '100%',
+    flexWrap: 'wrap',
   },
   blockBullets: {
     marginVertical: 12,
@@ -2318,11 +3081,11 @@ const styles = StyleSheet.create({
   },
   blockImage: {
     width: '100%',
-    aspectRatio: 1.5,
+    aspectRatio: 1,
     borderRadius: 10,
-    marginVertical: 4,
+    marginVertical: 12,
   },
-
+  
   // Post Bottom Bar
   postBottomBar: {
     flexDirection: 'row',
@@ -2404,7 +3167,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-
+  
   // Loading
   loadingContainer: {
     flex: 1,
@@ -2417,6 +3180,183 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  // Collection Screen Styles
+  collectionContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  collectionSection: {
+    marginTop: 24,
+  },
+  collectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  collectionHeaderLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  collectionTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  collectionSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  seeAllButton: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  seeAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  collectionHorizontalScroll: {
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+  collectionCard: {
+    width: 160,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginRight: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    // Shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    // Elevation for Android
+    elevation: 2,
+  },
+  collectionCardImage: {
+    width: '100%',
+    height: 160,
+    backgroundColor: colors.border,
+  },
+  collectionCardContent: {
+    padding: 12,
+    height: 60,
+    justifyContent: 'center',
+  },
+  collectionCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 18,
+  },
+  
+  // Search Screen Styles
+  searchContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.card,
+    gap: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+  },
+  searchFieldContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  searchIconSmall: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    height: '100%',
+    padding: 0,
+  },
+  clearSearchButton: {
+    padding: 4,
+  },
+  cancelSearchButton: {
+    paddingVertical: 8,
+  },
+  cancelSearchText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  searchHistoryContainer: {
+    padding: 20,
+  },
+  searchHistoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  searchHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  searchHistoryTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  historyTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+  },
+  historyTagText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  noHistoryText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  noResultsContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  noResultsText: {
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   loadingMore: {
     paddingVertical: 24,
     alignItems: 'center',
@@ -2425,7 +3365,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-
+  
   // Error
   errorContainer: {
     flex: 1,
@@ -2461,7 +3401,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-
+  
   // Modal close button
   modalCloseButton: {
     position: 'absolute',
@@ -2476,7 +3416,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-
+  
   // ============================================================
   // Saved Screen 样式
   // ============================================================
@@ -2605,7 +3545,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.bg,
   },
-
+  
   // Empty State
   savedEmptyContainer: {
     flex: 1,
@@ -2653,7 +3593,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
-
+  
   // Comment Sheet
   commentSheet: {
     position: 'absolute',
@@ -2701,7 +3641,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  commentSortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: 8,
+    padding: 2,
+  },
+  sortButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  sortButtonActive: {
+    backgroundColor: colors.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sortButtonText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  sortDivider: {
+    width: 1,
+    height: 10,
+    backgroundColor: colors.border,
+    marginHorizontal: 2,
   },
   commentInputRow: {
     flexDirection: 'row',
@@ -2717,14 +3697,20 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    height: 40,
+    minHeight: 40,
+    maxHeight: 100,
     backgroundColor: colors.bg,
     borderRadius: 20,
     paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 14,
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  commentSendButton: {
+    padding: 4,
   },
   commentLoginPrompt: {
     padding: 16,
@@ -2767,6 +3753,18 @@ const styles = StyleSheet.create({
   commentTime: {
     fontSize: 12,
     color: colors.textMuted,
+    marginTop: 2,
+  },
+  commentLikeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+  },
+  commentLikeCount: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
   },
   commentText: {
     fontSize: 14,
@@ -2810,15 +3808,11 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   headerClearButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
   },
-  headerClearButtonText: {
-    fontSize: 14,
-    color: colors.error,
-    fontWeight: '600',
-  },
-
+  
   // ============================================================
   // History & Likes Screen Styles
   // ============================================================
@@ -2953,5 +3947,191 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '700',
+  },
+
+  // ============================================================
+  // Debug Panel Styles
+  // ============================================================
+  debugToggleButton: {
+    position: 'absolute',
+    bottom: 140,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 1000,
+  },
+  debugPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+    zIndex: 2000,
+    maxHeight: '70%',
+  },
+  debugHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  debugHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  debugHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  debugExpandButton: {
+    padding: 4,
+  },
+  debugCloseButton: {
+    padding: 4,
+  },
+  debugContent: {
+    padding: 16,
+  },
+  debugSection: {
+    marginBottom: 20,
+  },
+  debugSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  debugClickCounter: {
+    gap: 8,
+  },
+  debugClickBar: {
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  debugClickProgress: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  debugClickText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  debugLastSignal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.primaryBg,
+    padding: 12,
+    borderRadius: 10,
+  },
+  debugSignalType: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+    backgroundColor: colors.card,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  debugSignalPost: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  debugBucketList: {
+    gap: 12,
+  },
+  debugBucketItem: {
+    gap: 6,
+  },
+  debugBucketHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  debugBucketName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  debugBucketWeight: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  debugBucketBarBg: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  debugBucketBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  debugEmptyText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 20,
+  },
+  debugResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  debugResetButtonDisabled: {
+    opacity: 0.6,
+  },
+  debugResetText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  debugResetHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

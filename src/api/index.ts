@@ -17,7 +17,10 @@ import {
   Comment,
   CreateCommentRequest,
   ProfileListResponse,
-  ProfileItem
+  ProfileItem,
+  SignalType,
+  SignalResponse,
+  ResetRecommendationResponse
 } from './types';
 import { config } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -54,8 +57,8 @@ async function request<T>(
       ...options.headers,
     };
 
-    // Only set JSON content type if body is not FormData
-    if (!(options.body instanceof FormData)) {
+    // Only set JSON content type if body exists and is not FormData
+    if (options.body && !(options.body instanceof FormData)) {
       // @ts-ignore
       headers['Content-Type'] = 'application/json';
     }
@@ -203,11 +206,8 @@ export async function loginWithGoogle(data: GoogleLoginRequest): Promise<AuthRes
  * GET /posts
  * 返回的可能是简单帖子或富文本帖子的混合数组
  */
-export async function fetchPosts(): Promise<ApiPost[]> {
-  // 注意：后端路径可能没有 prefix，这里假设 fetchPosts 使用原始路径，或者也需要 prefix
-  // 如果后端完全遵循 API contract，posts 应该在 {BASE}{PREFIX}/posts
-  // 之前的代码是 request<ApiPost[]>('/posts')，现在 request 自动加了 PREFIX
-  return request<ApiPost[]>('/posts');
+export async function fetchPosts(limit: number = 1000): Promise<ApiPost[]> {
+  return request<ApiPost[]>(`/posts?limit=${limit}`);
 }
 
 /**
@@ -316,26 +316,29 @@ export async function getMyLikes(limit: number = 20, cursor?: string): Promise<P
 }
 
 export async function likeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/likes', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/likes?${query}`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
 }
 
 export async function unlikeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/likes', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/likes?${query}`, {
     method: 'DELETE',
     body: JSON.stringify({ itemId, itemType })
   });
 }
 
 export async function getMyHistory(limit: number = 20, cursor?: string): Promise<ProfileListResponse> {
-  const query = `limit=${limit}` + (cursor ? `&cursor=${cursor}` : '');
+  const query = `limit=${limit}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
   return request<ProfileListResponse>(`/me/history?${query}`);
 }
 
 export async function recordHistory(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>('/me/history', {
+  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
+  return request<void>(`/me/history?${query}`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
@@ -350,6 +353,79 @@ export async function clearHistory(): Promise<void> {
 // Backward compatibility or alias if needed, but updated to use new functions in ProfileScreen
 // export const fetchHistory = getMyHistory; 
 // export const fetchLikedPosts = getMyLikes;
+
+// ============================================================
+// Recommendation Signal API
+// ============================================================
+
+/**
+ * 发送用户交互信号
+ * 用于推荐算法追踪用户行为
+ * POST /api/signals
+ * 
+ * @returns SignalResponse 包含更新后的 bucket_count 和 click_count
+ */
+export async function sendSignal(postId: string, signalType: SignalType): Promise<SignalResponse> {
+  return request<SignalResponse>('/api/signals', {
+    method: 'POST',
+    body: JSON.stringify({ postId, signalType }),
+  });
+}
+
+/**
+ * 请求推荐帖子
+ * GET /posts/recommended?amount=N
+ * @param amount - 请求的帖子数量
+ */
+export async function requestRecommendedPosts(amount: number = 20): Promise<ApiPost[]> {
+  return request<ApiPost[]>(`/posts/recommended?amount=${amount}`);
+}
+
+/**
+ * 重置推荐状态（Debug 用）
+ * POST /api/debug/reset-recommendation
+ * 
+ * 功能：清空 history + 重置 bucket 权重为默认值
+ */
+export async function resetRecommendation(): Promise<ResetRecommendationResponse> {
+  return request<ResetRecommendationResponse>('/api/debug/reset-recommendation', {
+    method: 'POST',
+  });
+}
+
+// ============================================================
+// Onboarding API
+// ============================================================
+
+/**
+ * 兴趣等级类型
+ */
+export type InterestLevel = 'none' | 'interested' | 'super_interested';
+
+/**
+ * Onboarding 响应
+ */
+export interface OnboardingResponse {
+  ok: boolean;
+  bucket_count: Record<string, number>;
+  click_count: number;
+}
+
+/**
+ * 提交 Onboarding 兴趣选择
+ * POST /api/onboarding
+ * 
+ * @param interests - bucket ID 到兴趣等级的映射
+ * @returns OnboardingResponse 包含更新后的 bucket_count
+ */
+export async function submitOnboarding(
+  interests: Record<string, InterestLevel>
+): Promise<OnboardingResponse> {
+  return request<OnboardingResponse>('/api/onboarding', {
+    method: 'POST',
+    body: JSON.stringify({ interests }),
+  });
+}
 
 // 导出类型
 export * from './types';

@@ -41,12 +41,19 @@ interface UseFeedItemsResult {
   status: RequestStatus;
   error: string | null;
   refetch: () => void;
+  updateLocalLike: (uid: string, isLiked: boolean, likeCount: number) => void;
 }
 
 export function useFeedItems(): UseFeedItemsResult {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  const updateLocalLike = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
+    setFeedItems(prev => prev.map(item => 
+      item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
+    ));
+  }, []);
 
   const fetchData = useCallback(async () => {
     setStatus('loading');
@@ -95,6 +102,7 @@ export function useFeedItems(): UseFeedItemsResult {
     status,
     error,
     refetch: fetchData,
+    updateLocalLike,
   };
 }
 
@@ -182,12 +190,17 @@ interface UsePostResult {
   status: RequestStatus;
   error: string | null;
   refetch: () => void;
+  updateLocalLike: (isLiked: boolean, likeCount: number) => void;
 }
 
 export function usePost(postId: string | null): UsePostResult {
   const [post, setPost] = useState<Post | null>(null);
   const [status, setStatus] = useState<RequestStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  const updateLocalLike = useCallback((isLiked: boolean, likeCount: number) => {
+    setPost(prev => prev ? { ...prev, isLiked, likeCount } : null);
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!postId) {
@@ -251,6 +264,7 @@ export function usePost(postId: string | null): UsePostResult {
     status,
     error,
     refetch: fetchData,
+    updateLocalLike,
   };
 }
 
