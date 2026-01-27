@@ -128,6 +128,30 @@ const formatTopicName = (topic: string) => {
     .join(' ');
 };
 
+// Helper for relative time formatting
+const formatRelativeTime = (dateString?: string) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    // Check if it's the same calendar day (just in case of timezone edge cases)
+    if (date.getDate() === now.getDate()) {
+       return `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    }
+    return 'Yesterday';
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else {
+    // Fallback to date for older items
+    return date.toLocaleDateString(); 
+  }
+};
+
 // ============================================================
 // 顶部导航 Tab
 // ============================================================
@@ -589,7 +613,7 @@ function CommentSection({ postId }: { postId: string }) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.commentUser}>{item.user?.displayName || 'User'}</Text>
                   <Text style={styles.commentTime}>
-                    {new Date(item.created_at).toLocaleDateString()}
+                    {formatRelativeTime(item.created_at)}
                   </Text>
                 </View>
                 <Pressable 
@@ -1425,9 +1449,7 @@ function HistoryScreen({
   };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+    return formatRelativeTime(dateString);
   };
 
   const renderHistoryItem = ({ item }: { item: unknown }) => {
@@ -1594,9 +1616,7 @@ function LikesScreen({
   };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+    return formatRelativeTime(dateString);
   };
 
   const renderLikeItem = ({ item }: { item: unknown }) => {
@@ -1934,18 +1954,7 @@ function SavedScreen({
 
   // 格式化保存时间
   const formatSavedTime = (isoString: string) => {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    return formatRelativeTime(isoString);
   };
 
   // 渲染空状态
@@ -1983,10 +1992,10 @@ function SavedScreen({
         >
           {/* 封面图 */}
           <Image
-            source={localCover || { uri: savedItem.coverImageUri || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` }}
+            source={localCover || { uri: savedItem.coverImageUrl || `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` }}
             style={styles.savedCardImage}
             contentFit="cover"
-            transition={200}
+            transition={300}
           />
           
           {/* 内容 */}
