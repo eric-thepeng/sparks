@@ -708,7 +708,8 @@ const PageItem = React.memo(({
   isVisible,
   containerHeight,
   isLastPage,
-  bottomBarHeight
+  bottomBarHeight,
+  onScrollEdge
 }: { 
   item: ReaderItem; 
   post: Post;
@@ -716,6 +717,7 @@ const PageItem = React.memo(({
   containerHeight: number;
   isLastPage: boolean;
   bottomBarHeight: number;
+  onScrollEdge?: (atTop: boolean, atBottom: boolean) => void;
 }) => {
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -724,6 +726,14 @@ const PageItem = React.memo(({
   
   const insets = useSafeAreaInsets();
   
+  const lastY = useRef(0);
+  const dragDir = useRef<'up' | 'down' | null>(null);
+  
+  // Scroll hint states
+  const [showScrollHint, setShowScrollHint] = useState(true);
+  const hintOpacity = useRef(new Animated.Value(1)).current;
+  const hintTranslateY = useRef(new Animated.Value(0)).current;
+
   // Robustly calculate bottom padding
   // Header is ~50, Bottom bar is ~60
   // insets.bottom is usually 34 on iPhone X+, 0 on older phones
@@ -748,6 +758,26 @@ const PageItem = React.memo(({
       ]).start();
     }
   }, [isVisible]);
+
+  // Scroll hint bounce animation
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(hintTranslateY, { toValue: 6, duration: 600, useNativeDriver: true }),
+        Animated.timing(hintTranslateY, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  const fadeHint = (to: number) => {
+    Animated.timing(hintOpacity, {
+      toValue: to,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  };
 
   // Render content block helper
   const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
@@ -834,6 +864,46 @@ const PageItem = React.memo(({
         bounces={true} 
         overScrollMode="always"
         scrollEventThrottle={16}
+        onTouchStart={() => {
+          onScrollEdge?.(false, false);
+        }}
+        onScrollBeginDrag={() => {
+          onScrollEdge?.(false, false);
+        }}
+        onScroll={(e) => {
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          const y = contentOffset.y;
+          dragDir.current = y > lastY.current ? "up" : "down";
+          lastY.current = y;
+
+          const EDGE_THRESHOLD = 32;
+          const atTop = y <= EDGE_THRESHOLD;
+          const atBottom = y + layoutMeasurement.height >= contentSize.height - EDGE_THRESHOLD;
+
+          // Only signal edge intent if at an edge AND dragging outward
+          const wantsPageTop = atTop && dragDir.current === "down";
+          const wantsPageBottom = atBottom && dragDir.current === "up";
+
+          onScrollEdge?.(wantsPageTop, wantsPageBottom);
+
+          // Update scroll hint visibility
+          // If content is small enough to fit without scrolling, hide hint immediately
+          const isScrollable = contentSize.height > layoutMeasurement.height + 10;
+          if (!isScrollable) {
+            if (showScrollHint) {
+              setShowScrollHint(false);
+              fadeHint(0);
+            }
+          } else {
+            if (atBottom && showScrollHint) {
+              setShowScrollHint(false);
+              fadeHint(0);
+            } else if (!atBottom && !showScrollHint) {
+              setShowScrollHint(true);
+              fadeHint(1);
+            }
+          }
+        }}
         decelerationRate="normal"
         keyboardShouldPersistTaps="handled"
         scrollIndicatorInsets={{ bottom: bottomClearance }}
@@ -865,6 +935,35 @@ const PageItem = React.memo(({
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
       </GHScrollView>
+
+      {/* Scroll Hint Overlay */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: bottomClearance + 16,
+          opacity: hintOpacity,
+          transform: [{ translateY: hintTranslateY }],
+        }}
+      >
+        <View style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          // Subtle shadow
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.15,
+          shadowRadius: 4,
+          elevation: 4,
+        }}>
+          <ChevronDown size={18} color={colors.textSecondary} />
+        </View>
+      </Animated.View>
     </Animated.View>
   );
 });
@@ -876,10 +975,12 @@ function SinglePostReader({
   post,
   onClose,
   onLikeUpdate,
+  onSwipeEnableChange,
 }: {
   post: Post;
   onClose: () => void;
   onLikeUpdate?: (isLiked: boolean, likeCount: number) => void;
+  onSwipeEnableChange?: (enabled: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token, logout } = useAuth();
@@ -1204,6 +1305,14 @@ function SinglePostReader({
               containerHeight={Math.floor(containerHeight)}
               isLastPage={index === readerData.length - 1}
               bottomBarHeight={measuredBottomBarHeight}
+              onScrollEdge={(atTop, atBottom) => {
+                if (index === currentPage) {
+                  const isFirst = index === 0;
+                  const isLast = index === readerData.length - 1;
+                  const canSwipe = (isFirst && atTop) || (isLast && atBottom);
+                  onSwipeEnableChange?.(canSwipe);
+                }
+              }}
             />
           </View>
         )}
@@ -1339,12 +1448,14 @@ function PostLoader({
   uid, 
   onClose,
   onFeedLikeUpdate,
-  onMissing
+  onMissing,
+  onSwipeEnableChange,
 }: { 
   uid: string, 
   onClose: () => void,
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onMissing?: (uid: string) => void;
+  onSwipeEnableChange?: (enabled: boolean) => void;
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
@@ -1408,6 +1519,7 @@ function PostLoader({
         updateLocalLike(isLiked, count);
         onFeedLikeUpdate?.(uid, isLiked, count);
       }} 
+      onSwipeEnableChange={onSwipeEnableChange}
     />
   );
 }
@@ -1434,6 +1546,7 @@ function PostSwiper({
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [canSwipe, setCanSwipe] = useState(true);
   const loadMoreTriggered = useRef(false);
   const flatListRef = useRef<GHFlatList<any>>(null);
 
@@ -1466,6 +1579,7 @@ function PostSwiper({
     const newIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     if (newIndex !== currentIndex && newIndex >= 0 && newIndex < items.length) {
       setCurrentIndex(newIndex);
+      setCanSwipe(true);
     }
   }, [currentIndex, items.length]);
 
@@ -1475,6 +1589,7 @@ function PostSwiper({
       data={items}
       horizontal
       pagingEnabled
+      scrollEnabled={canSwipe}
       directionalLockEnabled={true}
       activeOffsetX={[-20, 20]} // Require more horizontal movement before paging
       failOffsetY={[-10, 10]}   // Vertical scroll wins sooner
@@ -1516,6 +1631,11 @@ function PostSwiper({
               onClose={onClose} 
               onFeedLikeUpdate={onFeedLikeUpdate}
               onMissing={onMissing}
+              onSwipeEnableChange={(enabled) => {
+                if (index === currentIndex) {
+                  setCanSwipe(enabled);
+                }
+              }}
             />
           </Animated.View>
         );
