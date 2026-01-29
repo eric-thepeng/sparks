@@ -23,6 +23,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -549,7 +550,7 @@ function CommentSection({ postId }: { postId: string }) {
     return (
       <View style={styles.commentsLoading}>
         <ActivityIndicator color={colors.primary} />
-        <Text style={[styles.textSecondary, { marginTop: 8 }]}>Loading comments...</Text>
+        <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Loading comments...</Text>
       </View>
     );
   }
@@ -595,7 +596,7 @@ function CommentSection({ postId }: { postId: string }) {
         </View>
       ) : (
         <View style={styles.commentLoginPrompt}>
-          <Text style={styles.textSecondary}>Log in to comment</Text>
+          <Text style={{ color: colors.textSecondary }}>Log in to comment</Text>
         </View>
       )}
 
@@ -706,13 +707,15 @@ const PageItem = React.memo(({
   post,
   isVisible,
   containerHeight,
-  isLastPage
+  isLastPage,
+  bottomBarHeight
 }: { 
   item: ReaderItem; 
   post: Post;
   isVisible: boolean; 
   containerHeight: number;
   isLastPage: boolean;
+  bottomBarHeight: number;
 }) => {
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -725,7 +728,7 @@ const PageItem = React.memo(({
   // Header is ~50, Bottom bar is ~60
   // insets.bottom is usually 34 on iPhone X+, 0 on older phones
   // Add extra buffer (24) to ensure the last line clears the bottom bar
-  const bottomClearance = 60 + insets.bottom + 24;
+  const bottomClearance = (bottomBarHeight || 60) + insets.bottom + 24;
 
   useEffect(() => {
     if (isVisible && !revealed) {
@@ -822,7 +825,8 @@ const PageItem = React.memo(({
       alignSelf: 'stretch',
       overflow: 'visible', // Ensure no clipping
     }}>
-      <ScrollView 
+      <GHScrollView 
+        directionalLockEnabled={true}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
@@ -860,7 +864,7 @@ const PageItem = React.memo(({
         <View style={styles.blocksContainer}>
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
-      </ScrollView>
+      </GHScrollView>
     </Animated.View>
   );
 });
@@ -879,7 +883,7 @@ function SinglePostReader({
 }) {
   const insets = useSafeAreaInsets();
   const { token, logout } = useAuth();
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<GHFlatList<any>>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
@@ -927,9 +931,9 @@ function SinglePostReader({
         
         p.blocks.forEach(block => {
           // Remove horizontal rules
-          if (block.type === 'paragraph' && block.text.trim().match(/^---+$/)) return;
+          if (block.type === 'paragraph' && block.text && block.text.trim().match(/^---+$/)) return;
           
-          if (block.type === 'paragraph') {
+          if (block.type === 'paragraph' && block.text) {
             const splitTexts = splitLongParagraph(block.text);
             splitTexts.forEach(txt => {
               if (txt) cleanedBlocks.push({ ...block, text: txt });
@@ -1186,9 +1190,10 @@ function SinglePostReader({
       </View>
 
       {/* 垂直滚动内容 (使用 FlatList + snapToInterval) */}
-      <FlatList
+      <GHFlatList
         ref={flatListRef}
         data={readerData}
+        directionalLockEnabled={true}
         keyExtractor={(_, index) => `reader-item-${index}`}
         renderItem={({ item, index }) => (
           <View style={{ height: Math.floor(containerHeight) }}>
@@ -1410,7 +1415,7 @@ function PostLoader({
 // ============================================================
 // Post Swiper (Horizontal Feed)
 // ============================================================
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+const AnimatedFlatList = Animated.createAnimatedComponent(GHFlatList) as any;
 
 function PostSwiper({ 
   items, 
@@ -1430,7 +1435,7 @@ function PostSwiper({
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const loadMoreTriggered = useRef(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<GHFlatList<any>>(null);
 
   // Sync scroll position if currentIndex changes externally
   useEffect(() => {
@@ -1470,6 +1475,9 @@ function PostSwiper({
       data={items}
       horizontal
       pagingEnabled
+      directionalLockEnabled={true}
+      activeOffsetX={[-20, 20]} // Require more horizontal movement before paging
+      failOffsetY={[-10, 10]}   // Vertical scroll wins sooner
       initialScrollIndex={initialIndex}
       onScroll={Animated.event(
         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
@@ -2856,19 +2864,21 @@ function AppContent() {
 // ============================================================
 export default function App() {
   return (
-    <AuthProvider>
-      <RecommendationProvider>
-        <PostCacheProvider>
-          <SavedProvider>
-            <HistoryProvider>
-              <NotesProvider>
-                <AppContent />
-              </NotesProvider>
-            </HistoryProvider>
-          </SavedProvider>
-        </PostCacheProvider>
-      </RecommendationProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RecommendationProvider>
+          <PostCacheProvider>
+            <SavedProvider>
+              <HistoryProvider>
+                <NotesProvider>
+                  <AppContent />
+                </NotesProvider>
+              </HistoryProvider>
+            </SavedProvider>
+          </PostCacheProvider>
+        </RecommendationProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
