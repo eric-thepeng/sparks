@@ -79,7 +79,7 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache, HistoryProvider, usePostHistory } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -641,6 +641,60 @@ function CommentSection({ postId }: { postId: string }) {
 }
 
 // ============================================================
+// --- Markdown Helper ---
+const renderMarkdownText = (text: string = '', baseStyle: any, isCaption: boolean = false) => {
+  if (!text) return null;
+  
+  if (isCaption) {
+    // For captions, the backend wraps the whole thing in *...* or **...** to mark it as a caption.
+    // We should strip these and render with caption style (italic).
+    let processedText = text.trim();
+    if (processedText.startsWith('**') && processedText.endsWith('**')) {
+      processedText = processedText.slice(2, -2);
+    } else if (processedText.startsWith('*') && processedText.endsWith('*')) {
+      processedText = processedText.slice(1, -1);
+    }
+    
+    // Support internal bold if needed
+    const parts = processedText.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+    return (
+      <Text style={baseStyle} allowFontScaling={false}>
+        {parts.map((part, i) => {
+          if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('*') && part.endsWith('*'))) {
+            const content = part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1);
+            return (
+              <Text key={i} style={[baseStyle, { fontWeight: 'bold', fontStyle: 'normal' }]}>
+                {content}
+              </Text>
+            );
+          }
+          return part;
+        })}
+      </Text>
+    );
+  }
+
+  // Regular text logic
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+  
+  return (
+    <Text style={baseStyle} allowFontScaling={false}>
+      {parts.map((part, i) => {
+        // Handle bold (** or *)
+        if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('*') && part.endsWith('*'))) {
+          const content = part.startsWith('**') ? part.slice(2, -2) : part.slice(1, -1);
+          return (
+            <Text key={i} style={[baseStyle, { fontWeight: 'bold', color: colors.text }]}>
+              {content}
+            </Text>
+          );
+        }
+        return part;
+      })}
+    </Text>
+  );
+};
+
 // ============================================================
 // Page Item Component (for Vertical FlatList)
 // ============================================================
@@ -664,6 +718,14 @@ const PageItem = React.memo(({
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
   const translateY = useRef(new Animated.Value(isFirstPage ? 0 : 50)).current;
   const [revealed, setRevealed] = useState(isFirstPage);
+  
+  const insets = useSafeAreaInsets();
+  
+  // Robustly calculate bottom padding
+  // Header is ~50, Bottom bar is ~60
+  // insets.bottom is usually 34 on iPhone X+, 0 on older phones
+  // Add extra buffer (24) to ensure the last line clears the bottom bar
+  const bottomClearance = 60 + insets.bottom + 24;
 
   useEffect(() => {
     if (isVisible && !revealed) {
@@ -690,6 +752,10 @@ const PageItem = React.memo(({
     
     // Skip h1 on the first page since we render the title in the header UI
     if (pageIdx === 0 && block.type === 'h1') return null;
+    
+    // Skip empty paragraphs or horizontal rules that were captured as text
+    // Handles ---, ----, etc.
+    if (block.type === 'paragraph' && (!block.text || block.text.trim().match(/^---+$/))) return null;
 
     switch (block.type) {
       case 'h1':
@@ -700,25 +766,23 @@ const PageItem = React.memo(({
         return <Text key={key} style={styles.blockH3}>{block.text}</Text>;
       case 'paragraph':
         return (
-          <Text 
-            key={key} 
-            style={styles.blockParagraph}
-            allowFontScaling={false}
-          >
-            {block.text}
-          </Text>
+          <View key={key} style={{ width: '100%', minHeight: 1 }}>
+            {renderMarkdownText(block.text, styles.blockParagraph)}
+          </View>
         );
       case 'image':
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
-          <Image
-            key={key}
-            source={imageSource}
-            style={styles.blockImage}
-            contentFit="contain"
-            transition={300}
-          />
+          <View key={key} style={styles.imageBlockContainer}>
+            <Image
+              source={imageSource}
+              style={styles.blockImage}
+              contentFit="cover"
+              transition={300}
+            />
+            {block.caption && renderMarkdownText(block.caption, styles.blockImageCaption, true)}
+          </View>
         );
       case 'bullets':
         return (
@@ -726,7 +790,9 @@ const PageItem = React.memo(({
             {block.items?.map((item, bulletIdx) => (
               <View key={bulletIdx} style={styles.bulletItem}>
                 <Text style={styles.bulletDot}>•</Text>
-                <Text style={styles.bulletText}>{item}</Text>
+                <View style={{ flex: 1 }}>
+                  {renderMarkdownText(item, styles.bulletText)}
+                </View>
               </View>
             ))}
           </View>
@@ -734,8 +800,9 @@ const PageItem = React.memo(({
       case 'quote':
         return (
           <View key={key} style={styles.blockQuote}>
-            <View style={styles.quoteLine} />
-            <Text style={styles.quoteText}>{block.text}</Text>
+            <View style={{ flex: 1 }}>
+              {renderMarkdownText(block.text, styles.quoteText)}
+            </View>
           </View>
         );
       case 'spacer':
@@ -751,25 +818,30 @@ const PageItem = React.memo(({
     <Animated.View style={{ 
       opacity, 
       transform: [{ translateY }], 
-      height: Math.floor(containerHeight), // Ensure integer height for precise snapping
+      height: containerHeight,
       alignSelf: 'stretch',
+      overflow: 'visible', // Ensure no clipping
     }}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        bounces={false} 
-        overScrollMode="never"
+        scrollEnabled={true} 
+        bounces={true} 
+        overScrollMode="always"
         scrollEventThrottle={16}
-        decelerationRate={0.85} // Match the outer list's heavy feel
+        decelerationRate="normal"
+        keyboardShouldPersistTaps="handled"
+        scrollIndicatorInsets={{ bottom: bottomClearance }}
         contentContainerStyle={{ 
-          paddingTop: isFirstPage ? 0 : 20, 
-          paddingBottom: isLastPage ? 150 : 80, 
+          flexGrow: 1,
+          paddingTop: 0, // Header image should start at the very top
+          paddingBottom: bottomClearance,
           paddingHorizontal: 0 
         }}
       >
         {isFirstPage && (
-          <View style={{ marginBottom: 4 }}>
+          <View style={{ marginBottom: 16 }}>
             <Image
               source={getPostCoverImage(post)}
               style={styles.coverImage}
@@ -784,7 +856,8 @@ const PageItem = React.memo(({
             </View>
           </View>
         )}
-        <View style={[styles.blocksContainer, { paddingBottom: 40 }]}>
+        
+        <View style={styles.blocksContainer}>
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
       </ScrollView>
@@ -818,13 +891,62 @@ function SinglePostReader({
   const readerHeaderHeight = 50;
   const bottomBarHeight = 60;
   const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
-  
+  const [measuredBottomBarHeight, setMeasuredBottomBarHeight] = useState(0);
+
   // Prepare list data: Combine header into first page
-  const readerData: ReaderItem[] = post.pages.map((p, i) => ({ 
-    type: 'page' as const, 
-    page: p, 
-    index: i 
-  }));
+  const readerData: ReaderItem[] = useMemo(() => {
+    // Helper to split long paragraphs into multiple blocks
+    // Approximate 10 lines by checking character count. 10 lines is roughly 450 characters.
+    const splitLongParagraph = (text: string): string[] => {
+      const MAX_CHARS_PER_BLOCK = 450;
+      const trimmed = text.trim();
+      if (trimmed.length <= MAX_CHARS_PER_BLOCK) return [trimmed];
+      
+      const parts: string[] = [];
+      let current = trimmed;
+      
+      while (current.length > MAX_CHARS_PER_BLOCK) {
+        // Try to split at the last sentence end before the limit
+        let splitIdx = current.lastIndexOf('. ', MAX_CHARS_PER_BLOCK);
+        if (splitIdx === -1) splitIdx = current.lastIndexOf(' ', MAX_CHARS_PER_BLOCK);
+        if (splitIdx === -1) splitIdx = MAX_CHARS_PER_BLOCK;
+        
+        parts.push(current.slice(0, splitIdx + 1).trim());
+        current = current.slice(splitIdx + 1).trim();
+      }
+      
+      if (current) parts.push(current);
+      return parts;
+    };
+
+    // Filter out pages and blocks that are not needed
+    return post.pages
+      .map((p, i) => {
+        // Clean up blocks within each page
+        const cleanedBlocks: ContentBlock[] = [];
+        
+        p.blocks.forEach(block => {
+          // Remove horizontal rules
+          if (block.type === 'paragraph' && block.text.trim().match(/^---+$/)) return;
+          
+          if (block.type === 'paragraph') {
+            const splitTexts = splitLongParagraph(block.text);
+            splitTexts.forEach(txt => {
+              if (txt) cleanedBlocks.push({ ...block, text: txt });
+            });
+          } else {
+            cleanedBlocks.push(block);
+          }
+        });
+        
+        return {
+          type: 'page' as const,
+          page: { ...p, blocks: cleanedBlocks },
+          index: i
+        };
+      })
+      .filter(p => p.page.blocks.length > 0);
+  }, [post.pages]);
 
   // Reset page indicator when post changes
   useEffect(() => {
@@ -1069,20 +1191,23 @@ function SinglePostReader({
         data={readerData}
         keyExtractor={(_, index) => `reader-item-${index}`}
         renderItem={({ item, index }) => (
-          <PageItem 
-            item={item} 
-            post={post}
-            isVisible={visiblePages.has(index)}
-            containerHeight={Math.floor(containerHeight)}
-            isLastPage={index === readerData.length - 1}
-          />
+          <View style={{ height: Math.floor(containerHeight) }}>
+            <PageItem 
+              item={item} 
+              post={post}
+              isVisible={visiblePages.has(index)}
+              containerHeight={Math.floor(containerHeight)}
+              isLastPage={index === readerData.length - 1}
+              bottomBarHeight={measuredBottomBarHeight}
+            />
+          </View>
         )}
         style={styles.readerScroll}
         showsVerticalScrollIndicator={false}
         pagingEnabled={false}
         snapToInterval={Math.floor(containerHeight)}
         snapToAlignment="start"
-        decelerationRate={0.85} // Lower value makes scrolling "heavier" and deceleration faster
+        decelerationRate="fast"
         disableIntervalMomentum={true} 
         scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
@@ -1105,6 +1230,10 @@ function SinglePostReader({
       {/* 底部操作栏 */}
       <View 
         style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0) setMeasuredBottomBarHeight(height);
+        }}
       >
         {/* 评论输入区域 - 占2/3宽度 */}
         <Pressable 
@@ -1204,14 +1333,24 @@ function SinglePostReader({
 function PostLoader({ 
   uid, 
   onClose,
-  onFeedLikeUpdate
+  onFeedLikeUpdate,
+  onMissing
 }: { 
   uid: string, 
   onClose: () => void,
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
+  onMissing?: (uid: string) => void;
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
+
+  // Handle missing post
+  useEffect(() => {
+    if (status === 'error' && error === 'POST_NOT_FOUND') {
+      console.log('[PostLoader] Post missing, notifying parent:', uid);
+      onMissing?.(uid);
+    }
+  }, [status, error, uid, onMissing]);
 
   // 发送 CLICK 信号（帖子加载成功时）
   useEffect(() => {
@@ -1234,6 +1373,15 @@ function PostLoader({
   }
   
   if (status === 'error' || !post) {
+    // If it's a 404, we don't show the error screen because parent will skip it
+    if (error === 'POST_NOT_FOUND') {
+      return (
+        <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
         <ErrorScreen 
@@ -1269,17 +1417,28 @@ function PostSwiper({
   initialIndex, 
   onClose,
   onFeedLikeUpdate,
-  onLoadMore
+  onLoadMore,
+  onMissing
 }: { 
   items: FeedItem[]; 
   initialIndex: number; 
   onClose: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
+  onMissing?: (uid: string) => void;
 }) {
   const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const loadMoreTriggered = useRef(false);
+  const flatListRef = useRef<FlatList>(null);
+
+  // Sync scroll position if currentIndex changes externally
+  useEffect(() => {
+    if (flatListRef.current && initialIndex !== currentIndex) {
+      flatListRef.current.scrollToIndex({ index: initialIndex, animated: false });
+      setCurrentIndex(initialIndex);
+    }
+  }, [initialIndex]);
 
   // 检测是否接近列表末尾，触发加载更多
   useEffect(() => {
@@ -1307,6 +1466,7 @@ function PostSwiper({
 
   return (
     <AnimatedFlatList
+      ref={flatListRef}
       data={items}
       horizontal
       pagingEnabled
@@ -1342,11 +1502,12 @@ function PostSwiper({
         });
 
         return (
-          <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity }}>
+          <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity, overflow: 'visible' }}>
             <PostLoader 
               uid={feedItem.uid} 
               onClose={onClose} 
               onFeedLikeUpdate={onFeedLikeUpdate}
+              onMissing={onMissing}
             />
           </Animated.View>
         );
@@ -1378,42 +1539,42 @@ function HistoryScreen({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(false);
 
-  const loadHistory = useCallback(async (isRefresh = false) => {
-    if (!user) return;
-    if (!isRefresh && !nextCursor && historyData.length > 0) return;
-    if (!isRefresh && error) return;
+  const isLoadingRef = useRef(false);
 
+  const loadHistory = useCallback(async (isRefresh = false) => {
+    if (!user || isLoadingRef.current) return;
+    if (!isRefresh && (!hasMore || (!nextCursor && historyData.length > 0))) return;
+
+    isLoadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
       
-      const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
-        const combined = isRefresh ? items : [...existingItems, ...items];
+      const newItems = response.items || [];
+      setHistoryData(prev => {
+        const combined = isRefresh ? newItems : [...prev, ...newItems];
         const seen = new Set();
         return combined.filter(item => {
           if (seen.has(item.itemId)) return false;
           seen.add(item.itemId);
           return true;
         });
-      };
-
-      if (isRefresh) {
-        setHistoryData(processItems(response.items));
-      } else {
-        setHistoryData(prev => processItems(response.items, prev));
-      }
+      });
       setNextCursor(response.nextCursor);
+      setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
       console.log('Failed to load history', e);
       setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      isLoadingRef.current = false;
     }
-  }, [user, nextCursor, historyData.length, error]);
+  }, [user, nextCursor, hasMore, historyData.length]); 
 
   useEffect(() => {
     loadHistory(true);
@@ -1421,6 +1582,7 @@ function HistoryScreen({
 
   const handleRefresh = () => {
     setRefreshing(true);
+    setHasMore(true);
     loadHistory(true);
   };
 
@@ -1553,42 +1715,42 @@ function LikesScreen({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(false);
 
-  const loadLikes = useCallback(async (isRefresh = false) => {
-    if (!user) return;
-    if (!isRefresh && !nextCursor && likesData.length > 0) return;
-    if (!isRefresh && error) return;
+  const isLoadingRef = useRef(false);
 
+  const loadLikes = useCallback(async (isRefresh = false) => {
+    if (!user || isLoadingRef.current) return;
+    if (!isRefresh && (!hasMore || (!nextCursor && likesData.length > 0))) return;
+
+    isLoadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyLikes(20, isRefresh ? undefined : nextCursor);
       
-      const processItems = (items: ProfileItem[], existingItems: ProfileItem[] = []) => {
-        const combined = isRefresh ? items : [...existingItems, ...items];
+      const newItems = response.items || [];
+      setLikesData(prev => {
+        const combined = isRefresh ? newItems : [...prev, ...newItems];
         const seen = new Set();
         return combined.filter(item => {
           if (seen.has(item.itemId)) return false;
           seen.add(item.itemId);
           return true;
         });
-      };
-
-      if (isRefresh) {
-        setLikesData(processItems(response.items));
-      } else {
-        setLikesData(prev => processItems(response.items, prev));
-      }
+      });
       setNextCursor(response.nextCursor);
+      setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
       console.log('Failed to load likes', e);
       setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      isLoadingRef.current = false;
     }
-  }, [user, nextCursor, likesData.length, error]);
+  }, [user, nextCursor, hasMore, likesData.length]); 
 
   useEffect(() => {
     loadLikes(true);
@@ -1596,6 +1758,7 @@ function LikesScreen({
 
   const handleRefresh = () => {
     setRefreshing(true);
+    setHasMore(true);
     loadLikes(true);
   };
 
@@ -2356,16 +2519,21 @@ function AppContent() {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   // 使用帖子缓存系统
+  // 使用帖子缓存系统
   const { 
     displayedPosts: feedItems, 
     isLoading: feedLoading,
     error: feedError, 
     refetch: refetchFeed,
     updateLocalLike: updateFeedLike,
+    removePost: removeFeedPost,
     consumeMultiple,
     hasMore,
     cacheStatus
   } = usePostCache();
+  
+  const { removeFromHistory } = usePostHistory();
+  const { unsavePost } = useSaved();
   
   // 收藏系统（用于刷新）
   const { refreshSavedPosts } = useSaved();
@@ -2614,6 +2782,18 @@ function AppContent() {
               onClose={() => setSelectedPostUid(null)}
               onFeedLikeUpdate={updateFeedLike}
               onLoadMore={() => consumeMultiple(1)}
+              onMissing={(uid) => {
+                console.log('[App] Post missing handler:', uid);
+                removeFeedPost(uid);
+                removeFromHistory(uid);
+                unsavePost(uid);
+                
+                // If it's the current post, we must close
+                if (uid === selectedPostUid) {
+                  setSelectedPostUid(null);
+                  Alert.alert('Post Unavailable', 'This post has been deleted or is no longer available.');
+                }
+              }}
             />
           ) : (
              <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -2680,9 +2860,11 @@ export default function App() {
       <RecommendationProvider>
         <PostCacheProvider>
           <SavedProvider>
-            <NotesProvider>
-              <AppContent />
-            </NotesProvider>
+            <HistoryProvider>
+              <NotesProvider>
+                <AppContent />
+              </NotesProvider>
+            </HistoryProvider>
           </SavedProvider>
         </PostCacheProvider>
       </RecommendationProvider>
@@ -2985,69 +3167,73 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   titleContainer: {
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 4,
   },
   postTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: colors.text,
-    lineHeight: 30,
-    marginBottom: 12,
+    lineHeight: 32,
+    marginBottom: 8,
+    textAlign: 'left',
   },
   topicBadge: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primaryBg,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 4,
   },
   topicBadgeText: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.primary,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   blocksContainer: {
-    paddingHorizontal: 20,
     width: '100%',
+    paddingTop: 0,
+    paddingHorizontal: 20,
   },
   blockH1: {
     fontSize: 22,
     fontWeight: '700',
     color: colors.text,
     lineHeight: 30,
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 6,
+    textAlign: 'left',
   },
   blockH2: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
     lineHeight: 26,
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: 10,
+    marginBottom: 4,
+    textAlign: 'left',
   },
   blockH3: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     lineHeight: 24,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 6,
+    marginBottom: 2,
+    textAlign: 'left',
   },
   blockParagraph: {
     fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 26,
-    marginBottom: 12,
-    flexShrink: 1,
+    marginBottom: 6,
     width: '100%',
-    flexWrap: 'wrap',
+    textAlign: 'left',
   },
   blockBullets: {
-    marginVertical: 12,
-    paddingLeft: 4,
+    marginBottom: 10,
   },
   bulletItem: {
     flexDirection: 'row',
@@ -3065,31 +3251,48 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textSecondary,
     lineHeight: 24,
+    textAlign: 'left',
   },
   blockQuote: {
-    flexDirection: 'row',
-    marginVertical: 16,
-    paddingLeft: 4,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
   quoteLine: {
-    width: 3,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
-    marginRight: 12,
+    display: 'none',
   },
   quoteText: {
-    flex: 1,
     fontSize: 15,
     color: colors.textSecondary,
     fontStyle: 'italic',
     lineHeight: 24,
+    textAlign: 'left',
   },
   blockImage: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 10,
-    marginTop: 0,
-    marginBottom: 12,
+    aspectRatio: 1.2,
+    borderRadius: 12,
+  },
+  imageBlockContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 0,
+  },
+  blockImageCaption: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
+    marginBottom: 16, // Single source of spacing after image block
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 18,
   },
   
   // Post Bottom Bar

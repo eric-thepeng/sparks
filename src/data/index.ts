@@ -23,6 +23,7 @@ import { ApiPost } from '../api/types';
 export interface ContentBlock {
   type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'image' | 'spacer' | 'bullets' | 'quote';
   text?: string;
+  caption?: string;   // 图片说明
   ref?: string;       // 图片引用，如 "img_1"
   imageUrl?: string;  // 图片直接 URL（用于后端返回的图片）
   items?: string[];   // bullets 列表项
@@ -236,12 +237,15 @@ function richPostToPost(post: any): Post {
   console.log('[richPostToPost] Inline images count:', inlineImages.size);
 
   // 直接使用后端的 pages 结构
-  const pages: PostPage[] = post.pages.map((page: any) => ({
-    index: page.index || 1,
-    blocks: Array.isArray(page.blocks) 
-      ? page.blocks.map((block: any) => convertApiBlock(block, inlineImages))
-      : [],
-  }));
+  const pages: PostPage[] = post.pages
+    .map((page: any) => ({
+      index: page.index || 1,
+      blocks: Array.isArray(page.blocks) 
+        ? page.blocks.flatMap((block: any) => convertApiBlock(block, inlineImages))
+        : [],
+    }))
+    .filter(page => page.blocks.length > 0); // Remove pages that ended up empty after parsing
+
   
   console.log('[richPostToPost] Using backend pages:', pages.length);
   console.log('[richPostToPost] Cover URL:', post.cover_image?.url);
@@ -273,12 +277,29 @@ function richPostToPost(post: any): Post {
 /**
  * 转换 API Block 为 App Block
  */
-function convertApiBlock(apiBlock: any, inlineImages: Map<string, string>): ContentBlock {
+function convertApiBlock(apiBlock: any, inlineImages: Map<string, string>): ContentBlock[] {
   const blockType = apiBlock.type || 'paragraph';
   
+  if (blockType === 'paragraph' && apiBlock.text) {
+    // Split paragraphs on blank lines, but keep soft-wrapped lines together.
+    // This prevents mid-word breaks caused by single newlines.
+    const normalized = apiBlock.text.replace(/\r\n/g, '\n');
+    const paragraphChunks = normalized
+      .split(/\n\s*\n+/)
+      .map((p: string) => normalizeSoftWrappedText(p))
+      .filter((p: string) => p.length > 0);
+
+    const result: ContentBlock[] = [];
+    paragraphChunks.forEach((p: string) => {
+      addParagraphBlocks(p, result);
+    });
+
+    return result;
+  }
+
   const block: ContentBlock = {
     type: blockType,
-    text: apiBlock.text,
+    text: apiBlock.text ? sanitizeText(apiBlock.text) : apiBlock.text,
     ref: apiBlock.ref,
     items: apiBlock.items,
     size: apiBlock.size,
@@ -291,7 +312,33 @@ function convertApiBlock(apiBlock: any, inlineImages: Map<string, string>): Cont
     }
   }
 
-  return block;
+  return [block];
+}
+
+/**
+ * Normalize text by merging soft-wrapped lines without breaking words.
+ */
+function normalizeSoftWrappedText(text: string): string {
+  const normalized = sanitizeText(text)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u2028\u2029]/g, '\n');
+  // Merge word breaks introduced by soft line wraps
+  const mergedWords = normalized.replace(/([A-Za-z0-9])\n([A-Za-z0-9])/g, '$1$2');
+  // Replace remaining newlines with spaces
+  const withSpaces = mergedWords.replace(/\n+/g, ' ');
+  return withSpaces.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Remove invisible/control characters that can break word rendering.
+ */
+function sanitizeText(text: string): string {
+  return text
+    // Soft hyphen + zero-width characters
+    .replace(/[\u00AD\u200B\u200C\u200D\u2060\uFEFF]/g, '')
+    // Remove control characters except line breaks/tabs (handled later)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
 /**
@@ -340,22 +387,39 @@ function simplePostToPost(post: any): Post {
 // ============================================================
 
 /**
- * 分页标记：后端可以在 content 中使用这些标记来控制分页
+ * 分页标记：支持多种格式，确保前后是空行或字符串边界
  */
-const PAGE_BREAK_PATTERN = /\n(?:---+|<!--\s*page-break\s*-->|\[PAGE_BREAK\])\n/gi;
+const PAGE_BREAK_PATTERN = /(?:\n\s*\n|^|\s)(?:---+|<!--\s*page-break\s*-->|\[PAGE_BREAK\])(?:\n\s*\n|$|\s)/gi;
 
 /**
  * 将纯文本内容解析为 pages 和 blocks 结构
  */
 function parseContentToPages(content: string, title: string): PostPage[] {
+  // Deep clean the content: Remove ANY horizontal rules (---) from the very start or end
+  // Horizontal rules are used only for middle page breaks.
+  let cleanedContent = content.trim();
+  
+  // Use a loop to handle multiple instances or variations at the start
+  while (cleanedContent.match(/^[\s\n]*---+/)) {
+    cleanedContent = cleanedContent.replace(/^[\s\n]*---+/, '').trim();
+  }
+  
+  // Use a loop to handle multiple instances or variations at the end
+  while (cleanedContent.match(/---+[\s\n]*$/)) {
+    cleanedContent = cleanedContent.replace(/---+[\s\n]*$/, '').trim();
+  }
+
+  // Final safety check: remove any leading/trailing whitespace again
+  cleanedContent = cleanedContent.trim();
+
   // 检查是否有分页标记
-  const hasPageBreaks = PAGE_BREAK_PATTERN.test(content);
+  const hasPageBreaks = PAGE_BREAK_PATTERN.test(cleanedContent);
   PAGE_BREAK_PATTERN.lastIndex = 0;
   
   if (hasPageBreaks) {
-    return parseContentWithPageBreaks(content, title);
+    return parseContentWithPageBreaks(cleanedContent, title);
   } else {
-    return parseContentWithFallback(content, title);
+    return parseContentWithFallback(cleanedContent, title);
   }
 }
 
@@ -366,12 +430,11 @@ function parseContentWithPageBreaks(content: string, title: string): PostPage[] 
   const pageContents = content.split(PAGE_BREAK_PATTERN).filter(p => p.trim());
   
   if (pageContents.length === 0) {
+    const fallbackBlocks: ContentBlock[] = [];
+    addParagraphBlocks(content || '暂无内容', fallbackBlocks);
     return [{
       index: 1,
-      blocks: [
-        { type: 'h1', text: title },
-        { type: 'paragraph', text: content || '暂无内容' },
-      ],
+      blocks: fallbackBlocks,
     }];
   }
   
@@ -380,23 +443,32 @@ function parseContentWithPageBreaks(content: string, title: string): PostPage[] 
   pageContents.forEach((pageContent, pageIdx) => {
     const pageBlocks: ContentBlock[] = [];
     
-    if (pageIdx === 0) {
+    // Auto-add title to the first page if it's not a cover-image only page
+    if (pages.length === 0) {
       pageBlocks.push({ type: 'h1', text: title });
     }
     
     const paragraphs = pageContent.split(/\n\n+/).filter(p => p.trim());
-    paragraphs.forEach((para, idx) => {
+    paragraphs.forEach((para) => {
       parseAndAddBlocks(para, pageBlocks);
-      if (idx > 0 && idx % 2 === 1) {
-        pageBlocks.push({ type: 'spacer' });
-      }
     });
     
-    pages.push({
-      index: pages.length + 1,
-      blocks: pageBlocks,
-    });
+    // Only add the page if it actually has blocks to display
+    if (pageBlocks.length > 0) {
+      pages.push({
+        index: pages.length + 1,
+        blocks: pageBlocks,
+      });
+    }
   });
+
+  // If after filtering we have no pages, return a fallback
+  if (pages.length === 0) {
+    return [{
+      index: 1,
+      blocks: [{ type: 'paragraph', text: '暂无内容' }]
+    }];
+  }
   
   return pages;
 }
@@ -414,12 +486,11 @@ function parseContentWithFallback(content: string, title: string): PostPage[] {
   }
   
   if (paragraphs.length === 0) {
+    const fallbackBlocks: ContentBlock[] = [];
+    addParagraphBlocks(content || '暂无内容', fallbackBlocks);
     return [{
       index: 1,
-      blocks: [
-        { type: 'h1', text: title },
-        { type: 'paragraph', text: content || '暂无内容' },
-      ],
+      blocks: fallbackBlocks,
     }];
   }
 
@@ -430,21 +501,21 @@ function parseContentWithFallback(content: string, title: string): PostPage[] {
     const pageBlocks: ContentBlock[] = [];
     const pageParagraphs = paragraphs.slice(i, i + PARAGRAPHS_PER_PAGE);
     
-    if (i === 0) {
+    // Auto-add title to the first page
+    if (pages.length === 0) {
       pageBlocks.push({ type: 'h1', text: title });
     }
     
-    pageParagraphs.forEach((para, idx) => {
+    pageParagraphs.forEach((para) => {
       parseAndAddBlocks(para, pageBlocks);
-      if (idx > 0 && idx % 2 === 1) {
-        pageBlocks.push({ type: 'spacer' });
-      }
     });
     
-    pages.push({
-      index: pages.length + 1,
-      blocks: pageBlocks,
-    });
+    if (pageBlocks.length > 0) {
+      pages.push({
+        index: pages.length + 1,
+        blocks: pageBlocks,
+      });
+    }
   }
   
   return pages;
@@ -452,52 +523,187 @@ function parseContentWithFallback(content: string, title: string): PostPage[] {
 
 /**
  * 解析单个段落并添加到 blocks 数组
+ * 增强版：支持多种 Markdown 元素
  */
 function parseAndAddBlocks(para: string, pageBlocks: ContentBlock[]): void {
-  const markdownImageRegex = /^!\[([^\]]*)\]\(([^)]+)\)$/;
+  const trimmed = para.trim();
+  if (!trimmed) return;
+
+  // Handle cases where title, subtitle, and text are in the same block separated by single newlines
+  if (trimmed.includes('\n')) {
+    const lines = trimmed.split('\n');
+    let hasHeader = false;
+    for (const line of lines) {
+      if (line.trim().startsWith('#')) {
+        hasHeader = true;
+        break;
+      }
+    }
+
+    if (hasHeader) {
+      lines.forEach(line => {
+        if (line.trim()) {
+          parseAndAddBlocks(line.trim(), pageBlocks);
+        }
+      });
+      return;
+    }
+  }
+
+  // 1. Headers (##, ###)
+  if (trimmed.startsWith('###')) {
+    pageBlocks.push({ type: 'h3', text: sanitizeText(trimmed.replace(/^###\s*/, '')) });
+    return;
+  } else if (trimmed.startsWith('##')) {
+    pageBlocks.push({ type: 'h2', text: sanitizeText(trimmed.replace(/^##\s*/, '')) });
+    return;
+  } else if (trimmed.startsWith('#')) {
+    pageBlocks.push({ type: 'h1', text: sanitizeText(trimmed.replace(/^#\s*/, '')) });
+    return;
+  }
+
+  // 2. Blockquotes (> quote)
+  if (trimmed.startsWith('>')) {
+    pageBlocks.push({ 
+      type: 'quote', 
+      text: sanitizeText(trimmed.replace(/^>\s*/, '').replace(/\n>\s*/g, '\n').trim()) 
+    });
+    return;
+  }
+
+  // 3. Lists (- item, * item, 1. item)
+  if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || /^\d+\.\s/.test(trimmed)) {
+    const items = trimmed.split(/\n/).map(line => line.replace(/^[-*]\s*|^\d+\.\s*/, '').trim());
+    pageBlocks.push({ type: 'bullets', items });
+    return;
+  }
+
+  // 3.5. Handle image lines inside mixed text blocks
+  if (trimmed.includes('\n')) {
+    const lines = trimmed.split('\n');
+    const imageLineRegex = /^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/;
+    const captionLineRegex = /^\s*\*([^*]+)\*\s*$/;
+    const hasImageLine = lines.some(line => imageLineRegex.test(line));
+
+    if (hasImageLine) {
+      const buffer: string[] = [];
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i].trim();
+        const imageLineMatch = line.match(imageLineRegex);
+
+        if (imageLineMatch) {
+          const bufferedText = buffer.join(' ').trim();
+          if (bufferedText) {
+            addParagraphBlocks(normalizeSoftWrappedText(bufferedText), pageBlocks);
+          }
+          buffer.length = 0;
+
+          let caption: string | undefined;
+          const nextLine = lines[i + 1]?.trim() || '';
+          const captionMatch = nextLine.match(captionLineRegex);
+          if (captionMatch) {
+            caption = `*${captionMatch[1].trim()}*`;
+            i += 1;
+          }
+
+          pageBlocks.push({
+            type: 'image',
+            imageUrl: imageLineMatch[2],
+            text: imageLineMatch[1],
+            caption,
+          });
+          continue;
+        }
+
+        if (line.length > 0) {
+          buffer.push(line);
+        }
+      }
+
+      const remainingText = buffer.join(' ').trim();
+      if (remainingText) {
+        addParagraphBlocks(normalizeSoftWrappedText(remainingText), pageBlocks);
+      }
+      return;
+    }
+  }
+
+  // 4. Images and Captions
+  // Regex to match image and optional caption (italicized with *...*)
+  // Supports both ![alt](url)*caption* and ![alt](url)\n*caption*
+  // Only matches if the caption is at the end of the string
+  const imageWithCaptionRegex = /!\[([^\]]*)\]\(([^)]+)\)(?:\s*\*([^*]+)\*[\s\n]*)$/;
+  const imageMatch = trimmed.match(imageWithCaptionRegex);
   
-  const imageMatch = para.trim().match(markdownImageRegex);
-  if (imageMatch) {
+  if (imageMatch && trimmed === imageMatch[0]) {
     pageBlocks.push({ 
       type: 'image', 
       imageUrl: imageMatch[2],
       text: imageMatch[1],
+      caption: imageMatch[3] ? `*${imageMatch[3].trim()}*` : undefined
     });
-  } else if (para.startsWith('#')) {
-    const headerText = para.replace(/^#+\s*/, '');
-    pageBlocks.push({ type: 'h2', text: headerText });
-  } else if (para.match(/^【.+】/)) {
-    pageBlocks.push({ type: 'h2', text: para });
-  } else {
-    // 检查内嵌图片
-    const inlineImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-    let lastIndex = 0;
-    let match;
-    let hasInlineImages = false;
-    
-    while ((match = inlineImageRegex.exec(para)) !== null) {
-      hasInlineImages = true;
-      const textBefore = para.slice(lastIndex, match.index).trim();
-      if (textBefore) {
-        pageBlocks.push({ type: 'paragraph', text: textBefore });
-      }
-      pageBlocks.push({
-        type: 'image',
-        imageUrl: match[2],
-        text: match[1],
-      });
-      lastIndex = match.index + match[0].length;
+    return;
+  }
+
+  // 5. Mixed Content or Paragraphs
+  // 检查内嵌图片
+  const inlineImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match;
+  let hasInlineElements = false;
+  
+  while ((match = inlineImageRegex.exec(trimmed)) !== null) {
+    hasInlineElements = true;
+    const textBefore = trimmed.slice(lastIndex, match.index).trim();
+    if (textBefore) {
+      addParagraphBlocks(normalizeSoftWrappedText(textBefore), pageBlocks);
     }
     
-    if (hasInlineImages) {
-      const textAfter = para.slice(lastIndex).trim();
-      if (textAfter) {
-        pageBlocks.push({ type: 'paragraph', text: textAfter });
-      }
+    // Check if there's a caption right after this inline image
+    // Only capture as caption if it's at the end of the paragraph or followed by a newline
+    const rest = trimmed.slice(match.index + match[0].length);
+    const captionMatch = rest.match(/^\s*\*([^*]+)\*(?:\s|$)/);
+    
+    pageBlocks.push({
+      type: 'image',
+      imageUrl: match[2],
+      text: match[1],
+      caption: captionMatch ? `*${captionMatch[1].trim()}*` : undefined
+    });
+    
+    lastIndex = match.index + match[0].length + (captionMatch ? captionMatch[0].length : 0);
+    
+    // Crucial: sync the global regex's lastIndex with our manual lastIndex
+    inlineImageRegex.lastIndex = lastIndex;
+  }
+  
+  if (hasInlineElements) {
+    const textAfter = trimmed.slice(lastIndex).trim();
+    if (textAfter) {
+      addParagraphBlocks(normalizeSoftWrappedText(textAfter), pageBlocks);
+    }
+  } else {
+    // 兼容旧版的 【...】 标题
+    if (trimmed.match(/^【.+】/)) {
+      pageBlocks.push({ type: 'h2', text: trimmed });
     } else {
-      pageBlocks.push({ type: 'paragraph', text: para });
+      // 增强：检查此段落是否是前一个图片的说明 (格式为 *...*)
+      const lastBlock = pageBlocks[pageBlocks.length - 1];
+      if (lastBlock && lastBlock.type === 'image' && !lastBlock.caption && trimmed.startsWith('*') && trimmed.endsWith('*')) {
+        lastBlock.caption = trimmed;
+        console.log('[parseAndAddBlocks] Attached separate paragraph as caption:', trimmed);
+        return;
+      }
+      addParagraphBlocks(normalizeSoftWrappedText(trimmed), pageBlocks);
     }
   }
+}
+
+/**
+ * 辅助函数：将内容切分为多个 block，确保每个 block 不会太长触发渲染截断
+ */
+function addParagraphBlocks(text: string, pageBlocks: ContentBlock[]): void {
+  pageBlocks.push({ type: 'paragraph', text });
 }
 
 // ============================================================

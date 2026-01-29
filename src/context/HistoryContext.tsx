@@ -18,6 +18,7 @@ export interface HistoryPost {
 interface HistoryContextValue {
   history: HistoryPost[];
   addToHistory: (post: Post | FeedItem) => Promise<void>;
+  removeFromHistory: (uid: string) => Promise<void>;
   clearHistory: () => Promise<void>;
 }
 
@@ -90,6 +91,15 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     });
   }, [userId]);
 
+  const removeFromHistory = useCallback(async (uid: string) => {
+    if (!userId) return;
+    setHistory(prev => {
+      const newHistory = prev.filter(p => p.uid !== uid);
+      AsyncStorage.setItem(`${STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(newHistory));
+      return newHistory;
+    });
+  }, [userId]);
+
   const clearHistory = useCallback(async () => {
     if (!userId) return;
     setHistory([]);
@@ -97,16 +107,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   return (
-    <HistoryContext.Provider value={{ history, addToHistory, clearHistory }}>
+    <HistoryContext.Provider value={{ history, addToHistory, removeFromHistory, clearHistory }}>
       {children}
     </HistoryContext.Provider>
   );
 }
 
-export function useHistory() {
+export function usePostHistory() {
   const context = useContext(HistoryContext);
   if (context === undefined) {
-    throw new Error('useHistory must be used within HistoryProvider');
+    throw new Error('usePostHistory must be used within HistoryProvider');
   }
   return context;
 }

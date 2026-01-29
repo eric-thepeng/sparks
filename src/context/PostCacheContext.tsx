@@ -37,6 +37,8 @@ interface PostCacheContextValue extends PostCacheState {
   refetch: () => Promise<void>;
   /** 更新帖子的点赞状态 */
   updateLocalLike: (uid: string, isLiked: boolean, likeCount: number) => void;
+  /** 从缓存中移除一个帖子（例如已删除） */
+  removePost: (uid: string) => void;
   /** 缓存状态（用于 Debug） */
   cacheStatus: {
     displayedCount: number;
@@ -206,6 +208,15 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   }, [cachedPosts, refillCache]);
 
   /**
+   * 从缓存中移除一个帖子
+   */
+  const removePost = useCallback((uid: string) => {
+    setDisplayedPosts(prev => prev.filter(item => item.uid !== uid));
+    setCachedPosts(prev => prev.filter(item => item.uid !== uid));
+    console.log(`[PostCache] Removed post: ${uid}`);
+  }, []);
+
+  /**
    * 重新加载
    */
   const refetch = useCallback(async () => {
@@ -250,6 +261,7 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     consumeMultiple,
     refetch,
     updateLocalLike,
+    removePost,
     cacheStatus,
   };
 

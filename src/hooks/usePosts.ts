@@ -235,9 +235,16 @@ export function usePost(postId: string | null): UsePostResult {
       setPost(convertedPost);
       setStatus('success');
       console.log('[usePost] API success for:', postId);
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : '获取帖子失败';
       console.error('[usePost] API failed:', err);
+      
+      // If post is not found (404), mark as error specifically
+      if (err.status === 404) {
+        setError('POST_NOT_FOUND');
+        setStatus('error');
+        return;
+      }
       
       // API 失败时回退到本地数据
       if (CURRENT_DATA_SOURCE === DataSource.API_WITH_FALLBACK) {
