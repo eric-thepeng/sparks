@@ -915,7 +915,7 @@ const PageItem = React.memo(({
         }}
       >
         {isFirstPage && (
-          <View style={{ marginBottom: 16 }}>
+          <View style={{ marginBottom: 8 }}>
             <Image
               source={getPostCoverImage(post)}
               style={styles.coverImage}
@@ -3299,7 +3299,7 @@ const styles = StyleSheet.create({
   titleContainer: {
     paddingTop: 12,
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   postTitle: {
     fontSize: 24,
@@ -3315,7 +3315,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    marginBottom: 4,
+    marginBottom: 0,
   },
   topicBadgeText: {
     fontSize: 12,
