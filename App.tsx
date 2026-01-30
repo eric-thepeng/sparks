@@ -63,7 +63,8 @@ import {
   FeedItem,
   Post,
   PostPage,
-  ContentBlock
+  ContentBlock,
+  getBucketSubtitle
 } from './src/data';
 
 import {
@@ -112,7 +113,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream for badges (Warmer)
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFDF5',         // Creamy White cards
+  card: '#FFFFFF',         // Pure White cards for maximum contrast
   text: '#451a03',         // Amber 950 - Darkest Brown
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -237,7 +238,7 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
           >
             <Icon
               size={22}
-              color={isActive ? colors.primary : colors.textMuted}
+              color={isActive ? colors.primaryDark : colors.textMuted}
             />
             <Text style={[
               styles.navLabel,
@@ -369,7 +370,7 @@ function FeedCard({
 
         {/* 内容 */}
         <View style={styles.cardContent}>
-          <Text style={styles.cardTitle} numberOfLines={5}>
+          <Text style={styles.cardTitle} numberOfLines={8}>
             {item.title}
           </Text>
 
@@ -2953,7 +2954,7 @@ function CollectionScreen({
               <View style={styles.collectionHeaderLeft}>
                 <Text style={styles.collectionTitle}>{formatTopicName(topic)}</Text>
                 <Text style={styles.collectionSubtitle}>
-                  Top-rated lessons and quizzes on this topic
+                  {getBucketSubtitle(topic)}
                 </Text>
               </View>
               <Pressable style={styles.seeAllButton} onPress={() => onTopicPress(topic)}>
@@ -2966,6 +2967,7 @@ function CollectionScreen({
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.collectionHorizontalScroll}
+              clipChildren={false}
             >
               {items.map((item) => (
                 <Pressable
@@ -2977,9 +2979,10 @@ function CollectionScreen({
                     source={item.coverImage}
                     style={styles.collectionCardImage}
                     contentFit="cover"
+                    transition={200}
                   />
                   <View style={styles.collectionCardContent}>
-                    <Text style={styles.collectionCardTitle} numberOfLines={2}>
+                    <Text style={styles.collectionCardTitle} numberOfLines={6}>
                       {item.title}
                     </Text>
                   </View>
@@ -3460,7 +3463,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   navLabelActive: {
-    color: colors.primary,
+    color: colors.primaryDark,
     fontWeight: '600',
   },
   mainButton: {
@@ -3505,9 +3508,16 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: 10,
-    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#B45309', // Deep Amber outline
+    borderColor: '#B45309',
+    overflow: 'hidden',
+    // Add shadow to make card "fully shown" and distinct
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    margin: 2, // Brief margin to ensure border/shadow isn't clipped
   },
   cardImage: {
     width: '100%',
@@ -3515,6 +3525,7 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: 10,
+    paddingBottom: 8,
   },
   cardTitle: {
     fontSize: 13,
@@ -3805,7 +3816,7 @@ const styles = StyleSheet.create({
   imageBlockContainer: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 0,
+    marginVertical: 24,
   },
   blockImageCaption: {
     fontSize: 12,
@@ -3956,38 +3967,38 @@ const styles = StyleSheet.create({
   collectionHorizontalScroll: {
     paddingLeft: 16,
     paddingRight: 8,
+    paddingVertical: 12,
   },
   collectionCard: {
-    width: 160,
+    width: 150,
     backgroundColor: colors.card,
     borderRadius: 12,
     marginRight: 12,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#B45309',
-    // Shadow for iOS
-    shadowColor: '#000',
+    marginVertical: 4,
+    shadowColor: '#B45309',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    // Elevation for Android
-    elevation: 2,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
   },
   collectionCardImage: {
     width: '100%',
-    height: 160,
+    height: 110,
     backgroundColor: colors.border,
   },
   collectionCardContent: {
-    padding: 12,
-    height: 60,
-    justifyContent: 'center',
+    padding: 10,
+    paddingBottom: 8,
+    minHeight: 85,
+    justifyContent: 'flex-start',
   },
   collectionCardTitle: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.text,
-    lineHeight: 18,
+    lineHeight: 15,
   },
 
   // Search Screen Styles
@@ -4213,14 +4224,15 @@ const styles = StyleSheet.create({
   savedCard: {
     backgroundColor: colors.card,
     borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: '#B45309',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
     borderWidth: 1,
     borderColor: '#B45309',
+    marginHorizontal: 16,
+    marginVertical: 8,
   },
   savedCardInner: {
     flexDirection: 'row',
@@ -4561,13 +4573,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     paddingVertical: 16,
     paddingHorizontal: 20,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
     borderWidth: 1,
     borderColor: '#B45309',
     borderRadius: 12,
     marginHorizontal: 16,
-    marginVertical: 6,
+    marginVertical: 8,
+    // Add shadow to make it "fully shown" and pop
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   historyCardInner: {
     flex: 1,
@@ -4713,7 +4729,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    backgroundColor: colors.card,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     shadowColor: '#000',

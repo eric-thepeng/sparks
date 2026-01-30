@@ -53,7 +53,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFDF5',         // Creamy White
+  card: '#FFFFFF',         // Pure White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -760,7 +760,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#B45309',
     alignItems: 'center',
-    overflow: 'hidden',
+    marginVertical: 6,
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   itemCardMain: {
     flex: 1,

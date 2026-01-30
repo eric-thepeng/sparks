@@ -7,22 +7,73 @@ export interface Bucket {
   id: string;
   name: string;
   emoji: string;
+  subtitle: string;
 }
 
 /**
  * 10 个内容分类 Bucket
  */
 export const BUCKETS: Bucket[] = [
-  { id: 'cognition_thinking', name: 'Cognition', emoji: '🧠' },
-  { id: 'psychology_emotion', name: 'Psychology', emoji: '💭' },
-  { id: 'decision_risk_uncertainty', name: 'Decisions', emoji: '🎲' },
-  { id: 'life_biology_evolution', name: 'Biology', emoji: '🧬' },
-  { id: 'universe_earth_nature', name: 'Universe', emoji: '🌍' },
-  { id: 'history_science_invention', name: 'History', emoji: '⚡' },
-  { id: 'society_organizations_business', name: 'Society', emoji: '🏛️' },
-  { id: 'technology_humanity', name: 'Technology', emoji: '🤖' },
-  { id: 'art_aesthetics', name: 'Art', emoji: '🎨' },
-  { id: 'design_product_hci', name: 'Design', emoji: '✨' },
+  { 
+    id: 'cognition_thinking', 
+    name: 'Cognition', 
+    emoji: '🧠',
+    subtitle: 'Explore the patterns of thought and human intelligence'
+  },
+  { 
+    id: 'psychology_emotion', 
+    name: 'Psychology', 
+    emoji: '💭',
+    subtitle: 'Understand the science of behavior and mental processes'
+  },
+  { 
+    id: 'decision_risk_uncertainty', 
+    name: 'Decisions', 
+    emoji: '🎲',
+    subtitle: 'Master the art of logic and strategic choice'
+  },
+  { 
+    id: 'life_biology_evolution', 
+    name: 'Biology', 
+    emoji: '🧬',
+    subtitle: 'Discover the mysteries of living organisms and life'
+  },
+  { 
+    id: 'universe_earth_nature', 
+    name: 'Universe', 
+    emoji: '🌍',
+    subtitle: 'Journey through space, time, and the natural world'
+  },
+  { 
+    id: 'history_science_invention', 
+    name: 'History', 
+    emoji: '⚡',
+    subtitle: 'The epic story of human progress and discovery'
+  },
+  { 
+    id: 'society_organizations_business', 
+    name: 'Society', 
+    emoji: '🏛️',
+    subtitle: 'How we build structures and organize our world'
+  },
+  { 
+    id: 'technology_humanity', 
+    name: 'Technology', 
+    emoji: '🤖',
+    subtitle: 'The intersection of digital tools and human life'
+  },
+  { 
+    id: 'art_aesthetics', 
+    name: 'Art', 
+    emoji: '🎨',
+    subtitle: 'Creative expression and the philosophy of beauty'
+  },
+  { 
+    id: 'design_product_hci', 
+    name: 'Design', 
+    emoji: '✨',
+    subtitle: 'Crafting experiences that bridge people and things'
+  },
 ];
 
 /**
@@ -51,4 +102,12 @@ export function getBucketName(bucketId: string): string {
 export function getBucketEmoji(bucketId: string): string {
   const bucket = BUCKETS.find(b => b.id === bucketId);
   return bucket?.emoji || '📚';
+}
+
+/**
+ * 获取 bucket 的子标题
+ */
+export function getBucketSubtitle(bucketId: string): string {
+  const bucket = BUCKETS.find(b => b.id === bucketId);
+  return bucket?.subtitle || 'Explore fascinating insights on this topic';
 }
