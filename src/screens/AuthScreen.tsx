@@ -27,12 +27,12 @@ const colors = {
   primaryDark: '#F4B350',  // Deep Sunglow
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
-  bg: '#FBF9F5',           // Warm Sand
-  card: '#FFFFFF',
+  bg: '#F4F1E6',           // Distinct Sand background
+  card: '#FFFDF5',         // Creamy White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
-  border: '#E8E4DA',       // Warm Sand Border
+  border: '#E8E4D6',       // Sand Border
   error: '#ef4444',
 };
 

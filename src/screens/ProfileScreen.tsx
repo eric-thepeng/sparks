@@ -52,12 +52,12 @@ const colors = {
   primaryDark: '#F4B350',  // Deep Sunglow
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
-  bg: '#FBF9F5',           // Warm Sand
-  card: '#FFFFFF',
+  bg: '#F4F1E6',           // Distinct Sand background
+  card: '#FFFDF5',         // Creamy White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
-  border: '#E8E4DA',       // Warm Sand Border
+  border: '#E8E4D6',       // Sand Border
   error: '#ef4444',
   success: '#22c55e',
 };
@@ -424,6 +424,18 @@ export const ProfileScreen = ({
 
       {/* Header (Avatar & Name) - Always visible */}
       <View style={styles.header}>
+        {/* Top Left Actions */}
+        {!isEditing && (
+          <View style={styles.headerLeft}>
+            <Pressable 
+              style={styles.headerActionButton} 
+              onPress={() => setIsEditing(true)}
+            >
+              <Pencil size={20} color={colors.error} />
+            </Pressable>
+          </View>
+        )}
+
         {/* Top Right Actions */}
         {!isEditing && (
           <View style={styles.headerRight}>
@@ -432,12 +444,6 @@ export const ProfileScreen = ({
             </Pressable>
             <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
               <HistoryIcon size={24} color={colors.text} />
-            </Pressable>
-            <Pressable 
-              style={styles.headerActionButton} 
-              onPress={() => setIsEditing(true)}
-            >
-              <Pencil size={24} color={colors.error} />
             </Pressable>
           </View>
         )}
@@ -502,6 +508,12 @@ const styles = StyleSheet.create({
     right: 16,
     flexDirection: 'column',
     gap: 8,
+  },
+  headerLeft: {
+    position: 'absolute',
+    top: 20,
+    left: 16,
+    zIndex: 10,
   },
   headerActionButton: {
     width: 44,
@@ -746,7 +758,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#B45309',
     alignItems: 'center',
     overflow: 'hidden',
   },

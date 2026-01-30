@@ -111,12 +111,12 @@ const colors = {
   primaryDark: '#F4B350',  // Deep Sunglow
   primaryBg: '#FFF0C2',    // Light Amber/Cream for badges (Warmer)
   accent: '#f43f5e',       // rose-500
-  bg: '#FBF9F5',           // Warm Sand/Paper
-  card: '#FFFFFF',
+  bg: '#F4F1E6',           // Distinct Sand background
+  card: '#FFFDF5',         // Creamy White cards
   text: '#451a03',         // Amber 950 - Darkest Brown
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
-  border: '#E8E4DA',       // Warm Sand Border
+  border: '#E8E4D6',       // Sand border for contrast
 };
 
 /**
@@ -3506,6 +3506,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 10,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#B45309', // Deep Amber outline
   },
   cardImage: {
     width: '100%',
@@ -3529,11 +3531,17 @@ const styles = StyleSheet.create({
   topicInfo: {
     flex: 1,
     marginRight: 8,
+    flexDirection: 'row',
   },
   topicName: {
-    fontSize: 11,
-    color: '#B45309', // Darker Amber for contrast
+    fontSize: 10,
+    color: colors.textSecondary,
     fontWeight: '600',
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
   },
   likeButton: {
     flexDirection: 'row',
@@ -3704,7 +3712,7 @@ const styles = StyleSheet.create({
   },
   topicBadgeText: {
     fontSize: 12,
-    color: '#B45309',
+    color: colors.textSecondary,
     fontWeight: '700',
   },
   blocksContainer: {
@@ -3956,7 +3964,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#B45309',
     // Shadow for iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -4061,8 +4069,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    borderWidth: 0.5,
-    borderColor: colors.border,
+    borderWidth: 1,
+    borderColor: '#B45309',
   },
   historyTagText: {
     fontSize: 14,
@@ -4211,6 +4219,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: '#B45309',
   },
   savedCardInner: {
     flexDirection: 'row',
@@ -4240,7 +4250,7 @@ const styles = StyleSheet.create({
   savedTopicText: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#B45309',
+    color: colors.textSecondary,
   },
   savedCardTitle: {
     fontSize: 15,
@@ -4513,7 +4523,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
   },
   modalHeaderTitle: {
     fontSize: 18,
@@ -4553,6 +4563,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
+    borderWidth: 1,
+    borderColor: '#B45309',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 6,
   },
   historyCardInner: {
     flex: 1,
@@ -4596,7 +4611,7 @@ const styles = StyleSheet.create({
   historyBadge: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#B45309',
+    color: colors.textSecondary,
     backgroundColor: colors.primaryBg,
     paddingHorizontal: 8,
     paddingVertical: 3,
