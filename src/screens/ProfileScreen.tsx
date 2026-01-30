@@ -45,16 +45,19 @@ import {
 } from 'lucide-react-native';
 import { OnboardingScreen } from './OnboardingScreen';
 
-// Reusing colors
+// Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
 const colors = {
-  primary: '#4f46e5',
-  primaryBg: '#eef2ff',
-  bg: '#f8fafc',
-  card: '#ffffff',
-  text: '#1e293b',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  border: '#e2e8f0',
+  primary: '#FFD166',      // Sunglow
+  primaryLight: '#FFE5A0', // Pale Sunglow
+  primaryDark: '#F4B350',  // Deep Sunglow
+  primaryBg: '#FFF0C2',    // Light Amber/Cream
+  accent: '#f43f5e',       // rose-500
+  bg: '#FBF9F5',           // Warm Sand
+  card: '#FFFFFF',
+  text: '#451a03',         // Amber 950
+  textSecondary: '#78350f',// Amber 900
+  textMuted: '#92400e',    // Amber 800
+  border: '#E8E4DA',       // Warm Sand Border
   error: '#ef4444',
   success: '#22c55e',
 };
@@ -335,10 +338,10 @@ export const ProfileScreen = ({
               onPress={handleSave}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : (
+              {loading ? <ActivityIndicator color={colors.text} /> : (
                 <>
-                  <Save size={18} color="#fff" />
-                  <Text style={styles.buttonText}>Save Changes</Text>
+                  <Save size={18} color={colors.text} />
+                  <Text style={[styles.buttonText, { color: colors.text }]}>Save Changes</Text>
                 </>
               )}
             </Pressable>
@@ -350,8 +353,8 @@ export const ProfileScreen = ({
               style={[styles.button, styles.interestsButton]} 
               onPress={() => setShowInterestsModal(true)}
             >
-              <Sparkles size={18} color={colors.primary} />
-              <Text style={[styles.buttonText, { color: colors.primary }]}>Update Interests</Text>
+              <Sparkles size={18} color="#B45309" />
+              <Text style={[styles.buttonText, { color: '#B45309' }]}>Update Interests</Text>
             </Pressable>
 
             <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
@@ -411,8 +414,8 @@ export const ProfileScreen = ({
               onPress={handleOnboardingSubmit}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : (
-                <Text style={styles.buttonText}>Get Started</Text>
+              {loading ? <ActivityIndicator color={colors.text} /> : (
+                <Text style={[styles.buttonText, { color: colors.text }]}>Get Started</Text>
               )}
             </Pressable>
           </View>
@@ -488,7 +491,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     paddingVertical: 24,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     position: 'relative',
@@ -520,7 +523,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     backgroundColor: colors.card,
     borderWidth: 4,
-    borderColor: colors.card,
+    borderColor: colors.bg,
   },
   avatarPlaceholder: {
     alignItems: 'center',
@@ -649,13 +652,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   logoutButton: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: colors.card,
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.error + '40', // Soft red border
   },
   interestsButton: {
     backgroundColor: colors.primaryBg,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: '#B45309',
   },
   buttonText: {
     fontSize: 16,
@@ -787,7 +792,7 @@ const styles = StyleSheet.create({
   itemBadge: {
     fontSize: 10,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#B45309',
     backgroundColor: colors.primaryBg,
     paddingHorizontal: 6,
     paddingVertical: 2,

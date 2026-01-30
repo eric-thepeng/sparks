@@ -104,19 +104,19 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Indigo 色彩系统
+// Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
 const colors = {
-  primary: '#4f46e5',      // indigo-600
-  primaryLight: '#818cf8', // indigo-400
-  primaryDark: '#3730a3',  // indigo-800
-  primaryBg: '#eef2ff',    // indigo-50
-  accent: '#f43f5e',       // rose-500 for hearts
-  bg: '#f8fafc',
-  card: '#ffffff',
-  text: '#1e293b',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  border: '#e2e8f0',
+  primary: '#FFD166',      // Sunglow
+  primaryLight: '#FFE5A0', // Pale Sunglow
+  primaryDark: '#F4B350',  // Deep Sunglow
+  primaryBg: '#FFF0C2',    // Light Amber/Cream for badges (Warmer)
+  accent: '#f43f5e',       // rose-500
+  bg: '#FBF9F5',           // Warm Sand/Paper
+  card: '#FFFFFF',
+  text: '#451a03',         // Amber 950 - Darkest Brown
+  textSecondary: '#78350f',// Amber 900
+  textMuted: '#92400e',    // Amber 800
+  border: '#E8E4DA',       // Warm Sand Border
 };
 
 /**
@@ -183,6 +183,7 @@ function Header({
       <View style={styles.topTabs}>
         <View style={styles.topTab}>
           <Text style={styles.topTabTextActive} numberOfLines={1}>{title}</Text>
+          <View style={styles.topTabIndicator} />
         </View>
       </View>
 
@@ -223,7 +224,7 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
               style={[styles.mainButton, isActive && styles.mainButtonActive]}
               onPress={() => onTabChange(item.key)}
             >
-              <Icon size={26} color="#fff" />
+              <Icon size={26} color={colors.text} />
             </Pressable>
           );
         }
@@ -2614,7 +2615,7 @@ function SavedScreen({
   const renderEmptyState = () => (
     <View style={styles.savedEmptyContainer}>
       <View style={styles.savedEmptyIcon}>
-        <BookmarkPlus size={48} color={colors.primaryLight} strokeWidth={1.5} />
+        <BookmarkPlus size={48} color="#B45309" strokeWidth={1.5} />
       </View>
       <Text style={styles.savedEmptyTitle}>
         {token ? 'No Saved Posts' : 'Please log in to use the feature'}
@@ -3171,7 +3172,7 @@ function AppContent() {
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handlePullToRefresh}
-                  tintColor={colors.primary}
+                  tintColor="#B45309"
                 />
               }
             >
@@ -3355,7 +3356,7 @@ function AppContent() {
             style={styles.debugToggleButton}
             onPress={() => setShowDebugPanel(!showDebugPanel)}
           >
-            <Bug size={20} color="#fff" />
+            <Bug size={20} color={colors.text} />
           </Pressable>
         )}
       </SafeAreaView>
@@ -3400,7 +3401,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg, // Match screen background
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderBottomWidth: 0.5,
@@ -3531,7 +3532,7 @@ const styles = StyleSheet.create({
   },
   topicName: {
     fontSize: 11,
-    color: colors.primary,
+    color: '#B45309', // Darker Amber for contrast
     fontWeight: '600',
   },
   likeButton: {
@@ -3703,7 +3704,7 @@ const styles = StyleSheet.create({
   },
   topicBadgeText: {
     fontSize: 12,
-    color: colors.primary,
+    color: '#B45309',
     fontWeight: '700',
   },
   blocksContainer: {
@@ -3771,12 +3772,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.bg,
     borderRadius: 16,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: colors.bg,
   },
   quoteLine: {
     display: 'none',
@@ -3934,7 +3935,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   seeAllButton: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.bg,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -3991,7 +3992,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     gap: 12,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
@@ -4000,10 +4001,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: colors.card,
     borderRadius: 22,
     paddingHorizontal: 14,
     height: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   searchIconSmall: {
     marginRight: 8,
@@ -4122,7 +4125,7 @@ const styles = StyleSheet.create({
   retryButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text,
   },
 
   // Modal close button
@@ -4151,7 +4154,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 0.5,
@@ -4176,7 +4179,7 @@ const styles = StyleSheet.create({
   savedCountText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.primary,
+    color: '#B45309',
   },
   savedClearButton: {
     padding: 8,
@@ -4237,7 +4240,7 @@ const styles = StyleSheet.create({
   savedTopicText: {
     fontSize: 11,
     fontWeight: '500',
-    color: colors.primary,
+    color: '#B45309',
   },
   savedCardTitle: {
     fontSize: 15,
@@ -4593,7 +4596,7 @@ const styles = StyleSheet.create({
   historyBadge: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#B45309',
     backgroundColor: colors.primaryBg,
     paddingHorizontal: 8,
     paddingVertical: 3,

@@ -22,17 +22,19 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 8;
 const CARD_WIDTH = (SCREEN_WIDTH - 48 - CARD_GAP) / 2;
 
-// Color system
+// Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
 const colors = {
-  primary: '#4f46e5',
-  primaryLight: '#eef2ff',
-  primaryDark: '#3730a3',
-  bg: '#f8fafc',
-  card: '#ffffff',
-  text: '#1e293b',
-  textSecondary: '#64748b',
-  textMuted: '#94a3b8',
-  border: '#e2e8f0',
+  primary: '#FFD166',      // Sunglow
+  primaryLight: '#FFE5A0', // Pale Sunglow
+  primaryDark: '#F4B350',  // Deep Sunglow
+  primaryBg: '#FFF0C2',    // Light Amber/Cream
+  accent: '#f43f5e',       // rose-500
+  bg: '#FBF9F5',           // Warm Sand
+  card: '#FFFFFF',
+  text: '#451a03',         // Amber 950
+  textSecondary: '#78350f',// Amber 900
+  textMuted: '#92400e',    // Amber 800
+  border: '#E8E4DA',       // Warm Sand Border
   success: '#22c55e',
   gold: '#f59e0b',
 };
