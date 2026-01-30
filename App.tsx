@@ -23,15 +23,15 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
-import { GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
+import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  Heart, 
-  ChevronLeft, 
-  Search, 
+import {
+  Heart,
+  ChevronLeft,
+  Search,
   LayoutGrid,
   Bookmark,
   BookmarkCheck,
@@ -49,26 +49,27 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
 } from 'lucide-react-native';
 
 // 数据层
-import { 
-  getFeedItems, 
-  getPost, 
-  getPostCover, 
+import {
+  getFeedItems,
+  getPost,
+  getPostCover,
   getPostImage,
   getPostCoverImage,
   getBlockImage,
-  FeedItem, 
-  Post, 
-  PostPage, 
-  ContentBlock 
+  FeedItem,
+  Post,
+  PostPage,
+  ContentBlock
 } from './src/data';
 
-import { 
-  fetchComments, 
-  createComment, 
-  likeItem, 
+import {
+  fetchComments,
+  createComment,
+  likeItem,
   unlikeItem,
   getMyHistory,
   getMyLikes,
@@ -136,11 +137,11 @@ const formatRelativeTime = (dateString?: string) => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) {
     // Check if it's the same calendar day (just in case of timezone edge cases)
     if (date.getDate() === now.getDate()) {
-       return `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      return `Today ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     }
     return 'Yesterday';
   } else if (diffDays === 1) {
@@ -149,18 +150,18 @@ const formatRelativeTime = (dateString?: string) => {
     return `${diffDays} days ago`;
   } else {
     // Fallback to date for older items
-    return date.toLocaleDateString(); 
+    return date.toLocaleDateString();
   }
 };
 
 // ============================================================
 // 顶部导航 Tab
 // ============================================================
-function Header({ 
-  onSearchPress, 
+function Header({
+  onSearchPress,
   onBack,
-  title = "Discover" 
-}: { 
+  title = "Discover"
+}: {
   onSearchPress?: () => void;
   onBack?: () => void;
   title?: string;
@@ -178,13 +179,13 @@ function Header({
           </Pressable>
         ) : null}
       </View>
-      
+
       <View style={styles.topTabs}>
         <View style={styles.topTab}>
           <Text style={styles.topTabTextActive} numberOfLines={1}>{title}</Text>
         </View>
       </View>
-      
+
       <View style={{ width: 40 }}>
         {onBack && onSearchPress && (
           <Pressable style={styles.headerIcon} onPress={onSearchPress}>
@@ -201,24 +202,24 @@ function Header({
 // ============================================================
 function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
   const insets = useSafeAreaInsets();
-  
+
   const items = [
     { key: 'explore', icon: Sparkles, label: '', isMain: true },
     { key: 'collection', icon: LayoutGrid, label: 'Collection' },
     { key: 'saved', icon: Bookmark, label: 'Saved' },
     { key: 'me', icon: User, label: 'Me' },
   ];
-  
+
   return (
     <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;
-        
+
         if (item.isMain) {
           return (
-            <Pressable 
-              key={item.key} 
+            <Pressable
+              key={item.key}
               style={[styles.mainButton, isActive && styles.mainButtonActive]}
               onPress={() => onTabChange(item.key)}
             >
@@ -226,15 +227,15 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
             </Pressable>
           );
         }
-        
+
         return (
           <Pressable
             key={item.key}
             style={styles.navItem}
             onPress={() => onTabChange(item.key)}
           >
-            <Icon 
-              size={22} 
+            <Icon
+              size={22}
               color={isActive ? colors.primary : colors.textMuted}
             />
             <Text style={[
@@ -253,12 +254,12 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
 // ============================================================
 // Feed 卡片
 // ============================================================
-function FeedCard({ 
-  item, 
+function FeedCard({
+  item,
   onPress,
   index = 0,
-}: { 
-  item: FeedItem; 
+}: {
+  item: FeedItem;
   onPress: () => void;
   index?: number;
 }) {
@@ -267,7 +268,7 @@ function FeedCard({
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
   const likeScale = useRef(new Animated.Value(1)).current;
-  
+
   // Entry Animation
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
@@ -315,7 +316,7 @@ function FeedCard({
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-    
+
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -364,13 +365,13 @@ function FeedCard({
           contentFit="cover"
           transition={200}
         />
-        
+
         {/* 内容 */}
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle} numberOfLines={5}>
             {item.title}
           </Text>
-          
+
           {/* 底部：话题标签 + 点赞 */}
           <View style={styles.cardFooter}>
             <View style={styles.topicInfo}>
@@ -378,11 +379,11 @@ function FeedCard({
                 #{formatTopicName(item.topic)}
               </Text>
             </View>
-            
+
             <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
               <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-                <Heart 
-                  size={14} 
+                <Heart
+                  size={14}
                   color={isLiked ? colors.accent : colors.textMuted}
                   fill={isLiked ? colors.accent : 'transparent'}
                 />
@@ -404,17 +405,17 @@ function FeedCard({
 // ============================================================
 // 瀑布流 Feed
 // ============================================================
-function MasonryFeed({ 
-  items, 
-  onItemPress 
-}: { 
-  items: FeedItem[]; 
+function MasonryFeed({
+  items,
+  onItemPress
+}: {
+  items: FeedItem[];
   onItemPress: (uid: string) => void;
 }) {
   // 分配到两列
   const leftColumn: FeedItem[] = [];
   const rightColumn: FeedItem[] = [];
-  
+
   items.forEach((item, index) => {
     if (index % 2 === 0) {
       leftColumn.push(item);
@@ -422,7 +423,7 @@ function MasonryFeed({
       rightColumn.push(item);
     }
   });
-  
+
   return (
     <View style={styles.masonry}>
       {/* 左列 */}
@@ -436,7 +437,7 @@ function MasonryFeed({
           />
         ))}
       </View>
-      
+
       {/* 右列 */}
       <View style={styles.column}>
         {rightColumn.map((item, index) => (
@@ -485,7 +486,7 @@ function CommentSection({ postId }: { postId: string }) {
 
   const handleSend = async () => {
     if (!inputText.trim() || !user) return;
-    
+
     setIsSending(true);
     try {
       const newComment = await createComment(postId, { content: inputText.trim() });
@@ -560,22 +561,22 @@ function CommentSection({ postId }: { postId: string }) {
       <View style={styles.commentHeaderRow}>
         <Text style={styles.commentHeader}>Comments ({comments.length})</Text>
         <View style={styles.commentSortContainer}>
-          <Pressable 
-            onPress={() => setSortBy('time')} 
+          <Pressable
+            onPress={() => setSortBy('time')}
             style={[styles.sortButton, sortBy === 'time' && styles.sortButtonActive]}
           >
             <Text style={[styles.sortButtonText, sortBy === 'time' && styles.sortButtonTextActive]}>Newest</Text>
           </Pressable>
           <View style={styles.sortDivider} />
-          <Pressable 
-            onPress={() => setSortBy('likes')} 
+          <Pressable
+            onPress={() => setSortBy('likes')}
             style={[styles.sortButton, sortBy === 'likes' && styles.sortButtonActive]}
           >
             <Text style={[styles.sortButtonText, sortBy === 'likes' && styles.sortButtonTextActive]}>Top</Text>
           </Pressable>
         </View>
       </View>
-      
+
       {/* Comment Input */}
       {user ? (
         <View style={styles.commentInputRow}>
@@ -613,14 +614,14 @@ function CommentSection({ postId }: { postId: string }) {
                     {formatRelativeTime(item.created_at)}
                   </Text>
                 </View>
-                <Pressable 
-                  style={styles.commentLikeContainer} 
+                <Pressable
+                  style={styles.commentLikeContainer}
                   onPress={() => handleLikeComment(item.id)}
                 >
-                  <Heart 
-                    size={14} 
-                    color={item.is_liked ? colors.accent : colors.textMuted} 
-                    fill={item.is_liked ? colors.accent : 'transparent'} 
+                  <Heart
+                    size={14}
+                    color={item.is_liked ? colors.accent : colors.textMuted}
+                    fill={item.is_liked ? colors.accent : 'transparent'}
                   />
                   {item.like_count !== undefined && item.like_count > 0 && (
                     <Text style={[styles.commentLikeCount, item.is_liked && { color: colors.accent }]}>
@@ -645,7 +646,7 @@ function CommentSection({ postId }: { postId: string }) {
 // --- Markdown Helper ---
 const renderMarkdownText = (text: string = '', baseStyle: any, isCaption: boolean = false) => {
   if (!text) return null;
-  
+
   if (isCaption) {
     // For captions, the backend wraps the whole thing in *...* or **...** to mark it as a caption.
     // We should strip these and render with caption style (italic).
@@ -655,7 +656,7 @@ const renderMarkdownText = (text: string = '', baseStyle: any, isCaption: boolea
     } else if (processedText.startsWith('*') && processedText.endsWith('*')) {
       processedText = processedText.slice(1, -1);
     }
-    
+
     // Support internal bold if needed
     const parts = processedText.split(/(\*\*.*?\*\*|\*.*?\*)/g);
     return (
@@ -677,7 +678,7 @@ const renderMarkdownText = (text: string = '', baseStyle: any, isCaption: boolea
 
   // Regular text logic
   const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
-  
+
   return (
     <Text style={baseStyle} allowFontScaling={false}>
       {parts.map((part, i) => {
@@ -699,40 +700,88 @@ const renderMarkdownText = (text: string = '', baseStyle: any, isCaption: boolea
 // ============================================================
 // Page Item Component (for Vertical FlatList)
 // ============================================================
-type ReaderItem = 
+type ReaderItem =
   | { type: 'page'; page: PostPage; index: number };
 
-const PageItem = React.memo(({ 
-  item, 
-  post,
-  isVisible,
-  containerHeight,
-  isLastPage,
-  bottomBarHeight,
-  onScrollEdge
-}: { 
-  item: ReaderItem; 
+const PageItem = React.memo((props: {
+  item: ReaderItem;
   post: Post;
-  isVisible: boolean; 
+  isVisible: boolean;
   containerHeight: number;
   isLastPage: boolean;
   bottomBarHeight: number;
-  onScrollEdge?: (atTop: boolean, atBottom: boolean) => void;
+  hasReadEnd?: boolean;
+  onRequestNext?: () => void;
+  onPageCompleted?: () => void;
+  onSwipeEnableChange?: (canSwipe: boolean) => void;
 }) => {
+  const {
+    item,
+    post,
+    isVisible,
+    containerHeight,
+    isLastPage,
+    bottomBarHeight,
+    hasReadEnd,
+    onRequestNext,
+    onPageCompleted,
+    onSwipeEnableChange,
+  } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
   const translateY = useRef(new Animated.Value(isFirstPage ? 0 : 50)).current;
   const [revealed, setRevealed] = useState(isFirstPage);
-  
+
   const insets = useSafeAreaInsets();
-  
+
   const lastY = useRef(0);
   const dragDir = useRef<'up' | 'down' | null>(null);
-  
-  // Scroll hint states
-  const [showScrollHint, setShowScrollHint] = useState(true);
-  const hintOpacity = useRef(new Animated.Value(1)).current;
-  const hintTranslateY = useRef(new Animated.Value(0)).current;
+  const lastImageLayout = useRef<{ y: number; height: number } | null>(null);
+  const endMarkerLayout = useRef<number | null>(null);
+  const imageRectsRef = useRef<Map<string, { y: number; height: number }>>(new Map());
+  const navBlockedForGesture = useRef(false);
+  const imageLayoutSetRef = useRef<Set<number>>(new Set());
+  const imageCount = useMemo(
+    () => item.page.blocks.filter((block) => block.type === 'image').length,
+    [item.page.blocks]
+  );
+  const loadedImagesRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  const contentStableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScrollMetricsRef = useRef<{ y: number; contentHeight: number; viewportHeight: number }>({
+    y: 0,
+    contentHeight: 0,
+    viewportHeight: 0,
+  });
+
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isTouchingImage = useRef(false);
+  const overscrollTriggered = useRef(false); // Latch for one-shot trigger
+
+  const [isComplete, setIsComplete] = useState(false);
+
+  useEffect(() => {
+     onSwipeEnableChange?.(isComplete);
+  }, [isComplete, onSwipeEnableChange]);
+
+  // Initial lock for short content check
+  useEffect(() => {
+    // If not complete, ensure swipe is disabled
+    if (!isComplete) {
+       onSwipeEnableChange?.(false);
+    }
+  }, []);
+
+  const readyIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const [imagesLoaded, setImagesLoaded] = useState(imageCount === 0);
+  // Track content stability separately from reveal
+  const [heightStable, setHeightStable] = useState(false);
+  const [contentStable, setContentStable] = useState(false);
+  const [imageLayoutsMeasured, setImageLayoutsMeasured] = useState(imageCount === 0);
+  const [contentReadyFallback, setContentReadyFallback] = useState(false);
+  const completedOnceRef = useRef(false);
+  const [isLastImageFullyVisible, setIsLastImageFullyVisible] = useState(true);
 
   // Robustly calculate bottom padding
   // Header is ~50, Bottom bar is ~60
@@ -740,9 +789,16 @@ const PageItem = React.memo(({
   // Add extra buffer (24) to ensure the last line clears the bottom bar
   const bottomClearance = (bottomBarHeight || 60) + insets.bottom + 24;
 
+  const contentReady = (imagesLoaded && imageLayoutsMeasured && contentStable) || contentReadyFallback;
+
   useEffect(() => {
-    if (isVisible && !revealed) {
+    // Reveal content only when:
+    // 1. Page is visible in swiper (isVisible)
+    // 2. Not already revealed
+    // 3. Content is fully ready (images loaded & layouts measured)
+    if (isVisible && !revealed && contentReady) {
       setRevealed(true);
+      imageRectsRef.current.clear(); // Clear rects on reveal/reset
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
@@ -757,19 +813,35 @@ const PageItem = React.memo(({
         }),
       ]).start();
     }
-  }, [isVisible]);
+  }, [isVisible, revealed, contentReady]);
 
-  // Scroll hint bounce animation
+  // Update ready indicator based on hasReadEnd
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(hintTranslateY, { toValue: 6, duration: 600, useNativeDriver: true }),
-        Animated.timing(hintTranslateY, { toValue: 0, duration: 600, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
+    if (isComplete) { // Use isComplete for visibility
+      Animated.timing(readyIndicatorOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    } else {
+        Animated.timing(readyIndicatorOpacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+    }
+  }, [isComplete]);
+
+  useEffect(() => {
+    setImagesLoaded(imageCount === 0);
+    loadedImagesRef.current = 0;
+    imageLayoutSetRef.current = new Set();
+    setImageLayoutsMeasured(imageCount === 0);
+    setContentReadyFallback(false);
+  }, [imageCount]);
+
+  // Moved contentReady definition up
+
 
   const fadeHint = (to: number) => {
     Animated.timing(hintOpacity, {
@@ -779,13 +851,75 @@ const PageItem = React.memo(({
     }).start();
   };
 
+  const isNavigationZone = () =>
+    touchStartX.current < 44 ||
+    touchStartX.current > SCREEN_WIDTH - 44 ||
+    touchStartY.current > SCREEN_HEIGHT * 0.75;
+
+  const markContentUnstable = () => {
+    // Update stability for reveal
+    if (contentStable) setContentStable(false);
+    
+    // Reset completion gate immediately if content changes
+    setIsComplete(false);
+    setHeightStable(false);
+    
+    if (contentStableTimerRef.current) {
+      clearTimeout(contentStableTimerRef.current);
+    }
+    contentStableTimerRef.current = setTimeout(() => {
+      setContentStable(true);
+      setHeightStable(true); // Content is now stable
+      
+      // Fallback: if images are slow, allow readiness after a short stable window
+      // Only trigger fallback if we haven't revealed yet to avoid jumping
+      if (!revealed) {
+          setContentReadyFallback(true);
+      }
+    }, 300); // 300ms debounce as requested
+  };
+
+  const lastImageIndex = useMemo(() => {
+    for (let i = item.page.blocks.length - 1; i >= 0; i -= 1) {
+      if (item.page.blocks[i]?.type === 'image') return i;
+    }
+    return -1;
+  }, [item.page.blocks]);
+
+  useEffect(() => {
+    // If there are no images, treat last image as fully visible
+    if (lastImageIndex === -1) {
+      setIsLastImageFullyVisible(true);
+      lastImageLayout.current = null;
+    } else {
+      setIsLastImageFullyVisible(false);
+    }
+  }, [lastImageIndex]);
+
+  const updateLastImageVisibility = (scrollY: number, viewportHeight: number) => {
+    if (!lastImageLayout.current) return;
+    const imageTop = lastImageLayout.current.y;
+    const imageBottom = imageTop + lastImageLayout.current.height;
+    const viewTop = scrollY;
+    const viewBottom = scrollY + viewportHeight;
+
+    const fullyVisible = imageTop >= viewTop && imageBottom <= viewBottom;
+    if (fullyVisible !== isLastImageFullyVisible) {
+      setIsLastImageFullyVisible(fullyVisible);
+    }
+  };
+
+  const updateBottomPaddingVisibility = (scrollY: number, viewportHeight: number) => {
+    // Keep this function if needed for other UI updates
+  };
+
   // Render content block helper
   const renderBlock = (block: ContentBlock, idx: number, pageIdx: number) => {
     const key = `${pageIdx}-${idx}`;
-    
+
     // Skip h1 on the first page since we render the title in the header UI
     if (pageIdx === 0 && block.type === 'h1') return null;
-    
+
     // Skip empty paragraphs or horizontal rules that were captured as text
     // Handles ---, ----, etc.
     if (block.type === 'paragraph' && (!block.text || block.text.trim().match(/^---+$/))) return null;
@@ -807,12 +941,39 @@ const PageItem = React.memo(({
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
-          <View key={key} style={styles.imageBlockContainer}>
+          <View 
+            key={key} 
+            style={styles.imageBlockContainer}
+            onLayout={(e) => {
+              const { y, height } = e.nativeEvent.layout;
+              // Track image layout for gesture blocking
+              imageRectsRef.current.set(key, { y, height });
+              
+              if (idx === lastImageIndex) {
+                lastImageLayout.current = { y, height };
+              }
+              if (!imageLayoutSetRef.current.has(idx)) {
+                imageLayoutSetRef.current.add(idx);
+                if (imageLayoutSetRef.current.size >= imageCount) {
+                  setImageLayoutsMeasured(true);
+                }
+              }
+            }}
+            onTouchStart={() => { isTouchingImage.current = true; }}
+            onTouchEnd={() => { isTouchingImage.current = false; }}
+            onTouchCancel={() => { isTouchingImage.current = false; }}
+          >
             <Image
               source={imageSource}
               style={styles.blockImage}
               contentFit="cover"
               transition={300}
+              onLoadEnd={() => {
+                loadedImagesRef.current += 1;
+                if (loadedImagesRef.current >= imageCount) {
+                  setImagesLoaded(true);
+                }
+              }}
             />
             {block.caption && renderMarkdownText(block.caption, styles.blockImageCaption, true)}
           </View>
@@ -846,72 +1007,156 @@ const PageItem = React.memo(({
     }
   };
 
+  const isDragging = useRef(false);
+
   // Regular Page - Improved layout to prevent "stuck" pages and ensure smooth snapping
   return (
-    <Animated.View style={{ 
-      opacity, 
-      transform: [{ translateY }], 
+    <Animated.View style={{
+      opacity,
+      transform: [{ translateY }],
       height: containerHeight,
       alignSelf: 'stretch',
       overflow: 'visible', // Ensure no clipping
     }}>
-      <GHScrollView 
+      <GHScrollView
         directionalLockEnabled={true}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        scrollEnabled={true} 
-        bounces={true} 
+        scrollEnabled={true}
+        bounces={true}
         overScrollMode="always"
         scrollEventThrottle={16}
-        onTouchStart={() => {
-          onScrollEdge?.(false, false);
+        onTouchStart={(e) => {
+          touchStartX.current = e.nativeEvent.pageX;
+          touchStartY.current = e.nativeEvent.pageY;
+
+          // Check if touch started on an image
+          const touchY = e.nativeEvent.locationY;
+          const scrollY = lastScrollMetricsRef.current.y;
+          const absoluteY = scrollY + touchY;
+          
+          let hitImage = false;
+          for (const rect of imageRectsRef.current.values()) {
+              if (absoluteY >= rect.y && absoluteY <= rect.y + rect.height) {
+                  hitImage = true;
+                  break;
+              }
+          }
+          navBlockedForGesture.current = hitImage;
         }}
         onScrollBeginDrag={() => {
-          onScrollEdge?.(false, false);
+          isDragging.current = true;
+        }}
+        onScrollEndDrag={(e) => {
+          // Reset latch on drag release
+          overscrollTriggered.current = false;
+          isDragging.current = false;
         }}
         onScroll={(e) => {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
           const y = contentOffset.y;
           dragDir.current = y > lastY.current ? "up" : "down";
           lastY.current = y;
+          lastScrollMetricsRef.current = {
+            y,
+            contentHeight: contentSize.height,
+            viewportHeight: layoutMeasurement.height,
+          };
 
-          const EDGE_THRESHOLD = 32;
-          const atTop = y <= EDGE_THRESHOLD;
-          const atBottom = y + layoutMeasurement.height >= contentSize.height - EDGE_THRESHOLD;
+          updateLastImageVisibility(y, layoutMeasurement.height);
 
-          // Only signal edge intent if at an edge AND dragging outward
-          const wantsPageTop = atTop && dragDir.current === "down";
-          const wantsPageBottom = atBottom && dragDir.current === "up";
+          // Calculate short content status for UI hints
+          const isShortContent = contentSize.height <= layoutMeasurement.height + 10;
+          
+          // Calculate bottom padding visibility (End of Content Marker)
+          const markerY = endMarkerLayout.current || 99999;
+          const viewportHeight = layoutMeasurement.height;
+          const threshold = 12; // Robust threshold (8-16px)
+          const bottomPaddingVisible = markerY <= y + viewportHeight - threshold;
+          
+          if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
+              console.log('[PageItem] COMPLETION TRIGGERED:', {
+                  markerY,
+                  y,
+                  viewportHeight,
+                  calc: y + viewportHeight - threshold,
+                  imagesLoaded,
+                  heightStable
+              });
+          }
 
-          onScrollEdge?.(wantsPageTop, wantsPageBottom);
+          // Overscroll Logic
+          // 1. Check if complete
+          // CRITICAL: Only trigger if actually dragging (not momentum) to prevent double-skipping
+          if (isComplete && onRequestNext && !overscrollTriggered.current && isDragging.current) {
+             // 2. Check if touch started in navigation zone
+             const isNavZone = 
+               touchStartY.current > SCREEN_HEIGHT * 0.75 || 
+               (bottomPaddingVisible && touchStartY.current > SCREEN_HEIGHT * 0.5); // Relaxed zone if padding visible
+             
+             // 3. Check if touch started on image (navBlockedForGesture)
+             if (isNavZone && !navBlockedForGesture.current) {
+                 // 4. Check overscroll threshold
+                 // Overscroll happens when y > contentHeight - viewportHeight
+                 // We want distinct pull-up, say 60px past the bottom
+                 const maxScrollY = Math.max(0, contentSize.height - viewportHeight);
+                 const overscrollAmount = y - maxScrollY;
+                 
+                 if (overscrollAmount > 60) {
+                     console.log('[PageItem] Overscroll triggered next page');
+                     overscrollTriggered.current = true;
+                     onRequestNext();
+                 }
+             }
+          }
 
-          // Update scroll hint visibility
-          // If content is small enough to fit without scrolling, hide hint immediately
-          const isScrollable = contentSize.height > layoutMeasurement.height + 10;
-          if (!isScrollable) {
-            if (showScrollHint) {
-              setShowScrollHint(false);
-              fadeHint(0);
+          if (isShortContent) {
+            // For short content, if we can see the marker, we are complete
+            // BUT must satisfy all gates: imagesLoaded AND heightStable
+            if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
+                console.log('[PageItem] Completion satisfied (short content)');
+                setIsComplete(true);
+                if (isLastPage && !completedOnceRef.current) {
+                    completedOnceRef.current = true;
+                    onPageCompleted?.();
+                }
+            } else if (!isComplete) {
+                 // Ensure swipe is disabled if not complete
+                 // This handles the case where it might have been enabled briefly or defaulting
+                 // But don't spam updates, use effect instead
             }
           } else {
-            if (atBottom && showScrollHint) {
-              setShowScrollHint(false);
-              fadeHint(0);
-            } else if (!atBottom && !showScrollHint) {
-              setShowScrollHint(true);
-              fadeHint(1);
+            // Completion gate: strictly depends on bottomPaddingVisible && imagesLoaded && heightStable
+            if (bottomPaddingVisible && imagesLoaded && heightStable && !isComplete) {
+              console.log('[PageItem] Completion satisfied (long content)');
+              setIsComplete(true);
+              if (isLastPage && !completedOnceRef.current) {
+                completedOnceRef.current = true;
+                onPageCompleted?.();
+              }
             }
           }
+        }}
+        onContentSizeChange={(w, h) => {
+          // console.log('[PageItem] Content size changed:', w, h);
+          if (contentHeightRef.current !== h) {
+            contentHeightRef.current = h;
+            lastScrollMetricsRef.current.contentHeight = h;
+            markContentUnstable();
+          }
+        }}
+        onLayout={(e) => {
+           lastScrollMetricsRef.current.viewportHeight = e.nativeEvent.layout.height;
         }}
         decelerationRate="normal"
         keyboardShouldPersistTaps="handled"
         scrollIndicatorInsets={{ bottom: bottomClearance }}
-        contentContainerStyle={{ 
+        contentContainerStyle={{
           flexGrow: 1,
           paddingTop: 0, // Header image should start at the very top
           paddingBottom: bottomClearance,
-          paddingHorizontal: 0 
+          paddingHorizontal: 0
         }}
       >
         {isFirstPage && (
@@ -930,39 +1175,58 @@ const PageItem = React.memo(({
             </View>
           </View>
         )}
-        
+
         <View style={styles.blocksContainer}>
           {item.page.blocks.map((block, idx) => renderBlock(block, idx, item.index))}
         </View>
+        <View
+          onLayout={(e) => {
+            console.log('[PageItem] Marker layout Y:', e.nativeEvent.layout.y);
+            endMarkerLayout.current = e.nativeEvent.layout.y;
+          }}
+          style={{ height: 1, width: 1, backgroundColor: 'transparent' }} 
+        />
       </GHScrollView>
 
-      {/* Scroll Hint Overlay */}
+      {/* Loading Indicator (centered, visible only when isVisible but not yet revealed) */}
+      {isVisible && !revealed && (
+        <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="small" color="#999" />
+        </View>
+      )}
+
+      {/* Ready Indicator Overlay (Chevron Right - Appears only after full read) */}
       <Animated.View
-        pointerEvents="none"
         style={{
           position: 'absolute',
           right: 20,
           bottom: bottomClearance + 16,
-          opacity: hintOpacity,
-          transform: [{ translateY: hintTranslateY }],
+          opacity: readyIndicatorOpacity,
         }}
+        pointerEvents={isComplete ? 'auto' : 'none'}
       >
-        <View style={{
-          width: 32,
-          height: 32,
-          borderRadius: 16,
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          alignItems: 'center',
-          justifyContent: 'center',
-          // Subtle shadow
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.15,
-          shadowRadius: 4,
-          elevation: 4,
-        }}>
-          <ChevronDown size={18} color={colors.textSecondary} />
-        </View>
+        <Pressable
+          onPress={() => {
+            console.log('[PageItem] Next button pressed');
+            onRequestNext?.();
+          }}
+          disabled={!isComplete}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            // Subtle shadow
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.15,
+            shadowRadius: 4,
+            elevation: 4,
+          }}>
+          <ChevronRight size={24} color={colors.primary} />
+        </Pressable>
       </Animated.View>
     </Animated.View>
   );
@@ -975,12 +1239,14 @@ function SinglePostReader({
   post,
   onClose,
   onLikeUpdate,
-  onSwipeEnableChange,
+  onRequestNext,
+  onSwipeEnableChange, // NEW
 }: {
   post: Post;
   onClose: () => void;
   onLikeUpdate?: (isLiked: boolean, likeCount: number) => void;
-  onSwipeEnableChange?: (enabled: boolean) => void;
+  onRequestNext?: () => void;
+  onSwipeEnableChange?: (canSwipe: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token, logout } = useAuth();
@@ -988,15 +1254,17 @@ function SinglePostReader({
   const [currentPage, setCurrentPage] = useState(0);
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
-  
+  const isNavigatingRef = useRef(false);
+
   // Recommendation signals
   const { sendLike, sendSave, trackReadProgress, resetProgress } = useRecommendation();
-  
+
   // Header is 50, Bottom bar is 60, plus safe areas
   const readerHeaderHeight = 50;
   const bottomBarHeight = 60;
   const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
   const [measuredBottomBarHeight, setMeasuredBottomBarHeight] = useState(0);
+  const [hasReadEnd, setHasReadEnd] = useState(false);
 
   // Prepare list data: Combine header into first page
   const readerData: ReaderItem[] = useMemo(() => {
@@ -1006,20 +1274,20 @@ function SinglePostReader({
       const MAX_CHARS_PER_BLOCK = 450;
       const trimmed = text.trim();
       if (trimmed.length <= MAX_CHARS_PER_BLOCK) return [trimmed];
-      
+
       const parts: string[] = [];
       let current = trimmed;
-      
+
       while (current.length > MAX_CHARS_PER_BLOCK) {
         // Try to split at the last sentence end before the limit
         let splitIdx = current.lastIndexOf('. ', MAX_CHARS_PER_BLOCK);
         if (splitIdx === -1) splitIdx = current.lastIndexOf(' ', MAX_CHARS_PER_BLOCK);
         if (splitIdx === -1) splitIdx = MAX_CHARS_PER_BLOCK;
-        
+
         parts.push(current.slice(0, splitIdx + 1).trim());
         current = current.slice(splitIdx + 1).trim();
       }
-      
+
       if (current) parts.push(current);
       return parts;
     };
@@ -1029,11 +1297,11 @@ function SinglePostReader({
       .map((p, i) => {
         // Clean up blocks within each page
         const cleanedBlocks: ContentBlock[] = [];
-        
+
         p.blocks.forEach(block => {
           // Remove horizontal rules
           if (block.type === 'paragraph' && block.text && block.text.trim().match(/^---+$/)) return;
-          
+
           if (block.type === 'paragraph' && block.text) {
             const splitTexts = splitLongParagraph(block.text);
             splitTexts.forEach(txt => {
@@ -1043,7 +1311,7 @@ function SinglePostReader({
             cleanedBlocks.push(block);
           }
         });
-        
+
         return {
           type: 'page' as const,
           page: { ...p, blocks: cleanedBlocks },
@@ -1052,6 +1320,20 @@ function SinglePostReader({
       })
       .filter(p => p.page.blocks.length > 0);
   }, [post.pages]);
+
+  // Notify parent of swipe availability when read state changes
+  // useEffect(() => {
+  //   if (hasReadEnd) {
+  //     // If we are at the top of page 0 or bottom of last page, we can swipe
+  //     const isFirst = currentPage === 0;
+  //     const isLast = currentPage === readerData.length - 1;
+  //     // We don't have the exact scroll position here, but we can assume 
+  //     // if they just reached the end, they are at the bottom of the last page.
+  //     // if (isLast) {
+  //     //   onSwipeEnableChange?.(true);
+  //     // }
+  //   }
+  // }, [hasReadEnd, currentPage, readerData.length, onSwipeEnableChange]);
 
   // Reset page indicator when post changes
   useEffect(() => {
@@ -1067,7 +1349,7 @@ function SinglePostReader({
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
-  
+
   // Like functionality
   const [isLiked, setIsLiked] = useState(!!post.isLiked);
   const [likeCount, setLikeCount] = useState(post.likeCount || 0);
@@ -1078,11 +1360,11 @@ function SinglePostReader({
   const { isPostSaved, toggleSavePost } = useSaved();
   const isBookmarked = isPostSaved(post.uid);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Save animation
   const saveScale = useRef(new Animated.Value(1)).current;
-  
-  // Update dots animation when page changes
+
+  // Update dots and text animation when page changes
   useEffect(() => {
     // Animate the active dot and reset others
     dotScales.forEach((scale, idx) => {
@@ -1093,6 +1375,22 @@ function SinglePostReader({
         useNativeDriver: true,
       }).start();
     });
+
+    // Animate page indicator text
+    pageTextScale.setValue(1);
+    Animated.sequence([
+      Animated.timing(pageTextScale, {
+        toValue: 1.4,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(pageTextScale, {
+        toValue: 1,
+        friction: 3,
+        tension: 60,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, [currentPage]);
 
   // Track read progress for recommendation signals
@@ -1103,7 +1401,7 @@ function SinglePostReader({
 
   // Viewability Config - reduced threshold to make it more responsive when scrolling back
   const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 40, 
+    itemVisiblePercentThreshold: 40,
     minimumViewTime: 0,
   }).current;
 
@@ -1112,52 +1410,41 @@ function SinglePostReader({
       // Find the page that is most visible (top-most in case of ties)
       const visibleIndices = viewableItems.map((item: any) => item.index);
       const newPage = Math.min(...visibleIndices);
-      
+
       // Update revealed pages
       setVisiblePages(prev => {
         const next = new Set(prev);
         visibleIndices.forEach((idx: number) => next.add(idx));
         return next;
       });
-      
+
+      // Skip updating current page if we are in the middle of a programmatic navigation
+      if (isNavigatingRef.current) return;
+
       if (newPage !== currentPageRef.current && newPage >= 0 && newPage < post.pages.length) {
         currentPageRef.current = newPage;
         setCurrentPage(newPage);
-        
-        // Animate page indicator text
-        pageTextScale.setValue(1);
-        Animated.sequence([
-          Animated.timing(pageTextScale, {
-            toValue: 1.4,
-            duration: 100,
-            useNativeDriver: true,
-          }),
-          Animated.spring(pageTextScale, {
-            toValue: 1,
-            friction: 3,
-            tension: 60,
-            useNativeDriver: true,
-          }),
-        ]).start();
       }
     }
   }).current;
 
   const handleLike = async () => {
     if (isLiking) return;
-    
+
     if (!token) {
       Alert.alert(
         'Login Required',
         'Please log in to like posts.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Login', onPress: () => {
-            onClose();
-            // We need a way to switch to 'me' tab. 
-            // In this monolithic App.tsx, we can't easily do it from here without passing props.
-            // But for now, just informing the user is better than a silent fail or rollback.
-          }}
+          {
+            text: 'Login', onPress: () => {
+              onClose();
+              // We need a way to switch to 'me' tab. 
+              // In this monolithic App.tsx, we can't easily do it from here without passing props.
+              // But for now, just informing the user is better than a silent fail or rollback.
+            }
+          }
         ]
       );
       return;
@@ -1168,7 +1455,7 @@ function SinglePostReader({
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
-    
+
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
 
@@ -1257,8 +1544,31 @@ function SinglePostReader({
     }).start();
   }, [showComments]);
 
+  const scrollToNextPage = () => {
+    if (isNavigatingRef.current) return;
+    
+    const nextIndex = currentPage + 1;
+    if (nextIndex < post.pages.length) {
+      isNavigatingRef.current = true;
+      flatListRef.current?.scrollToIndex({
+        index: nextIndex,
+        animated: true,
+      });
+      setCurrentPage(nextIndex);
+      currentPageRef.current = nextIndex;
+      
+      // Unlock after animation
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 500);
+    } else {
+        // Last page reached
+        console.log('Last page finished');
+    }
+  };
+
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={[styles.readerContainer, { paddingTop: insets.top }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
@@ -1267,21 +1577,21 @@ function SinglePostReader({
         <Pressable onPress={onClose} style={styles.closeButton}>
           <ChevronLeft size={28} color={colors.text} />
         </Pressable>
-        
+
         {/* 页码指示器 */}
         <View style={styles.pageDotsHeader}>
           {post.pages.map((_, idx) => (
             <Animated.View
               key={idx}
               style={[
-                styles.dotSmall, 
+                styles.dotSmall,
                 currentPage === idx && styles.dotSmallActive,
                 { transform: [{ scale: dotScales[idx] || 1 }] }
               ]}
             />
           ))}
         </View>
-        
+
         <Animated.Text style={[
           styles.pageIndicator,
           { transform: [{ scale: pageTextScale }] }
@@ -1294,25 +1604,21 @@ function SinglePostReader({
       <GHFlatList
         ref={flatListRef}
         data={readerData}
-        directionalLockEnabled={true}
+        scrollEnabled={false} // Lock manual scrolling between pages
         keyExtractor={(_, index) => `reader-item-${index}`}
         renderItem={({ item, index }) => (
           <View style={{ height: Math.floor(containerHeight) }}>
-            <PageItem 
-              item={item} 
+            <PageItem
+              item={item}
               post={post}
               isVisible={visiblePages.has(index)}
               containerHeight={Math.floor(containerHeight)}
               isLastPage={index === readerData.length - 1}
               bottomBarHeight={measuredBottomBarHeight}
-              onScrollEdge={(atTop, atBottom) => {
-                if (index === currentPage) {
-                  const isFirst = index === 0;
-                  const isLast = index === readerData.length - 1;
-                  const canSwipe = (isFirst && atTop) || (isLast && atBottom);
-                  onSwipeEnableChange?.(canSwipe);
-                }
-              }}
+              hasReadEnd={hasReadEnd}
+              onRequestNext={scrollToNextPage} // Always provide next page function
+              onPageCompleted={index === readerData.length - 1 ? () => setHasReadEnd(true) : undefined}
+              onSwipeEnableChange={undefined} // No longer needed
             />
           </View>
         )}
@@ -1322,7 +1628,7 @@ function SinglePostReader({
         snapToInterval={Math.floor(containerHeight)}
         snapToAlignment="start"
         decelerationRate="fast"
-        disableIntervalMomentum={true} 
+        disableIntervalMomentum={true}
         scrollEventThrottle={16}
         getItemLayout={(data, index) => ({
           length: Math.floor(containerHeight),
@@ -1342,7 +1648,7 @@ function SinglePostReader({
       />
 
       {/* 底部操作栏 */}
-      <View 
+      <View
         style={[styles.postBottomBar, { paddingBottom: insets.bottom }]}
         onLayout={(e) => {
           const { height } = e.nativeEvent.layout;
@@ -1350,7 +1656,7 @@ function SinglePostReader({
         }}
       >
         {/* 评论输入区域 - 占2/3宽度 */}
-        <Pressable 
+        <Pressable
           style={styles.noteInputContainer}
           onPress={() => setShowComments(true)}
         >
@@ -1363,14 +1669,14 @@ function SinglePostReader({
         {/* 操作按钮区域 - 占1/3宽度 */}
         <View style={styles.actionButtons}>
           {/* 点赞按钮 */}
-          <Pressable 
-            style={styles.actionButton} 
+          <Pressable
+            style={styles.actionButton}
             onPress={handleLike}
             disabled={isLiking}
           >
             <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-              <Heart 
-                size={22} 
+              <Heart
+                size={22}
                 color={isLiked ? colors.accent : colors.textSecondary}
                 fill={isLiked ? colors.accent : 'transparent'}
               />
@@ -1384,21 +1690,21 @@ function SinglePostReader({
           </Pressable>
 
           {/* 收藏按钮 - 带动画 */}
-          <Pressable 
-            style={styles.actionButton} 
+          <Pressable
+            style={styles.actionButton}
             onPress={handleBookmark}
             disabled={isSaving}
           >
             <Animated.View style={{ transform: [{ scale: saveScale }] }}>
               {isBookmarked ? (
-                <BookmarkCheck 
-                  size={22} 
+                <BookmarkCheck
+                  size={22}
                   color={colors.primary}
                   fill={colors.primary}
                 />
               ) : (
-                <Bookmark 
-                  size={22} 
+                <Bookmark
+                  size={22}
                   color={colors.textSecondary}
                 />
               )}
@@ -1422,7 +1728,7 @@ function SinglePostReader({
       {/* Floating Comment Sheet */}
       <Animated.View style={[
         styles.commentSheet,
-        { 
+        {
           transform: [{ translateY: commentSheetTranslateY }],
           paddingBottom: insets.bottom + 20
         }
@@ -1449,13 +1755,17 @@ function PostLoader({
   onClose,
   onFeedLikeUpdate,
   onMissing,
-  onSwipeEnableChange,
+  onRequestNext,
+  onRequestPrev,
+  onSwipeEnableChange, // NEW
 }: { 
   uid: string, 
   onClose: () => void,
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onMissing?: (uid: string) => void;
-  onSwipeEnableChange?: (enabled: boolean) => void;
+  onRequestNext?: () => void;
+  onRequestPrev?: () => void;
+  onSwipeEnableChange?: (canSwipe: boolean) => void;
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
@@ -1487,7 +1797,7 @@ function PostLoader({
       </View>
     );
   }
-  
+
   if (status === 'error' || !post) {
     // If it's a 404, we don't show the error screen because parent will skip it
     if (error === 'POST_NOT_FOUND') {
@@ -1500,9 +1810,9 @@ function PostLoader({
 
     return (
       <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
-        <ErrorScreen 
-          message={error || 'Failed to load post'} 
-          onRetry={refetch} 
+        <ErrorScreen
+          message={error || 'Failed to load post'}
+          onRetry={refetch}
         />
         <Pressable style={styles.modalCloseButton} onPress={onClose}>
           <X size={24} color={colors.text} />
@@ -1512,22 +1822,23 @@ function PostLoader({
   }
 
   return (
-    <SinglePostReader 
-      post={post} 
-      onClose={onClose} 
+    <SinglePostReader
+      post={post}
+      onClose={onClose}
       onLikeUpdate={(isLiked, count) => {
         updateLocalLike(isLiked, count);
         onFeedLikeUpdate?.(uid, isLiked, count);
-      }} 
+      }}
+      onRequestNext={onRequestNext}
       onSwipeEnableChange={onSwipeEnableChange}
     />
   );
 }
 
 // ============================================================
-// Post Swiper (Horizontal Feed)
+// Post Swiper (Container)
 // ============================================================
-const AnimatedFlatList = Animated.createAnimatedComponent(GHFlatList) as any;
+// Simplified to just hold the current post. No navigation between posts.
 
 function PostSwiper({ 
   items, 
@@ -1544,108 +1855,22 @@ function PostSwiper({
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
 }) {
-  const scrollX = useRef(new Animated.Value(initialIndex * SCREEN_WIDTH)).current;
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [canSwipe, setCanSwipe] = useState(true);
-  const loadMoreTriggered = useRef(false);
-  const flatListRef = useRef<GHFlatList<any>>(null);
+  // We only care about the initial post requested.
+  // No swiping to next/prev posts.
+  const item = items[initialIndex];
 
-  // Sync scroll position if currentIndex changes externally
-  useEffect(() => {
-    if (flatListRef.current && initialIndex !== currentIndex) {
-      flatListRef.current.scrollToIndex({ index: initialIndex, animated: false });
-      setCurrentIndex(initialIndex);
-    }
-  }, [initialIndex]);
-
-  // 检测是否接近列表末尾，触发加载更多
-  useEffect(() => {
-    const remainingItems = items.length - currentIndex - 1;
-    console.log('[PostSwiper] Current index:', currentIndex, 'Remaining:', remainingItems);
-    
-    if (remainingItems <= 2 && !loadMoreTriggered.current && onLoadMore) {
-      loadMoreTriggered.current = true;
-      console.log('[PostSwiper] Loading more posts...');
-      onLoadMore();
-      // 重置触发标记，允许再次触发
-      setTimeout(() => {
-        loadMoreTriggered.current = false;
-      }, 1000);
-    }
-  }, [currentIndex, items.length, onLoadMore]);
-
-  // 处理滑动结束，更新当前索引
-  const handleMomentumScrollEnd = useCallback((event: any) => {
-    const newIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < items.length) {
-      setCurrentIndex(newIndex);
-      setCanSwipe(true);
-    }
-  }, [currentIndex, items.length]);
+  if (!item) return null;
 
   return (
-    <AnimatedFlatList
-      ref={flatListRef}
-      data={items}
-      horizontal
-      pagingEnabled
-      scrollEnabled={canSwipe}
-      directionalLockEnabled={true}
-      activeOffsetX={[-20, 20]} // Require more horizontal movement before paging
-      failOffsetY={[-10, 10]}   // Vertical scroll wins sooner
-      initialScrollIndex={initialIndex}
-      onScroll={Animated.event(
-        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-        { useNativeDriver: true }
-      )}
-      onMomentumScrollEnd={handleMomentumScrollEnd}
-      getItemLayout={(data: any, index: number) => ({
-        length: SCREEN_WIDTH,
-        offset: SCREEN_WIDTH * index,
-        index,
-      })}
-      renderItem={({ item, index }: { item: unknown, index: number }) => {
-        const feedItem = item as FeedItem;
-        const inputRange = [
-          (index - 1) * SCREEN_WIDTH,
-          index * SCREEN_WIDTH,
-          (index + 1) * SCREEN_WIDTH,
-        ];
-        
-        const scale = scrollX.interpolate({
-          inputRange,
-          outputRange: [0.9, 1, 0.9],
-          extrapolate: 'clamp',
-        });
-        
-        const opacity = scrollX.interpolate({
-          inputRange,
-          outputRange: [0.6, 1, 0.6],
-          extrapolate: 'clamp',
-        });
-
-        return (
-          <Animated.View style={{ width: SCREEN_WIDTH, flex: 1, transform: [{ scale }], opacity, overflow: 'visible' }}>
-            <PostLoader 
-              uid={feedItem.uid} 
-              onClose={onClose} 
-              onFeedLikeUpdate={onFeedLikeUpdate}
-              onMissing={onMissing}
-              onSwipeEnableChange={(enabled) => {
-                if (index === currentIndex) {
-                  setCanSwipe(enabled);
-                }
-              }}
-            />
-          </Animated.View>
-        );
-      }}
-      keyExtractor={(item: unknown) => (item as FeedItem).uid}
-      showsHorizontalScrollIndicator={false}
-      windowSize={3}
-      initialNumToRender={1}
-      maxToRenderPerBatch={2}
-    />
+    <View style={{ flex: 1, backgroundColor: 'black' }}>
+        <PostLoader
+            uid={item.uid}
+            onClose={onClose}
+            onFeedLikeUpdate={onFeedLikeUpdate}
+            onMissing={onMissing}
+            // onRequestNext removed - no next post navigation
+        />
+    </View>
   );
 }
 
@@ -1655,10 +1880,10 @@ function PostSwiper({
 // ============================================================
 // 历史页面 - History Screen
 // ============================================================
-function HistoryScreen({ 
+function HistoryScreen({
   onItemPress,
   onBack
-}: { 
+}: {
   onItemPress: (uid: string) => void;
   onBack: () => void;
 }) {
@@ -1681,7 +1906,7 @@ function HistoryScreen({
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
-      
+
       const newItems = response.items || [];
       setHistoryData(prev => {
         const combined = isRefresh ? newItems : [...prev, ...newItems];
@@ -1702,7 +1927,7 @@ function HistoryScreen({
       setRefreshing(false);
       isLoadingRef.current = false;
     }
-  }, [user, nextCursor, hasMore, historyData.length]); 
+  }, [user, nextCursor, hasMore, historyData.length]);
 
   useEffect(() => {
     loadHistory(true);
@@ -1717,8 +1942,8 @@ function HistoryScreen({
   const handleClearHistory = () => {
     Alert.alert('Clear History', 'Are you sure you want to clear your entire history?', [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Clear', 
+      {
+        text: 'Clear',
         style: 'destructive',
         onPress: async () => {
           const prevData = [...historyData];
@@ -1742,7 +1967,7 @@ function HistoryScreen({
     const historyItem = item as ProfileItem;
     return (
       <View style={styles.historyCard}>
-        <Pressable 
+        <Pressable
           style={styles.historyCardInner}
           onPress={() => historyItem.itemType === 'post' && onItemPress(historyItem.itemId)}
         >
@@ -1774,8 +1999,8 @@ function HistoryScreen({
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable 
-          style={styles.modalCloseButtonInline} 
+        <Pressable
+          style={styles.modalCloseButtonInline}
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -1829,11 +2054,11 @@ function HistoryScreen({
 // ============================================================
 // 点赞页面 - Likes Screen
 // ============================================================
-function LikesScreen({ 
+function LikesScreen({
   onItemPress,
   onToggleLike,
   onBack
-}: { 
+}: {
   onItemPress: (uid: string) => void;
   onToggleLike?: () => void;
   onBack: () => void;
@@ -1857,7 +2082,7 @@ function LikesScreen({
     setError(false);
     try {
       const response = await getMyLikes(20, isRefresh ? undefined : nextCursor);
-      
+
       const newItems = response.items || [];
       setLikesData(prev => {
         const combined = isRefresh ? newItems : [...prev, ...newItems];
@@ -1878,7 +2103,7 @@ function LikesScreen({
       setRefreshing(false);
       isLoadingRef.current = false;
     }
-  }, [user, nextCursor, hasMore, likesData.length]); 
+  }, [user, nextCursor, hasMore, likesData.length]);
 
   useEffect(() => {
     loadLikes(true);
@@ -1910,7 +2135,7 @@ function LikesScreen({
     const likeItem = item as ProfileItem;
     return (
       <View style={styles.historyCard}>
-        <Pressable 
+        <Pressable
           style={styles.historyCardInner}
           onPress={() => likeItem.itemType === 'post' && onItemPress(likeItem.itemId)}
         >
@@ -1935,7 +2160,7 @@ function LikesScreen({
             </Text>
           </View>
         </Pressable>
-        <Pressable 
+        <Pressable
           onPress={() => handleUnlike(likeItem.itemId, likeItem.itemType)}
           style={({ pressed }) => [
             styles.unlikeButton,
@@ -1951,8 +2176,8 @@ function LikesScreen({
   return (
     <View style={styles.container}>
       <View style={styles.modalHeader}>
-        <Pressable 
-          style={styles.modalCloseButtonInline} 
+        <Pressable
+          style={styles.modalCloseButtonInline}
           onPress={onBack}
         >
           <ChevronLeft size={24} color={colors.text} />
@@ -2009,18 +2234,18 @@ function PlaceholderScreen({ title }: { title: string }) {
 // ============================================================
 // Debug Panel - 推荐算法可视化
 // ============================================================
-function DebugPanel({ 
-  visible, 
+function DebugPanel({
+  visible,
   onClose,
   onResetComplete
-}: { 
-  visible: boolean; 
+}: {
+  visible: boolean;
   onClose: () => void;
   onResetComplete?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { state, resetRecommendation, isResetting } = useRecommendation();
-  
+
   // 包装 reset 函数，完成后调用 onResetComplete
   const handleReset = useCallback(async () => {
     await resetRecommendation();
@@ -2031,10 +2256,10 @@ function DebugPanel({
 
   // Debug: 监控状态变化
   useEffect(() => {
-    console.log('[DebugPanel] State updated:', { 
-      bucketCount: Object.keys(bucketCount).length, 
-      clickCount, 
-      lastSignal: lastSignal?.signalType 
+    console.log('[DebugPanel] State updated:', {
+      bucketCount: Object.keys(bucketCount).length,
+      clickCount,
+      lastSignal: lastSignal?.signalType
     });
   }, [bucketCount, clickCount, lastSignal]);
 
@@ -2042,7 +2267,7 @@ function DebugPanel({
   const bucketEntries = Object.entries(bucketCount);
   const totalWeight = bucketEntries.reduce((sum, [, weight]) => sum + weight, 0);
   const maxWeight = Math.max(...bucketEntries.map(([, w]) => w), 1);
-  
+
   // 距离下次 rebalance 的次数
   const clicksToRebalance = 30 - (clickCount % 30);
 
@@ -2074,7 +2299,7 @@ function DebugPanel({
           <Text style={styles.debugTitle}>Recommendation Debug</Text>
         </View>
         <View style={styles.debugHeaderRight}>
-          <Pressable 
+          <Pressable
             style={styles.debugExpandButton}
             onPress={() => setIsExpanded(!isExpanded)}
           >
@@ -2097,11 +2322,11 @@ function DebugPanel({
             <Text style={styles.debugSectionTitle}>Click Progress</Text>
             <View style={styles.debugClickCounter}>
               <View style={styles.debugClickBar}>
-                <View 
+                <View
                   style={[
-                    styles.debugClickProgress, 
+                    styles.debugClickProgress,
                     { width: `${((clickCount % 30) / 30) * 100}%` }
-                  ]} 
+                  ]}
                 />
               </View>
               <Text style={styles.debugClickText}>
@@ -2146,14 +2371,14 @@ function DebugPanel({
                           </Text>
                         </View>
                         <View style={styles.debugBucketBarBg}>
-                          <View 
+                          <View
                             style={[
                               styles.debugBucketBar,
-                              { 
+                              {
                                 width: `${barWidth}%`,
                                 backgroundColor: getBucketColor(index),
                               }
-                            ]} 
+                            ]}
                           />
                         </View>
                       </View>
@@ -2169,7 +2394,7 @@ function DebugPanel({
 
           {/* Reset Button */}
           <View style={styles.debugSection}>
-            <Pressable 
+            <Pressable
               style={[
                 styles.debugResetButton,
                 isResetting && styles.debugResetButtonDisabled
@@ -2177,9 +2402,9 @@ function DebugPanel({
               onPress={handleReset}
               disabled={isResetting}
             >
-              <RefreshCw 
-                size={18} 
-                color="#fff" 
+              <RefreshCw
+                size={18}
+                color="#fff"
                 style={isResetting ? { opacity: 0.5 } : undefined}
               />
               <Text style={styles.debugResetText}>
@@ -2199,15 +2424,15 @@ function DebugPanel({
 // ============================================================
 // 保存页面 - Saved Screen
 // ============================================================
-function SavedScreen({ 
-  onItemPress 
-}: { 
+function SavedScreen({
+  onItemPress
+}: {
   onItemPress: (uid: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
-  
+
   // 删除动画
   const handleUnsave = useCallback((uid: string, title: string) => {
     Alert.alert(
@@ -2215,8 +2440,8 @@ function SavedScreen({
       `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
           onPress: () => unsave(uid),
         },
@@ -2231,8 +2456,8 @@ function SavedScreen({
       'Remove all saved posts? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove All', 
+        {
+          text: 'Remove All',
           style: 'destructive',
           onPress: () => clearAll(),
         },
@@ -2272,15 +2497,15 @@ function SavedScreen({
   const renderSavedItem = ({ item, index }: { item: unknown; index: number }) => {
     const savedItem = item as typeof savedPosts[0];
     const localCover = getPostCover(savedItem.uid);
-    
+
     return (
-      <Animated.View 
+      <Animated.View
         style={[
           styles.savedCard,
           { opacity: 1 }
         ]}
       >
-        <Pressable 
+        <Pressable
           style={styles.savedCardInner}
           onPress={() => onItemPress(savedItem.uid)}
         >
@@ -2291,7 +2516,7 @@ function SavedScreen({
             contentFit="cover"
             transition={300}
           />
-          
+
           {/* 内容 */}
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
@@ -2299,11 +2524,11 @@ function SavedScreen({
                 <Text style={styles.savedTopicText}>#{formatTopicName(savedItem.topic)}</Text>
               </View>
             </View>
-            
+
             <Text style={styles.savedCardTitle} numberOfLines={2}>
               {savedItem.title}
             </Text>
-            
+
             <View style={styles.savedCardFooter}>
               <View style={styles.savedTimeRow}>
                 <Clock size={12} color={colors.textMuted} />
@@ -2313,9 +2538,9 @@ function SavedScreen({
               </View>
             </View>
           </View>
-          
+
           {/* 删除按钮 */}
-          <Pressable 
+          <Pressable
             style={styles.savedDeleteButton}
             onPress={() => handleUnsave(savedItem.uid, savedItem.title)}
             hitSlop={8}
@@ -2340,9 +2565,9 @@ function SavedScreen({
             </View>
           )}
         </View>
-        
+
         {savedCount > 0 && (
-          <Pressable 
+          <Pressable
             style={styles.savedClearButton}
             onPress={handleClearAll}
           >
@@ -2391,11 +2616,11 @@ function LoadingScreen() {
 // ============================================================
 // Error 状态组件
 // ============================================================
-function ErrorScreen({ 
-  message, 
-  onRetry 
-}: { 
-  message: string; 
+function ErrorScreen({
+  message,
+  onRetry
+}: {
+  message: string;
   onRetry: () => void;
 }) {
   return (
@@ -2413,37 +2638,37 @@ function ErrorScreen({
 // ============================================================
 // 搜索页面 - Search Screen
 // ============================================================
-function SearchScreen({ 
-  items, 
-  onItemPress, 
-  onClose 
-}: { 
-  items: FeedItem[]; 
+function SearchScreen({
+  items,
+  onItemPress,
+  onClose
+}: {
+  items: FeedItem[];
   onItemPress: (uid: string) => void;
   onClose: () => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const insets = useSafeAreaInsets();
-  
+
   // 加载搜索历史
   useEffect(() => {
     const loadHistory = async () => {
       try {
         const saved = await AsyncStorage.getItem('search_history');
         if (saved) setHistory(JSON.parse(saved));
-      } catch (e) {}
+      } catch (e) { }
     };
     loadHistory();
   }, []);
 
   // 过滤结果
-  const filteredItems = searchQuery.trim() === '' 
-    ? [] 
-    : items.filter(item => 
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.topic.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+  const filteredItems = searchQuery.trim() === ''
+    ? []
+    : items.filter(item =>
+      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.topic.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const handleSearch = async (text: string) => {
     const trimmed = text.trim();
@@ -2452,7 +2677,7 @@ function SearchScreen({
       setHistory(newHistory);
       try {
         await AsyncStorage.setItem('search_history', JSON.stringify(newHistory));
-      } catch (e) {}
+      } catch (e) { }
     }
   };
 
@@ -2460,7 +2685,7 @@ function SearchScreen({
     setHistory([]);
     try {
       await AsyncStorage.removeItem('search_history');
-    } catch (e) {}
+    } catch (e) { }
   };
 
   return (
@@ -2489,8 +2714,8 @@ function SearchScreen({
         </Pressable>
       </View>
 
-      <ScrollView 
-        style={{ flex: 1 }} 
+      <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
       >
@@ -2508,8 +2733,8 @@ function SearchScreen({
             <View style={styles.searchHistoryTags}>
               {history.length > 0 ? (
                 history.map((item, index) => (
-                  <Pressable 
-                    key={index} 
+                  <Pressable
+                    key={index}
                     style={styles.historyTag}
                     onPress={() => {
                       setSearchQuery(item);
@@ -2529,12 +2754,12 @@ function SearchScreen({
           // 搜索结果
           <View style={{ paddingHorizontal: 8, paddingTop: 12 }}>
             {filteredItems.length > 0 ? (
-              <MasonryFeed 
-                items={filteredItems} 
+              <MasonryFeed
+                items={filteredItems}
                 onItemPress={(uid) => {
                   handleSearch(searchQuery);
                   onItemPress(uid);
-                }} 
+                }}
               />
             ) : (
               <View style={styles.noResultsContainer}>
@@ -2551,17 +2776,17 @@ function SearchScreen({
 // ============================================================
 // Collection Screen - Grouped by Topic
 // ============================================================
-function CollectionScreen({ 
-  items, 
+function CollectionScreen({
+  items,
   onItemPress,
   onTopicPress
-}: { 
-  items: FeedItem[]; 
+}: {
+  items: FeedItem[];
   onItemPress: (uid: string) => void;
   onTopicPress: (topic: string) => void;
 }) {
   const insets = useSafeAreaInsets();
-  
+
   // Group items by topic
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: FeedItem[] } = {};
@@ -2576,7 +2801,7 @@ function CollectionScreen({
 
   return (
     <View style={styles.collectionContainer}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
@@ -2596,14 +2821,14 @@ function CollectionScreen({
             </View>
 
             {/* Horizontal Scroll of Cards */}
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.collectionHorizontalScroll}
             >
               {items.map((item) => (
-                <Pressable 
-                  key={item.uid} 
+                <Pressable
+                  key={item.uid}
                   style={styles.collectionCard}
                   onPress={() => onItemPress(item.uid)}
                 >
@@ -2641,17 +2866,17 @@ function AppContent() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
-  
+
   // 兴趣 Onboarding 状态
   const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   // 使用帖子缓存系统
   // 使用帖子缓存系统
-  const { 
-    displayedPosts: feedItems, 
+  const {
+    displayedPosts: feedItems,
     isLoading: feedLoading,
-    error: feedError, 
+    error: feedError,
     refetch: refetchFeed,
     updateLocalLike: updateFeedLike,
     removePost: removeFeedPost,
@@ -2659,20 +2884,20 @@ function AppContent() {
     hasMore,
     cacheStatus
   } = usePostCache();
-  
+
   const { removeFromHistory } = usePostHistory();
   const { unsavePost } = useSaved();
-  
+
   // 收藏系统（用于刷新）
   const { refreshSavedPosts } = useSaved();
-  
+
   // 兼容旧的 status 变量
   const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
 
   const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
   const { token, user } = useAuth();
-  
+
   // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
   // But if we just logged in, we might want to switch tab to 'me' if not already?
   // The requirement says "After login/signup, redirect to /profile."
@@ -2694,12 +2919,12 @@ function AppContent() {
         setOnboardingChecked(true);
         return;
       }
-      
+
       try {
         // 使用用户 ID 作为 key 的一部分，这样不同用户有独立的 onboarding 状态
         const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
         const completed = await AsyncStorage.getItem(key);
-        
+
         if (!completed) {
           // 用户尚未完成 onboarding
           console.log('[Onboarding] First time user, showing interests selection');
@@ -2708,10 +2933,10 @@ function AppContent() {
       } catch (error) {
         console.log('[Onboarding] Failed to check status:', error);
       }
-      
+
       setOnboardingChecked(true);
     };
-    
+
     checkOnboarding();
   }, [token, user]);
 
@@ -2728,7 +2953,7 @@ function AppContent() {
       }
     }
     setShowInterestsOnboarding(false);
-    
+
     // 刷新所有相关数据（后端会清空用户数据）
     console.log('[Onboarding] Refreshing all user data...');
     refetchFeed();           // 刷新帖子推荐
@@ -2753,25 +2978,25 @@ function AppContent() {
             </>
           );
         }
-        
+
         // 处理错误状态
         if (feedStatus === 'error' && feedItems.length === 0) {
           return (
             <>
               <Header onSearchPress={() => setShowSearchModal(true)} />
-              <ErrorScreen 
-                message={feedError || 'Unknown error'} 
-                onRetry={refetchFeed} 
+              <ErrorScreen
+                message={feedError || 'Unknown error'}
+                onRetry={refetchFeed}
               />
             </>
           );
         }
-        
+
         // 检测滚动到底部，加载更多帖子
         const handleFeedScroll = (event: any) => {
           const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
           const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
-          
+
           if (isNearBottom && hasMore && !feedLoading) {
             console.log('[Feed] Near bottom, loading more...');
             consumeMultiple(2);
@@ -2782,7 +3007,7 @@ function AppContent() {
           <>
             {/* 顶部 Header */}
             <Header onSearchPress={() => setShowSearchModal(true)} />
-            
+
             {/* 信息流 */}
             <ScrollView
               style={styles.scroll}
@@ -2791,8 +3016,8 @@ function AppContent() {
               onScroll={handleFeedScroll}
               scrollEventThrottle={400}
             >
-              <MasonryFeed 
-                items={feedItems} 
+              <MasonryFeed
+                items={feedItems}
                 onItemPress={(uid) => setSelectedPostUid(uid)}
               />
               {feedLoading ? (
@@ -2814,12 +3039,12 @@ function AppContent() {
           const topicItems = feedItems.filter(item => item.topic === selectedTopic);
           return (
             <>
-              <Header 
-                title={formatTopicName(selectedTopic)} 
+              <Header
+                title={formatTopicName(selectedTopic)}
                 onBack={() => setSelectedTopic(null)}
-                onSearchPress={() => setShowSearchModal(true)} 
+                onSearchPress={() => setShowSearchModal(true)}
               />
-              <ScrollView 
+              <ScrollView
                 style={styles.collectionContainer}
                 contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
                 showsVerticalScrollIndicator={false}
@@ -2833,9 +3058,9 @@ function AppContent() {
         return (
           <>
             <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
-            <CollectionScreen 
-              items={feedItems} 
-              onItemPress={(uid) => setSelectedPostUid(uid)} 
+            <CollectionScreen
+              items={feedItems}
+              onItemPress={(uid) => setSelectedPostUid(uid)}
               onTopicPress={(topic) => setSelectedTopic(topic)}
             />
           </>
@@ -2846,24 +3071,24 @@ function AppContent() {
         if (!token) return <AuthScreen />;
         if (showHistoryModal) {
           return (
-            <HistoryScreen 
-              onItemPress={(uid) => setSelectedPostUid(uid)} 
+            <HistoryScreen
+              onItemPress={(uid) => setSelectedPostUid(uid)}
               onBack={() => setShowHistoryModal(false)}
             />
           );
         }
         if (showLikesModal) {
           return (
-            <LikesScreen 
-              onItemPress={(uid) => setSelectedPostUid(uid)} 
+            <LikesScreen
+              onItemPress={(uid) => setSelectedPostUid(uid)}
               onToggleLike={refetchFeed}
               onBack={() => setShowLikesModal(false)}
             />
           );
         }
         return (
-          <ProfileScreen 
-            onItemPress={(uid) => setSelectedPostUid(uid)} 
+          <ProfileScreen
+            onItemPress={(uid) => setSelectedPostUid(uid)}
             onToggleLike={refetchFeed}
             onHistoryPress={() => setShowHistoryModal(true)}
             onLikesPress={() => setShowLikesModal(true)}
@@ -2881,7 +3106,7 @@ function AppContent() {
         visible={showInterestsOnboarding}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => {}} // 阻止关闭
+        onRequestClose={() => { }} // 阻止关闭
       >
         <OnboardingScreen
           onComplete={handleOnboardingComplete}
@@ -2890,7 +3115,7 @@ function AppContent() {
 
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
-      
+
         {renderContent()}
 
         {/* 底部导航 */}
@@ -2904,7 +3129,7 @@ function AppContent() {
           onRequestClose={() => setSelectedPostUid(null)}
         >
           {feedItems && feedItems.length > 0 && selectedPostUid ? (
-            <PostSwiper 
+            <PostSwiper
               items={feedItems}
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={() => setSelectedPostUid(null)}
@@ -2915,7 +3140,7 @@ function AppContent() {
                 removeFeedPost(uid);
                 removeFromHistory(uid);
                 unsavePost(uid);
-                
+
                 // If it's the current post, we must close
                 if (uid === selectedPostUid) {
                   setSelectedPostUid(null);
@@ -2924,15 +3149,15 @@ function AppContent() {
               }}
             />
           ) : (
-             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-               <LoadingScreen />
-               <Pressable 
-                 style={styles.modalCloseButton} 
-                 onPress={() => setSelectedPostUid(null)}
-               >
-                 <X size={24} color={colors.text} />
-               </Pressable>
-             </View>
+            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+              <LoadingScreen />
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setSelectedPostUid(null)}
+              >
+                <X size={24} color={colors.text} />
+              </Pressable>
+            </View>
           )}
         </Modal>
 
@@ -2943,7 +3168,7 @@ function AppContent() {
           presentationStyle="fullScreen"
           onRequestClose={() => setShowSearchModal(false)}
         >
-          <SearchScreen 
+          <SearchScreen
             items={feedItems}
             onItemPress={(uid) => {
               setShowSearchModal(false);
@@ -2954,8 +3179,8 @@ function AppContent() {
         </Modal>
 
         {/* Debug Panel */}
-        <DebugPanel 
-          visible={showDebugPanel} 
+        <DebugPanel
+          visible={showDebugPanel}
           onClose={() => setShowDebugPanel(false)}
           onResetComplete={() => {
             // 后端会清空所有用户数据，同步刷新前端
@@ -2967,7 +3192,7 @@ function AppContent() {
 
         {/* Debug Toggle Button (开发模式可见) */}
         {__DEV__ && (
-          <Pressable 
+          <Pressable
             style={styles.debugToggleButton}
             onPress={() => setShowDebugPanel(!showDebugPanel)}
           >
@@ -3010,7 +3235,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  
+
   // Header
   header: {
     flexDirection: 'row',
@@ -3025,7 +3250,7 @@ const styles = StyleSheet.create({
   headerIcon: {
     padding: 8,
   },
-  
+
   // Top Tabs
   topTabs: {
     flexDirection: 'row',
@@ -3053,7 +3278,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 2,
   },
-  
+
   // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
@@ -3095,7 +3320,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
     transform: [{ scale: 1.05 }],
   },
-  
+
   // Scroll
   scroll: {
     flex: 1,
@@ -3105,7 +3330,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-  
+
   // Masonry
   masonry: {
     flexDirection: 'row',
@@ -3115,7 +3340,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: COLUMN_GAP,
   },
-  
+
   // Card
   card: {
     backgroundColor: colors.card,
@@ -3159,14 +3384,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-  
+
   endText: {
     textAlign: 'center',
     color: colors.textMuted,
     fontSize: 13,
     paddingVertical: 24,
   },
-  
+
   // Placeholder
   placeholder: {
     flex: 1,
@@ -3184,7 +3409,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textMuted,
   },
-  
+
   // Reader
   readerContainer: {
     flex: 1,
@@ -3214,7 +3439,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
   },
   readerScrollContent: {
-    
+
   },
   closeButtonOverlay: {
     position: 'absolute',
@@ -3424,7 +3649,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 18,
   },
-  
+
   // Post Bottom Bar
   postBottomBar: {
     flexDirection: 'row',
@@ -3506,7 +3731,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  
+
   // Loading
   loadingContainer: {
     flex: 1,
@@ -3596,7 +3821,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 18,
   },
-  
+
   // Search Screen Styles
   searchContainer: {
     flex: 1,
@@ -3704,7 +3929,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  
+
   // Error
   errorContainer: {
     flex: 1,
@@ -3740,7 +3965,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  
+
   // Modal close button
   modalCloseButton: {
     position: 'absolute',
@@ -3755,7 +3980,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  
+
   // ============================================================
   // Saved Screen 样式
   // ============================================================
@@ -3884,7 +4109,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.bg,
   },
-  
+
   // Empty State
   savedEmptyContainer: {
     flex: 1,
@@ -3932,7 +4157,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
-  
+
   // Comment Sheet
   commentSheet: {
     position: 'absolute',
@@ -4151,7 +4376,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.bg,
   },
-  
+
   // ============================================================
   // History & Likes Screen Styles
   // ============================================================
