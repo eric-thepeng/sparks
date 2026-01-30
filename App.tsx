@@ -2977,7 +2977,7 @@ function CollectionScreen({
                 >
                   <Image
                     source={item.coverImage}
-                    style={styles.collectionCardImage}
+                    style={[styles.collectionCardImage, { height: 112, marginTop: -1 }]}
                     contentFit="cover"
                     transition={200}
                   />
@@ -3507,20 +3507,21 @@ const styles = StyleSheet.create({
   // Card
   card: {
     backgroundColor: colors.card,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: '#B45309',
     overflow: 'hidden',
     // Add shadow to make card "fully shown" and distinct
     shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    margin: 2, // Brief margin to ensure border/shadow isn't clipped
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
+    margin: 4, // Brief margin to ensure border/shadow isn't clipped
   },
   cardImage: {
-    width: '100%',
+    width: '101%',
+    marginLeft: '-0.5%',
     backgroundColor: colors.border,
   },
   cardContent: {
@@ -3974,17 +3975,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     marginRight: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#B45309',
+    overflow: 'hidden',
     marginVertical: 4,
     shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
   },
   collectionCardImage: {
-    width: '100%',
+    width: '101%',
+    marginLeft: '-0.5%',
     height: 110,
     backgroundColor: colors.border,
   },
@@ -4225,11 +4228,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 16,
     shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
+    elevation: 4,
+    borderWidth: 1.5,
     borderColor: '#B45309',
     marginHorizontal: 16,
     marginVertical: 8,
@@ -4573,17 +4576,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     paddingVertical: 16,
     paddingHorizontal: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#B45309',
     borderRadius: 12,
     marginHorizontal: 16,
     marginVertical: 8,
     // Add shadow to make it "fully shown" and pop
     shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
   },
   historyCardInner: {
     flex: 1,
