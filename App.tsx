@@ -712,6 +712,7 @@ const PageItem = React.memo((props: {
   bottomBarHeight: number;
   hasReadEnd?: boolean;
   onRequestNext?: () => void;
+  onRequestPrev?: () => void;
   onPageCompleted?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
 }) => {
@@ -724,6 +725,7 @@ const PageItem = React.memo((props: {
     bottomBarHeight,
     hasReadEnd,
     onRequestNext,
+    onRequestPrev,
     onPageCompleted,
     onSwipeEnableChange,
   } = props;
@@ -1084,6 +1086,16 @@ const PageItem = React.memo((props: {
                   imagesLoaded,
                   heightStable
               });
+          }
+
+          // Overscroll Prev Logic (Pull Down)
+          if (onRequestPrev && !overscrollTriggered.current && isDragging.current) {
+             // 5. Check overscroll threshold (top)
+             if (y < -60) {
+                 console.log('[PageItem] Overscroll triggered prev page');
+                 overscrollTriggered.current = true;
+                 onRequestPrev();
+             }
           }
 
           // Overscroll Logic
@@ -1544,6 +1556,26 @@ function SinglePostReader({
     }).start();
   }, [showComments]);
 
+  const scrollToPrevPage = () => {
+    if (isNavigatingRef.current) return;
+    
+    const prevIndex = currentPage - 1;
+    if (prevIndex >= 0) {
+      isNavigatingRef.current = true;
+      flatListRef.current?.scrollToIndex({
+        index: prevIndex,
+        animated: true,
+      });
+      setCurrentPage(prevIndex);
+      currentPageRef.current = prevIndex;
+      
+      // Unlock after animation
+      setTimeout(() => {
+        isNavigatingRef.current = false;
+      }, 500);
+    }
+  };
+
   const scrollToNextPage = () => {
     if (isNavigatingRef.current) return;
     
@@ -1617,6 +1649,7 @@ function SinglePostReader({
               bottomBarHeight={measuredBottomBarHeight}
               hasReadEnd={hasReadEnd}
               onRequestNext={scrollToNextPage} // Always provide next page function
+              onRequestPrev={scrollToPrevPage}
               onPageCompleted={index === readerData.length - 1 ? () => setHasReadEnd(true) : undefined}
               onSwipeEnableChange={undefined} // No longer needed
             />
