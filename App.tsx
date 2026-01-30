@@ -764,14 +764,14 @@ const PageItem = React.memo((props: {
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
-     onSwipeEnableChange?.(isComplete);
+    onSwipeEnableChange?.(isComplete);
   }, [isComplete, onSwipeEnableChange]);
 
   // Initial lock for short content check
   useEffect(() => {
     // If not complete, ensure swipe is disabled
     if (!isComplete) {
-       onSwipeEnableChange?.(false);
+      onSwipeEnableChange?.(false);
     }
   }, []);
 
@@ -826,11 +826,11 @@ const PageItem = React.memo((props: {
         useNativeDriver: true,
       }).start();
     } else {
-        Animated.timing(readyIndicatorOpacity, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
+      Animated.timing(readyIndicatorOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
     }
   }, [isComplete]);
 
@@ -861,22 +861,22 @@ const PageItem = React.memo((props: {
   const markContentUnstable = () => {
     // Update stability for reveal
     if (contentStable) setContentStable(false);
-    
+
     // Reset completion gate immediately if content changes
     setIsComplete(false);
     setHeightStable(false);
-    
+
     if (contentStableTimerRef.current) {
       clearTimeout(contentStableTimerRef.current);
     }
     contentStableTimerRef.current = setTimeout(() => {
       setContentStable(true);
       setHeightStable(true); // Content is now stable
-      
+
       // Fallback: if images are slow, allow readiness after a short stable window
       // Only trigger fallback if we haven't revealed yet to avoid jumping
       if (!revealed) {
-          setContentReadyFallback(true);
+        setContentReadyFallback(true);
       }
     }, 300); // 300ms debounce as requested
   };
@@ -943,14 +943,14 @@ const PageItem = React.memo((props: {
         const imageSource = getBlockImage(post, block) || getPostImage(post.uid, block.ref || '');
         if (!imageSource) return null;
         return (
-          <View 
-            key={key} 
+          <View
+            key={key}
             style={styles.imageBlockContainer}
             onLayout={(e) => {
               const { y, height } = e.nativeEvent.layout;
               // Track image layout for gesture blocking
               imageRectsRef.current.set(key, { y, height });
-              
+
               if (idx === lastImageIndex) {
                 lastImageLayout.current = { y, height };
               }
@@ -1037,13 +1037,13 @@ const PageItem = React.memo((props: {
           const touchY = e.nativeEvent.locationY;
           const scrollY = lastScrollMetricsRef.current.y;
           const absoluteY = scrollY + touchY;
-          
+
           let hitImage = false;
           for (const rect of imageRectsRef.current.values()) {
-              if (absoluteY >= rect.y && absoluteY <= rect.y + rect.height) {
-                  hitImage = true;
-                  break;
-              }
+            if (absoluteY >= rect.y && absoluteY <= rect.y + rect.height) {
+              hitImage = true;
+              break;
+            }
           }
           navBlockedForGesture.current = hitImage;
         }}
@@ -1070,73 +1070,73 @@ const PageItem = React.memo((props: {
 
           // Calculate short content status for UI hints
           const isShortContent = contentSize.height <= layoutMeasurement.height + 10;
-          
+
           // Calculate bottom padding visibility (End of Content Marker)
           const markerY = endMarkerLayout.current || 99999;
           const viewportHeight = layoutMeasurement.height;
           const threshold = 12; // Robust threshold (8-16px)
           const bottomPaddingVisible = markerY <= y + viewportHeight - threshold;
-          
+
           if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
-              console.log('[PageItem] COMPLETION TRIGGERED:', {
-                  markerY,
-                  y,
-                  viewportHeight,
-                  calc: y + viewportHeight - threshold,
-                  imagesLoaded,
-                  heightStable
-              });
+            console.log('[PageItem] COMPLETION TRIGGERED:', {
+              markerY,
+              y,
+              viewportHeight,
+              calc: y + viewportHeight - threshold,
+              imagesLoaded,
+              heightStable
+            });
           }
 
           // Overscroll Prev Logic (Pull Down)
           if (onRequestPrev && !overscrollTriggered.current && isDragging.current) {
-             // 5. Check overscroll threshold (top)
-             if (y < -60) {
-                 console.log('[PageItem] Overscroll triggered prev page');
-                 overscrollTriggered.current = true;
-                 onRequestPrev();
-             }
+            // 5. Check overscroll threshold (top)
+            if (y < -60) {
+              console.log('[PageItem] Overscroll triggered prev page');
+              overscrollTriggered.current = true;
+              onRequestPrev();
+            }
           }
 
           // Overscroll Logic
           // 1. Check if complete
           // CRITICAL: Only trigger if actually dragging (not momentum) to prevent double-skipping
           if (isComplete && onRequestNext && !overscrollTriggered.current && isDragging.current) {
-             // 2. Check if touch started in navigation zone
-             const isNavZone = 
-               touchStartY.current > SCREEN_HEIGHT * 0.75 || 
-               (bottomPaddingVisible && touchStartY.current > SCREEN_HEIGHT * 0.5); // Relaxed zone if padding visible
-             
-             // 3. Check if touch started on image (navBlockedForGesture)
-             if (isNavZone && !navBlockedForGesture.current) {
-                 // 4. Check overscroll threshold
-                 // Overscroll happens when y > contentHeight - viewportHeight
-                 // We want distinct pull-up, say 60px past the bottom
-                 const maxScrollY = Math.max(0, contentSize.height - viewportHeight);
-                 const overscrollAmount = y - maxScrollY;
-                 
-                 if (overscrollAmount > 60) {
-                     console.log('[PageItem] Overscroll triggered next page');
-                     overscrollTriggered.current = true;
-                     onRequestNext();
-                 }
-             }
+            // 2. Check if touch started in navigation zone
+            const isNavZone =
+              touchStartY.current > SCREEN_HEIGHT * 0.75 ||
+              (bottomPaddingVisible && touchStartY.current > SCREEN_HEIGHT * 0.5); // Relaxed zone if padding visible
+
+            // 3. Check if touch started on image (navBlockedForGesture)
+            if (isNavZone && !navBlockedForGesture.current) {
+              // 4. Check overscroll threshold
+              // Overscroll happens when y > contentHeight - viewportHeight
+              // We want distinct pull-up, say 60px past the bottom
+              const maxScrollY = Math.max(0, contentSize.height - viewportHeight);
+              const overscrollAmount = y - maxScrollY;
+
+              if (overscrollAmount > 60) {
+                console.log('[PageItem] Overscroll triggered next page');
+                overscrollTriggered.current = true;
+                onRequestNext();
+              }
+            }
           }
 
           if (isShortContent) {
             // For short content, if we can see the marker, we are complete
             // BUT must satisfy all gates: imagesLoaded AND heightStable
             if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
-                console.log('[PageItem] Completion satisfied (short content)');
-                setIsComplete(true);
-                if (isLastPage && !completedOnceRef.current) {
-                    completedOnceRef.current = true;
-                    onPageCompleted?.();
-                }
+              console.log('[PageItem] Completion satisfied (short content)');
+              setIsComplete(true);
+              if (isLastPage && !completedOnceRef.current) {
+                completedOnceRef.current = true;
+                onPageCompleted?.();
+              }
             } else if (!isComplete) {
-                 // Ensure swipe is disabled if not complete
-                 // This handles the case where it might have been enabled briefly or defaulting
-                 // But don't spam updates, use effect instead
+              // Ensure swipe is disabled if not complete
+              // This handles the case where it might have been enabled briefly or defaulting
+              // But don't spam updates, use effect instead
             }
           } else {
             // Completion gate: strictly depends on bottomPaddingVisible && imagesLoaded && heightStable
@@ -1159,7 +1159,7 @@ const PageItem = React.memo((props: {
           }
         }}
         onLayout={(e) => {
-           lastScrollMetricsRef.current.viewportHeight = e.nativeEvent.layout.height;
+          lastScrollMetricsRef.current.viewportHeight = e.nativeEvent.layout.height;
         }}
         decelerationRate="normal"
         keyboardShouldPersistTaps="handled"
@@ -1196,14 +1196,14 @@ const PageItem = React.memo((props: {
             console.log('[PageItem] Marker layout Y:', e.nativeEvent.layout.y);
             endMarkerLayout.current = e.nativeEvent.layout.y;
           }}
-          style={{ height: 1, width: 1, backgroundColor: 'transparent' }} 
+          style={{ height: 1, width: 1, backgroundColor: 'transparent' }}
         />
       </GHScrollView>
 
       {/* Loading Indicator (centered, visible only when isVisible but not yet revealed) */}
       {isVisible && !revealed && (
         <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-            <ActivityIndicator size="small" color="#999" />
+          <ActivityIndicator size="small" color="#999" />
         </View>
       )}
 
@@ -1558,7 +1558,7 @@ function SinglePostReader({
 
   const scrollToPrevPage = () => {
     if (isNavigatingRef.current) return;
-    
+
     const prevIndex = currentPage - 1;
     if (prevIndex >= 0) {
       isNavigatingRef.current = true;
@@ -1568,7 +1568,7 @@ function SinglePostReader({
       });
       setCurrentPage(prevIndex);
       currentPageRef.current = prevIndex;
-      
+
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
@@ -1578,7 +1578,7 @@ function SinglePostReader({
 
   const scrollToNextPage = () => {
     if (isNavigatingRef.current) return;
-    
+
     const nextIndex = currentPage + 1;
     if (nextIndex < post.pages.length) {
       isNavigatingRef.current = true;
@@ -1588,14 +1588,14 @@ function SinglePostReader({
       });
       setCurrentPage(nextIndex);
       currentPageRef.current = nextIndex;
-      
+
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
       }, 500);
     } else {
-        // Last page reached
-        console.log('Last page finished');
+      // Last page reached
+      console.log('Last page finished');
     }
   };
 
@@ -1783,16 +1783,16 @@ function SinglePostReader({
 // ============================================================
 // Post Loader (Fetches individual post)
 // ============================================================
-function PostLoader({ 
-  uid, 
+function PostLoader({
+  uid,
   onClose,
   onFeedLikeUpdate,
   onMissing,
   onRequestNext,
   onRequestPrev,
   onSwipeEnableChange, // NEW
-}: { 
-  uid: string, 
+}: {
+  uid: string,
   onClose: () => void,
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onMissing?: (uid: string) => void;
@@ -1873,16 +1873,16 @@ function PostLoader({
 // ============================================================
 // Standard Horizontal FlatList to allow swiping between posts.
 
-function PostSwiper({ 
-  items, 
-  initialIndex, 
+function PostSwiper({
+  items,
+  initialIndex,
   onClose,
   onFeedLikeUpdate,
   onLoadMore,
   onMissing
-}: { 
-  items: FeedItem[]; 
-  initialIndex: number; 
+}: {
+  items: FeedItem[];
+  initialIndex: number;
   onClose: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
@@ -1895,11 +1895,11 @@ function PostSwiper({
   // Sync index externally (if needed, though usually initialIndex is enough)
   useEffect(() => {
     if (initialIndex !== currentIndex && initialIndex >= 0 && initialIndex < items.length) {
-       // Only update if significantly different to avoid loops, 
-       // but here we just trust the prop if it changes.
-       // Note: Scrolling manually is better to avoid jitter.
-       // setCurrentIndex(initialIndex);
-       // flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
+      // Only update if significantly different to avoid loops, 
+      // but here we just trust the prop if it changes.
+      // Note: Scrolling manually is better to avoid jitter.
+      // setCurrentIndex(initialIndex);
+      // flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
     }
   }, [initialIndex]);
 
@@ -1907,7 +1907,7 @@ function PostSwiper({
   useEffect(() => {
     const remaining = items.length - currentIndex - 1;
     if (remaining <= 2 && onLoadMore) {
-        onLoadMore();
+      onLoadMore();
     }
   }, [currentIndex, items.length, onLoadMore]);
 
@@ -1930,14 +1930,14 @@ function PostSwiper({
   const renderItem = useCallback(({ item, index }: { item: FeedItem, index: number }) => {
     // Optimization: Only render current, prev, and next to save memory/cpu
     if (Math.abs(currentIndex - index) > 1) {
-        return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
+      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
     }
 
     // Parallax / Card Stack Effect
     // "Higher index is on top" (React Native default z-order)
     // When scrolling Next (i -> i+1): i+1 slides OVER i. i moves slowly (parallax).
     // When scrolling Prev (i -> i-1): i slides OFF i-1. i-1 moves slowly (parallax).
-    
+
     const inputRange = [
       (index - 1) * SCREEN_WIDTH,
       index * SCREEN_WIDTH,
@@ -1945,40 +1945,40 @@ function PostSwiper({
     ];
 
     const translateX = scrollX.interpolate({
-        inputRange,
-        // Left (i-1): 0 (Standard slide in from right)
-        // Center (i): 0
-        // Right (i+1): +0.7W (Counteract left movement, effectively moving at 0.3W speed)
-        outputRange: [0, 0, SCREEN_WIDTH * 0.7], 
+      inputRange,
+      // Left (i-1): 0 (Standard slide in from right)
+      // Center (i): 0
+      // Right (i+1): +0.7W (Counteract left movement, effectively moving at 0.3W speed)
+      outputRange: [0, 0, SCREEN_WIDTH * 0.7],
     });
 
     const opacity = scrollX.interpolate({
-        inputRange,
-        // Dim the item when it goes to the background (scrolled past)
-        outputRange: [1, 1, 0.6], 
-        extrapolate: 'clamp'
+      inputRange,
+      // Dim the item when it goes to the background (scrolled past)
+      outputRange: [1, 1, 0.6],
+      extrapolate: 'clamp'
     });
 
     // We also need to scale it slightly when it's in background to enhance depth
     const scale = scrollX.interpolate({
-        inputRange,
-        outputRange: [1, 1, 0.95],
-        extrapolate: 'clamp'
+      inputRange,
+      outputRange: [1, 1, 0.95],
+      extrapolate: 'clamp'
     });
 
     return (
       <View style={{ width: SCREEN_WIDTH, flex: 1, overflow: 'hidden' }}>
-        <Animated.View style={{ 
-            flex: 1, 
-            transform: [{ translateX }, { scale }],
-            opacity
+        <Animated.View style={{
+          flex: 1,
+          transform: [{ translateX }, { scale }],
+          opacity
         }}>
-            <PostLoader
-                uid={item.uid}
-                onClose={onClose}
-                onFeedLikeUpdate={onFeedLikeUpdate}
-                onMissing={onMissing}
-            />
+          <PostLoader
+            uid={item.uid}
+            onClose={onClose}
+            onFeedLikeUpdate={onFeedLikeUpdate}
+            onMissing={onMissing}
+          />
         </Animated.View>
       </View>
     );
@@ -2005,8 +2005,8 @@ function PostSwiper({
         decelerationRate="fast"
         disableIntervalMomentum
         onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: true }
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
       />
@@ -2617,7 +2617,7 @@ function SavedScreen({
         <BookmarkPlus size={48} color={colors.primaryLight} strokeWidth={1.5} />
       </View>
       <Text style={styles.savedEmptyTitle}>
-        {token ? 'No Saved Posts' : 'Please log in to use the saved tab'}
+        {token ? 'No Saved Posts' : 'Please log in to use the feature'}
       </Text>
       {token ? (
         <>
@@ -3010,6 +3010,7 @@ function AppContent() {
   // 兴趣 Onboarding 状态
   const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 使用帖子缓存系统
   // 使用帖子缓存系统
@@ -3100,6 +3101,17 @@ function AppContent() {
     refreshSavedPosts();     // 刷新收藏列表（会变空）
   }, [user, refetchFeed, refreshSavedPosts]);
 
+  const handlePullToRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refetchFeed();
+    } catch (e) {
+      console.error('Pull to refresh failed', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetchFeed]);
+
   // Reset internal states when switching tabs
   useEffect(() => {
     setSelectedTopic(null);
@@ -3155,6 +3167,13 @@ function AppContent() {
               showsVerticalScrollIndicator={false}
               onScroll={handleFeedScroll}
               scrollEventThrottle={400}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={handlePullToRefresh}
+                  tintColor={colors.primary}
+                />
+              }
             >
               <MasonryFeed
                 items={feedItems}

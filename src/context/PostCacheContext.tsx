@@ -62,10 +62,10 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // 已请求过的帖子 UID 集合，用于去重
   const seenUids = useRef<Set<string>>(new Set());
-  
+
   // 是否正在补充缓存（防止重复请求）
   const isRefilling = useRef(false);
 
@@ -97,22 +97,22 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     console.log('[PostCache] Initializing...');
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const totalNeeded = INITIAL_DISPLAY_COUNT + CACHE_SIZE;
       const posts = await fetchAndConvert(totalNeeded);
       const newPosts = filterNewPosts(posts);
-      
+
       console.log(`[PostCache] Loaded ${newPosts.length} posts`);
-      
+
       // 分配到显示和缓存
       const displayed = newPosts.slice(0, INITIAL_DISPLAY_COUNT);
       const cached = newPosts.slice(INITIAL_DISPLAY_COUNT);
-      
+
       setDisplayedPosts(displayed);
       setCachedPosts(cached);
       setHasMore(posts.length >= totalNeeded);
-      
+
       console.log(`[PostCache] Displayed: ${displayed.length}, Cached: ${cached.length}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载失败';
@@ -131,20 +131,20 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       console.log('[PostCache] Skip refill:', { isRefilling: isRefilling.current, isLoading, hasMore });
       return;
     }
-    
+
     isRefilling.current = true;
     console.log('[PostCache] Refilling cache...');
-    
+
     try {
       const posts = await fetchAndConvert(FETCH_BATCH_SIZE);
       const newPosts = filterNewPosts(posts);
-      
+
       console.log(`[PostCache] Fetched ${posts.length}, new: ${newPosts.length}`);
-      
+
       if (newPosts.length > 0) {
         setCachedPosts(prev => [...prev, ...newPosts]);
       }
-      
+
       // 如果返回的帖子都是已见过的或数量不足，可能没有更多了
       if (posts.length < FETCH_BATCH_SIZE) {
         setHasMore(false);
@@ -166,18 +166,18 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       console.log('[PostCache] No cached posts available');
       return null;
     }
-    
+
     const [post, ...remaining] = cachedPosts;
     setCachedPosts(remaining);
     setDisplayedPosts(prev => [...prev, post]);
-    
+
     console.log(`[PostCache] Consumed 1 post, remaining cache: ${remaining.length}`);
-    
+
     // 检查是否需要补充
     if (remaining.length < REFILL_THRESHOLD) {
       refillCache();
     }
-    
+
     return post;
   }, [cachedPosts, refillCache]);
 
@@ -190,20 +190,20 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       console.log('[PostCache] No cached posts to consume');
       return [];
     }
-    
+
     const consumed = cachedPosts.slice(0, toConsume);
     const remaining = cachedPosts.slice(toConsume);
-    
+
     setCachedPosts(remaining);
     setDisplayedPosts(prev => [...prev, ...consumed]);
-    
+
     console.log(`[PostCache] Consumed ${toConsume} posts, remaining cache: ${remaining.length}`);
-    
+
     // 检查是否需要补充
     if (remaining.length < REFILL_THRESHOLD) {
       refillCache();
     }
-    
+
     return consumed;
   }, [cachedPosts, refillCache]);
 
@@ -232,10 +232,10 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 更新帖子的点赞状态
    */
   const updateLocalLike = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
-    setDisplayedPosts(prev => prev.map(item => 
+    setDisplayedPosts(prev => prev.map(item =>
       item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
     ));
-    setCachedPosts(prev => prev.map(item => 
+    setCachedPosts(prev => prev.map(item =>
       item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
     ));
   }, []);
