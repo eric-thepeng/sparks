@@ -1869,9 +1869,9 @@ function PostLoader({
 }
 
 // ============================================================
-// Post Swiper (Container)
+// Post Swiper (Horizontal Feed)
 // ============================================================
-// Simplified to just hold the current post. No navigation between posts.
+// Standard Horizontal FlatList to allow swiping between posts.
 
 function PostSwiper({ 
   items, 
@@ -1888,21 +1888,128 @@ function PostSwiper({
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
 }) {
-  // We only care about the initial post requested.
-  // No swiping to next/prev posts.
-  const item = items[initialIndex];
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const flatListRef = useRef<FlatList>(null);
+  const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
 
-  if (!item) return null;
+  // Sync index externally (if needed, though usually initialIndex is enough)
+  useEffect(() => {
+    if (initialIndex !== currentIndex && initialIndex >= 0 && initialIndex < items.length) {
+       // Only update if significantly different to avoid loops, 
+       // but here we just trust the prop if it changes.
+       // Note: Scrolling manually is better to avoid jitter.
+       // setCurrentIndex(initialIndex);
+       // flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
+    }
+  }, [initialIndex]);
+
+  // Load more trigger
+  useEffect(() => {
+    const remaining = items.length - currentIndex - 1;
+    if (remaining <= 2 && onLoadMore) {
+        onLoadMore();
+    }
+  }, [currentIndex, items.length, onLoadMore]);
+
+  const getItemLayout = (_: any, index: number) => ({
+    length: SCREEN_WIDTH,
+    offset: SCREEN_WIDTH * index,
+    index,
+  });
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  const renderItem = useCallback(({ item, index }: { item: FeedItem, index: number }) => {
+    // Optimization: Only render current, prev, and next to save memory/cpu
+    if (Math.abs(currentIndex - index) > 1) {
+        return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
+    }
+
+    // Parallax / Card Stack Effect
+    // "Higher index is on top" (React Native default z-order)
+    // When scrolling Next (i -> i+1): i+1 slides OVER i. i moves slowly (parallax).
+    // When scrolling Prev (i -> i-1): i slides OFF i-1. i-1 moves slowly (parallax).
+    
+    const inputRange = [
+      (index - 1) * SCREEN_WIDTH,
+      index * SCREEN_WIDTH,
+      (index + 1) * SCREEN_WIDTH
+    ];
+
+    const translateX = scrollX.interpolate({
+        inputRange,
+        // Left (i-1): 0 (Standard slide in from right)
+        // Center (i): 0
+        // Right (i+1): +0.7W (Counteract left movement, effectively moving at 0.3W speed)
+        outputRange: [0, 0, SCREEN_WIDTH * 0.7], 
+    });
+
+    const opacity = scrollX.interpolate({
+        inputRange,
+        // Dim the item when it goes to the background (scrolled past)
+        outputRange: [1, 1, 0.6], 
+        extrapolate: 'clamp'
+    });
+
+    // We also need to scale it slightly when it's in background to enhance depth
+    const scale = scrollX.interpolate({
+        inputRange,
+        outputRange: [1, 1, 0.95],
+        extrapolate: 'clamp'
+    });
+
+    return (
+      <View style={{ width: SCREEN_WIDTH, flex: 1, overflow: 'hidden' }}>
+        <Animated.View style={{ 
+            flex: 1, 
+            transform: [{ translateX }, { scale }],
+            opacity
+        }}>
+            <PostLoader
+                uid={item.uid}
+                onClose={onClose}
+                onFeedLikeUpdate={onFeedLikeUpdate}
+                onMissing={onMissing}
+            />
+        </Animated.View>
+      </View>
+    );
+  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX]);
 
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
-        <PostLoader
-            uid={item.uid}
-            onClose={onClose}
-            onFeedLikeUpdate={onFeedLikeUpdate}
-            onMissing={onMissing}
-            // onRequestNext removed - no next post navigation
-        />
+      <Animated.FlatList
+        ref={flatListRef}
+        data={items}
+        renderItem={renderItem}
+        horizontal
+        pagingEnabled
+        keyExtractor={(item) => item.uid}
+        initialScrollIndex={initialIndex}
+        getItemLayout={getItemLayout}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        showsHorizontalScrollIndicator={false}
+        windowSize={3}
+        initialNumToRender={1}
+        maxToRenderPerBatch={1}
+        removeClippedSubviews={true}
+        decelerationRate="fast"
+        disableIntervalMomentum
+        onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+      />
     </View>
   );
 }
