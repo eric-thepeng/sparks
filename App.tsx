@@ -387,9 +387,9 @@ function FeedCard({
               </Text>
             </View>
 
-            <Pressable 
-              style={[styles.likeButton, !token && { opacity: 0.5 }]} 
-              onPress={handleLike} 
+            <Pressable
+              style={[styles.likeButton, !token && { opacity: 0.5 }]}
+              onPress={handleLike}
               disabled={isLiking}
             >
               <Animated.View style={{ transform: [{ scale: likeScale }] }}>
@@ -1089,21 +1089,13 @@ const PageItem = React.memo((props: {
           const bottomPaddingVisible = markerY <= y + viewportHeight - threshold;
 
           if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
-            console.log('[PageItem] COMPLETION TRIGGERED:', {
-              markerY,
-              y,
-              viewportHeight,
-              calc: y + viewportHeight - threshold,
-              imagesLoaded,
-              heightStable
-            });
+            // Completion logic triggered
           }
 
           // Overscroll Prev Logic (Pull Down)
           if (onRequestPrev && !overscrollTriggered.current && isDragging.current) {
             // 5. Check overscroll threshold (top)
             if (y < -60) {
-              console.log('[PageItem] Overscroll triggered prev page');
               overscrollTriggered.current = true;
               onRequestPrev();
             }
@@ -1127,7 +1119,6 @@ const PageItem = React.memo((props: {
               const overscrollAmount = y - maxScrollY;
 
               if (overscrollAmount > 60) {
-                console.log('[PageItem] Overscroll triggered next page');
                 overscrollTriggered.current = true;
                 onRequestNext();
               }
@@ -1138,7 +1129,6 @@ const PageItem = React.memo((props: {
             // For short content, if we can see the marker, we are complete
             // BUT must satisfy all gates: imagesLoaded AND heightStable
             if (!isComplete && bottomPaddingVisible && imagesLoaded && heightStable) {
-              console.log('[PageItem] Completion satisfied (short content)');
               setIsComplete(true);
               if (isLastPage && !completedOnceRef.current) {
                 completedOnceRef.current = true;
@@ -1152,7 +1142,6 @@ const PageItem = React.memo((props: {
           } else {
             // Completion gate: strictly depends on bottomPaddingVisible && imagesLoaded && heightStable
             if (bottomPaddingVisible && imagesLoaded && heightStable && !isComplete) {
-              console.log('[PageItem] Completion satisfied (long content)');
               setIsComplete(true);
               if (isLastPage && !completedOnceRef.current) {
                 completedOnceRef.current = true;
@@ -1204,7 +1193,6 @@ const PageItem = React.memo((props: {
         </View>
         <View
           onLayout={(e) => {
-            console.log('[PageItem] Marker layout Y:', e.nativeEvent.layout.y);
             endMarkerLayout.current = e.nativeEvent.layout.y;
           }}
           style={{ height: 1, width: 1, backgroundColor: 'transparent' }}
@@ -1230,7 +1218,6 @@ const PageItem = React.memo((props: {
       >
         <Pressable
           onPress={() => {
-            console.log('[PageItem] Next button pressed');
             onRequestNext?.();
           }}
           disabled={!isComplete}
@@ -1843,7 +1830,7 @@ function PostLoader({
     if (post && status === 'success') {
       console.log('[PostLoader] Calling sendClick and addToHistory for:', post.uid);
       sendClick(post.uid);
-      
+
       // Only record history if logged in
       if (token) {
         addToHistory(post);
@@ -2646,7 +2633,7 @@ function SavedScreen({
   // 渲染空状态（未登录显示提示登录；已登录无收藏显示「无保存」）
   const renderEmptyState = () => (
     <View style={styles.savedEmptyContainer}>
-      <Pressable 
+      <Pressable
         style={styles.savedEmptyIcon}
         onPress={() => !token && onLoginPress?.()}
       >
@@ -2666,7 +2653,7 @@ function SavedScreen({
           </View>
         </>
       ) : (
-        <Pressable 
+        <Pressable
           style={styles.savedLoginButton}
           onPress={() => onLoginPress?.()}
         >
@@ -3301,8 +3288,8 @@ function AppContent() {
         );
       case 'saved':
         return (
-          <SavedScreen 
-            onItemPress={(uid) => setSelectedPostUid(uid)} 
+          <SavedScreen
+            onItemPress={(uid) => setSelectedPostUid(uid)}
             onLoginPress={() => setBottomTab('me')}
           />
         );
@@ -4013,7 +4000,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 4,
   },
   collectionHeaderLeft: {
     flex: 1,
@@ -4031,10 +4018,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   seeAllButton: {
-    backgroundColor: colors.bg,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#B45309',
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   seeAllText: {
     fontSize: 13,
@@ -4069,15 +4062,15 @@ const styles = StyleSheet.create({
   },
   collectionCardContent: {
     padding: 10,
-    paddingBottom: 8,
-    minHeight: 85,
-    justifyContent: 'flex-start',
+    minHeight: 80,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   collectionCardTitle: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    lineHeight: 15,
+    lineHeight: 16,
   },
 
   // Search Screen Styles
