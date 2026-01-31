@@ -3072,9 +3072,24 @@ function AppContent() {
     updateLocalLike: updateFeedLike,
     removePost: removeFeedPost,
     consumeMultiple,
+    fetchAllPosts,
     hasMore,
     cacheStatus
   } = usePostCache();
+
+  const [allPosts, setAllPosts] = useState<FeedItem[]>([]);
+  const [isAllPostsLoading, setIsAllPostsLoading] = useState(false);
+
+  // 加载所有帖子用于 Collection 标签页
+  useEffect(() => {
+    if (bottomTab === 'collection') {
+      setIsAllPostsLoading(true);
+      fetchAllPosts().then(posts => {
+        setAllPosts(posts);
+        setIsAllPostsLoading(false);
+      });
+    }
+  }, [bottomTab, fetchAllPosts]);
 
   const { removeFromHistory } = usePostHistory();
   const { unsavePost } = useSaved();
@@ -3245,7 +3260,7 @@ function AppContent() {
         );
       case 'collection':
         if (selectedTopic) {
-          const topicItems = feedItems.filter(item => item.topic === selectedTopic);
+          const topicItems = allPosts.filter(item => item.topic === selectedTopic);
           return (
             <>
               <Header
@@ -3258,8 +3273,14 @@ function AppContent() {
                 contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
                 showsVerticalScrollIndicator={false}
               >
-                <MasonryFeed items={topicItems} onItemPress={(uid) => setSelectedPostUid(uid)} />
-                <Text style={styles.endText}>— End of Topic —</Text>
+                {isAllPostsLoading ? (
+                  <LoadingScreen />
+                ) : (
+                  <>
+                    <MasonryFeed items={topicItems} onItemPress={(uid) => setSelectedPostUid(uid)} />
+                    <Text style={styles.endText}>— End of Topic —</Text>
+                  </>
+                )}
               </ScrollView>
             </>
           );
@@ -3267,11 +3288,15 @@ function AppContent() {
         return (
           <>
             <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
-            <CollectionScreen
-              items={feedItems}
-              onItemPress={(uid) => setSelectedPostUid(uid)}
-              onTopicPress={(topic) => setSelectedTopic(topic)}
-            />
+            {isAllPostsLoading ? (
+              <LoadingScreen />
+            ) : (
+              <CollectionScreen
+                items={allPosts}
+                onItemPress={(uid) => setSelectedPostUid(uid)}
+                onTopicPress={(topic) => setSelectedTopic(topic)}
+              />
+            )}
           </>
         );
       case 'saved':

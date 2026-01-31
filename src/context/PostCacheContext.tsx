@@ -33,6 +33,8 @@ interface PostCacheContextValue extends PostCacheState {
   consumePost: () => FeedItem | null;
   /** 消费多个缓存帖子 */
   consumeMultiple: (count: number) => FeedItem[];
+  /** 获取所有帖子（不影响缓存队列） */
+  fetchAllPosts: () => Promise<FeedItem[]>;
   /** 重新加载（清空并重新请求） */
   refetch: () => Promise<void>;
   /** 更新帖子的点赞状态 */
@@ -217,6 +219,20 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * 获取所有帖子（不影响缓存队列）
+   */
+  const fetchAllPosts = useCallback(async (): Promise<FeedItem[]> => {
+    try {
+      // 请求一个较大的数量以获取所有帖子
+      const apiPosts = await fetchPosts(1000);
+      return apiPosts.map((post, index) => apiPostToFeedItem(post, index));
+    } catch (err) {
+      console.error('[PostCache] fetchAllPosts failed:', err);
+      return [];
+    }
+  }, []);
+
+  /**
    * 重新加载
    */
   const refetch = useCallback(async () => {
@@ -262,6 +278,7 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     refetch,
     updateLocalLike,
     removePost,
+    fetchAllPosts,
     cacheStatus,
   };
 
