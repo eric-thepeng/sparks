@@ -229,6 +229,15 @@ export function usePost(postId: string | null): UsePostResult {
     // 使用 API
     try {
       const apiPost = await fetchPostById(postId);
+      
+      // Safety check: Ensure apiPost is valid before converting
+      if (!apiPost || (!apiPost.uid && !apiPost.platform_post_id)) {
+        console.error('[usePost] API returned invalid post data:', apiPost);
+        setError('POST_NOT_FOUND');
+        setStatus('error');
+        return;
+      }
+
       console.log('[usePost] API response for:', postId, 'has pages:', 'pages' in apiPost ? (apiPost as any).pages?.length : 'N/A');
       const convertedPost = apiPostToPost(apiPost);
       console.log('[usePost] Converted post pages:', convertedPost.pages.length);

@@ -168,7 +168,23 @@ function extractCoverImageFromContent(content: string): { coverUrl: string | nul
  * SimplePost → FeedItem
  */
 function simplePostToFeedItem(post: any, index: number): FeedItem {
-  const postUid = post.platform_post_id || post.uid || `unknown-${index}`;
+  const postUid = post.platform_post_id || post.uid;
+  
+  // Safety check: If no UID, this is likely an error response or invalid data
+  if (!postUid) {
+    console.warn('[simplePostToFeedItem] Invalid post data (no UID):', post);
+    return {
+      uid: `invalid-${index}`,
+      title: 'Invalid Post',
+      topic: 'General',
+      coverImage: { uri: 'https://via.placeholder.com/400x500' },
+      likes: 0,
+      isLiked: false,
+      comments: 0,
+      user: { id: 'error', name: 'System', avatar: '' }
+    };
+  }
+
   const title = post.title || 'Untitled';
   
   // 从 content 中提取封面图
@@ -345,11 +361,22 @@ function sanitizeText(text: string): string {
  * SimplePost → Post（解析 content 文本）
  */
 function simplePostToPost(post: any): Post {
-  const postUid = post.platform_post_id || post.uid || 'unknown';
+  const postUid = post.platform_post_id || post.uid;
   const title = post.title || 'Untitled';
   const content = post.content || '';
   const tags = post.tags || [];
   
+  // Safety check: If no UID or content, this is likely an error response or invalid data
+  if (!postUid || (!content && !post.pages)) {
+    console.error('[simplePostToPost] Invalid post data:', post);
+    return {
+      uid: postUid || 'invalid',
+      title: 'Post Not Found',
+      topic: 'Error',
+      pages: [{ index: 1, blocks: [{ type: 'paragraph', text: 'The requested post could not be loaded.' }] }]
+    };
+  }
+
   // 提取封面图
   const { coverUrl, contentWithoutCover } = extractCoverImageFromContent(content);
   
