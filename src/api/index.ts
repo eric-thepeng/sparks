@@ -212,17 +212,12 @@ export async function fetchPosts(limit: number = 1000): Promise<ApiPost[]> {
 
 /**
  * 分页获取帖子
- * GET /api/db/posts?limit=20&offset=0
- * 注意：旧代码硬编码了 /api/db/posts，这里可能需要调整适配新的 PREFIX
- * 如果 PREFIX 是 /api，那么 /api/db/posts 会变成 /api/api/db/posts
- * 我们假设旧的 fetchPostsPaginated 也是标准 API 的一部分
+ * GET /posts?limit=20&offset=0
  */
 export async function fetchPostsPaginated(
   limit: number = 20,
   offset: number = 0
 ): Promise<ApiPost[]> {
-  // 假设后端路径兼容
-  // Note: Backend seems to use /posts for listing, not /db/posts
   return request<ApiPost[]>(`/posts?limit=${limit}&offset=${offset}`);
 }
 
@@ -232,7 +227,7 @@ export async function fetchPostsPaginated(
 
 /**
  * 获取单个帖子
- * GET /posts/{id}
+ * GET /posts/{platform_post_id}
  * @param id - platform_post_id 或 uid
  */
 export async function fetchPostById(id: string): Promise<ApiPost> {
@@ -316,16 +311,14 @@ export async function getMyLikes(limit: number = 20, cursor?: string): Promise<P
 }
 
 export async function likeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
-  return request<void>(`/me/likes?${query}`, {
+  return request<void>(`/me/likes`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
 }
 
 export async function unlikeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
-  return request<void>(`/me/likes?${query}`, {
+  return request<void>(`/me/likes`, {
     method: 'DELETE',
     body: JSON.stringify({ itemId, itemType })
   });
@@ -337,8 +330,7 @@ export async function getMyHistory(limit: number = 20, cursor?: string): Promise
 }
 
 export async function recordHistory(itemId: string, itemType: string = 'post'): Promise<void> {
-  const query = `itemId=${encodeURIComponent(itemId)}&itemType=${encodeURIComponent(itemType)}`;
-  return request<void>(`/me/history?${query}`, {
+  return request<void>(`/me/history`, {
     method: 'POST',
     body: JSON.stringify({ itemId, itemType })
   });
@@ -374,11 +366,11 @@ export async function sendSignal(postId: string, signalType: SignalType): Promis
 
 /**
  * 请求推荐帖子
- * GET /posts/recommended?amount=N
+ * GET /posts?limit=N
  * @param amount - 请求的帖子数量
  */
 export async function requestRecommendedPosts(amount: number = 20): Promise<ApiPost[]> {
-  return request<ApiPost[]>(`/posts/recommended?amount=${amount}`);
+  return request<ApiPost[]>(`/posts?limit=${amount}`);
 }
 
 /**
@@ -396,6 +388,14 @@ export async function resetRecommendation(): Promise<ResetRecommendationResponse
 // ============================================================
 // Onboarding API
 // ============================================================
+
+/**
+ * 获取所有可用的 Buckets (Topics)
+ * GET /api/buckets
+ */
+export async function fetchBuckets(): Promise<any[]> {
+  return request<any[]>('/api/buckets');
+}
 
 /**
  * 兴趣等级类型

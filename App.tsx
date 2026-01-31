@@ -64,7 +64,8 @@ import {
   Post,
   PostPage,
   ContentBlock,
-  getBucketSubtitle
+  getBucketSubtitle,
+  syncBucketsFromBackend
 } from './src/data';
 
 import {
@@ -315,6 +316,10 @@ function FeedCard({
 
     setIsLiking(true);
 
+    // Call sendLike signal for recommendation
+    const { sendLike } = useRecommendation();
+    sendLike(item.uid);
+
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
@@ -382,7 +387,11 @@ function FeedCard({
               </Text>
             </View>
 
-            <Pressable style={styles.likeButton} onPress={handleLike} disabled={isLiking}>
+            <Pressable 
+              style={[styles.likeButton, !token && { opacity: 0.5 }]} 
+              onPress={handleLike} 
+              disabled={isLiking}
+            >
               <Animated.View style={{ transform: [{ scale: likeScale }] }}>
                 <Heart
                   size={14}
@@ -1466,6 +1475,9 @@ function SinglePostReader({
 
     setIsLiking(true);
 
+    // Call sendLike signal for recommendation
+    sendLike(post.uid);
+
     // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
@@ -1527,6 +1539,16 @@ function SinglePostReader({
 
   const handleBookmark = async () => {
     if (isSaving) return;
+
+    if (!token) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to save posts.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const wasBookmarked = isBookmarked;
     setIsSaving(true);
     Animated.sequence([
@@ -1705,7 +1727,7 @@ function SinglePostReader({
         <View style={styles.actionButtons}>
           {/* 点赞按钮 */}
           <Pressable
-            style={styles.actionButton}
+            style={[styles.actionButton, !token && { opacity: 0.5 }]}
             onPress={handleLike}
             disabled={isLiking}
           >
@@ -1726,7 +1748,7 @@ function SinglePostReader({
 
           {/* 收藏按钮 - 带动画 */}
           <Pressable
-            style={styles.actionButton}
+            style={[styles.actionButton, !token && { opacity: 0.5 }]}
             onPress={handleBookmark}
             disabled={isSaving}
           >
@@ -1804,6 +1826,8 @@ function PostLoader({
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
+  const { addToHistory } = usePostHistory();
+  const { token } = useAuth(); // Get token to check login status
 
   // Handle missing post
   useEffect(() => {
@@ -1813,14 +1837,19 @@ function PostLoader({
     }
   }, [status, error, uid, onMissing]);
 
-  // 发送 CLICK 信号（帖子加载成功时）
+  // 发送 CLICK 信号（帖子加载成功时）并记录历史
   useEffect(() => {
-    console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status });
+    console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status, hasToken: !!token });
     if (post && status === 'success') {
-      console.log('[PostLoader] Calling sendClick for:', post.uid);
+      console.log('[PostLoader] Calling sendClick and addToHistory for:', post.uid);
       sendClick(post.uid);
+      
+      // Only record history if logged in
+      if (token) {
+        addToHistory(post);
+      }
     }
-  }, [post?.uid, status, sendClick]);
+  }, [post?.uid, status, sendClick, addToHistory, token]);
 
   if (status === 'loading') {
     return (
@@ -2567,9 +2596,11 @@ function DebugPanel({
 // 保存页面 - Saved Screen
 // ============================================================
 function SavedScreen({
-  onItemPress
+  onItemPress,
+  onLoginPress
 }: {
   onItemPress: (uid: string) => void;
+  onLoginPress?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
@@ -2615,11 +2646,14 @@ function SavedScreen({
   // 渲染空状态（未登录显示提示登录；已登录无收藏显示「无保存」）
   const renderEmptyState = () => (
     <View style={styles.savedEmptyContainer}>
-      <View style={styles.savedEmptyIcon}>
+      <Pressable 
+        style={styles.savedEmptyIcon}
+        onPress={() => !token && onLoginPress?.()}
+      >
         <BookmarkPlus size={48} color="#B45309" strokeWidth={1.5} />
-      </View>
+      </Pressable>
       <Text style={styles.savedEmptyTitle}>
-        {token ? 'No Saved Posts' : 'Please log in to use the feature'}
+        {token ? 'No Saved Posts' : 'Please log in to save'}
       </Text>
       {token ? (
         <>
@@ -2631,7 +2665,14 @@ function SavedScreen({
             <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
           </View>
         </>
-      ) : null}
+      ) : (
+        <Pressable 
+          style={styles.savedLoginButton}
+          onPress={() => onLoginPress?.()}
+        >
+          <Text style={styles.savedLoginButtonText}>Log In</Text>
+        </Pressable>
+      )}
     </View>
   );
 
@@ -3016,6 +3057,11 @@ function AppContent() {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Sync buckets from backend on mount
+  useEffect(() => {
+    syncBucketsFromBackend();
+  }, []);
+
   // 使用帖子缓存系统
   // 使用帖子缓存系统
   const {
@@ -3229,7 +3275,12 @@ function AppContent() {
           </>
         );
       case 'saved':
-        return <SavedScreen onItemPress={(uid) => setSelectedPostUid(uid)} />;
+        return (
+          <SavedScreen 
+            onItemPress={(uid) => setSelectedPostUid(uid)} 
+            onLoginPress={() => setBottomTab('me')}
+          />
+        );
       case 'me':
         if (!token) return <AuthScreen />;
         if (showHistoryModal) {
@@ -4343,6 +4394,25 @@ const styles = StyleSheet.create({
   savedEmptyHintText: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  savedLoginButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 24,
+    marginTop: 16,
+    borderWidth: 1.5,
+    borderColor: '#B45309',
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  savedLoginButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
   },
 
   // Comment Sheet

@@ -99,80 +99,61 @@ export type RequestStatus = 'idle' | 'loading' | 'success' | 'error';
 // Comment Types
 // ============================================================
 
-export interface Comment {
-  id: string;
-  content: string;
-  created_at: string;
-  user: User; // The author of the comment
-  like_count?: number;
-  is_liked?: boolean;
-}
-
-export interface CreateCommentRequest {
-  content: string;
-}
-
-// ============================================================
-// Auth / User Types
-// ============================================================
-
 export interface User {
-  id: string;          // UUID
-  email: string;
-  userid: string;      // 8-digit unique ID (was username)
+  id: string;          // UUID (Internal database ID)
+  email: string;       // User email
+  userid: string;      // 8-digit unique numeric ID (Public display ID)
   displayName: string | null;
-  photoUrl: string | null; // (was avatar)
+  photoUrl: string | null;
   bio: string | null;
   timezone: string | null;
   language: string | null;
 }
 
 export interface AuthResponse {
-  token: string;
+  token: string;       // JWT Access Token
   user: User;
 }
 
-export interface LoginRequest {
-  email?: string;
-  password?: string;
+export interface Post {
+  platform_post_id: string;
+  author: string;
+  title: string;
+  content: string;
+  tags: string[];
+  like_count: number;
+  collect_count: number;
+  created_at: string; // ISO Date String
 }
 
-export interface SignupRequest {
-  email: string;
-  password?: string;
-  confirmPassword?: string; // New field required by backend
+export interface UploadResponse {
+  url: string; // The public URL of the uploaded file
 }
 
-export interface UpdateUserRequest {
-  displayName?: string;
-  bio?: string;
-  photoUrl?: string;
-  timezone?: string;
-  language?: string;
+export interface Comment {
+  id: string;
+  user: {
+    displayName: string | null;
+    photoUrl: string | null;
+  };
+  content: string;
+  created_at: string;
 }
-
-export interface GoogleLoginRequest {
-  idToken: string;
-  userid?: string; // Optional suggestion
-}
-
-// ============================================================
-// Profile Collections (Likes/History)
-// ============================================================
 
 export interface ProfileItem {
-  itemId: string;
-  itemType: string;
-  title?: string;
-  thumbnail?: string;
-  createdAt?: string; // "liked date" or "visited time"
-  // Keep compatibility with ApiPost if needed, or mapping
+  itemId: string;       // ID of the post/item
+  itemType: string;     // e.g., "post", "article"
+  title: string;        // Display title
+  thumbnail: string | null; // URL to image (optional, null if none)
+  createdAt: string;    // ISO 8601 Date string (e.g., "2024-01-20T10:00:00Z")
 }
 
-export interface ProfileListResponse {
+export interface PaginatedResponse {
   items: ProfileItem[];
-  nextCursor?: string;
+  nextCursor: string | null; // null if no more pages
 }
+
+export interface ProfileListResponse extends PaginatedResponse {}
 
 // ============================================================
 // Recommendation Signal Types

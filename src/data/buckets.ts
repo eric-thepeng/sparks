@@ -3,6 +3,11 @@
  * 用于 Onboarding 和推荐系统
  */
 
+import { fetchBuckets } from '../api';
+
+/**
+ * Bucket 数据定义
+ */
 export interface Bucket {
   id: string;
   name: string;
@@ -11,9 +16,9 @@ export interface Bucket {
 }
 
 /**
- * 10 个内容分类 Bucket
+ * 10 个内容分类 Bucket (Initial static data, will be updated from backend)
  */
-export const BUCKETS: Bucket[] = [
+export let BUCKETS: Bucket[] = [
   { 
     id: 'cognition_thinking', 
     name: 'Cognition', 
@@ -75,6 +80,26 @@ export const BUCKETS: Bucket[] = [
     subtitle: 'Crafting experiences that bridge people and things'
   },
 ];
+
+/**
+ * 从后端同步 Buckets 数据
+ */
+export async function syncBucketsFromBackend() {
+  try {
+    const backendBuckets = await fetchBuckets();
+    if (backendBuckets && Array.isArray(backendBuckets)) {
+      BUCKETS = backendBuckets.map(b => ({
+        id: b.key || b.id || b.bucket_key,
+        name: b.title || b.name || b.display_name,
+        emoji: b.emoji || '📚',
+        subtitle: b.subtitle || b.description || ''
+      }));
+      console.log('[Buckets] Successfully synced from backend:', BUCKETS.length);
+    }
+  } catch (error) {
+    console.error('[Buckets] Failed to sync from backend:', error);
+  }
+}
 
 /**
  * 用户兴趣等级

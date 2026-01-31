@@ -69,6 +69,15 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   const addToHistory = useCallback(async (post: Post | FeedItem) => {
     if (!userId) return;
 
+    // Call backend API to record history
+    try {
+      const { recordHistory } = await import('../api');
+      await recordHistory(post.uid, 'post');
+      console.log('[History] Successfully recorded to backend:', post.uid);
+    } catch (error) {
+      console.error('[History] Failed to record to backend:', error);
+    }
+
     setHistory(prev => {
       // Remove if existing (to move to top)
       const filtered = prev.filter(p => p.uid !== post.uid);
