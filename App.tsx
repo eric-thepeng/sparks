@@ -368,7 +368,7 @@ function FeedCard({
         {/* 封面图 - 保持原始宽高比 */}
         <Image
           source={item.coverImage}
-          style={[styles.cardImage, { height: CARD_IMAGE_HEIGHT }]}
+          style={[styles.cardImage, { height: CARD_IMAGE_HEIGHT + 2, marginTop: -1 }]}
           contentFit="cover"
           transition={200}
         />
@@ -3571,8 +3571,8 @@ const styles = StyleSheet.create({
     margin: 4, // Brief margin to ensure border/shadow isn't clipped
   },
   cardImage: {
-    width: '101%',
-    marginLeft: '-0.5%',
+    width: '102%',
+    marginLeft: '-1%',
     backgroundColor: colors.border,
   },
   cardContent: {
