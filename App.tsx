@@ -26,7 +26,7 @@ import {
 import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import { Image, ImageSource } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Heart,
@@ -96,7 +96,6 @@ const CARD_WIDTH = (SCREEN_WIDTH - 24 - COLUMN_GAP) / 2;
 
 // 封面图原始尺寸 928x1152
 const COVER_ASPECT_RATIO = 928 / 1152; // ≈ 0.806
-const CARD_IMAGE_HEIGHT = CARD_WIDTH / COVER_ASPECT_RATIO;
 
 const HEADER_HEIGHT = 60;
 const BOTTOM_BAR_HEIGHT = 64;
@@ -155,6 +154,42 @@ const formatRelativeTime = (dateString?: string) => {
     return date.toLocaleDateString();
   }
 };
+
+// ============================================================
+// 自适应图片组件 - 保持原始宽高比
+// ============================================================
+function AdaptiveImage({ 
+  source, 
+  width, 
+  style,
+  defaultAspectRatio = 1,
+  onLoadEnd,
+  ...props 
+}: { 
+  source: ImageSource; 
+  width: number | string;
+  style?: any;
+  defaultAspectRatio?: number;
+  onLoadEnd?: () => void;
+} & Omit<React.ComponentProps<typeof Image>, 'source' | 'style' | 'onLoadEnd'>) {
+  const [aspectRatio, setAspectRatio] = useState(defaultAspectRatio);
+  
+  return (
+    <Image
+      source={source}
+      style={[{ width, aspectRatio }, style]}
+      contentFit="cover"
+      onLoad={(e) => {
+        const { width: w, height: h } = e.source;
+        if (w && h && h > 0) {
+          setAspectRatio(w / h);
+        }
+        onLoadEnd?.();
+      }}
+      {...props}
+    />
+  );
+}
 
 // ============================================================
 // 顶部导航 Tab
@@ -366,10 +401,11 @@ function FeedCard({
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
       <Pressable style={styles.card} onPress={onPress}>
         {/* 封面图 - 保持原始宽高比 */}
-        <Image
+        <AdaptiveImage
           source={item.coverImage}
-          style={[styles.cardImage, { height: CARD_IMAGE_HEIGHT + 2, marginTop: -1 }]}
-          contentFit="cover"
+          width="100%"
+          style={styles.cardImage}
+          defaultAspectRatio={COVER_ASPECT_RATIO}
           transition={200}
         />
 
@@ -976,10 +1012,11 @@ const PageItem = React.memo((props: {
             onTouchEnd={() => { isTouchingImage.current = false; }}
             onTouchCancel={() => { isTouchingImage.current = false; }}
           >
-            <Image
+            <AdaptiveImage
               source={imageSource}
+              width="100%"
               style={styles.blockImage}
-              contentFit="cover"
+              defaultAspectRatio={1.2}
               transition={300}
               onLoadEnd={() => {
                 loadedImagesRef.current += 1;
@@ -1173,10 +1210,11 @@ const PageItem = React.memo((props: {
       >
         {isFirstPage && (
           <View style={{ marginBottom: 8 }}>
-            <Image
+            <AdaptiveImage
               source={getPostCoverImage(post)}
-              style={styles.coverImage}
-              contentFit="cover"
+              width={SCREEN_WIDTH}
+              style={{ backgroundColor: colors.border }}
+              defaultAspectRatio={COVER_ASPECT_RATIO}
               transition={300}
             />
             <View style={styles.titleContainer}>
@@ -3583,9 +3621,10 @@ const styles = StyleSheet.create({
     margin: 4, // Brief margin to ensure border/shadow isn't clipped
   },
   cardImage: {
-    width: '102%',
-    marginLeft: '-1%',
     backgroundColor: colors.border,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: 'hidden',
   },
   cardContent: {
     padding: 10,
@@ -3760,8 +3799,6 @@ const styles = StyleSheet.create({
     width: 16,
   },
   coverImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 1.2,
     backgroundColor: colors.border,
   },
   titleContainer: {
@@ -3873,8 +3910,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   blockImage: {
-    width: '100%',
-    aspectRatio: 1.2,
     borderRadius: 12,
   },
   imageBlockContainer: {
