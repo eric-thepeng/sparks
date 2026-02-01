@@ -64,6 +64,7 @@ sparks/
 ├─────────────────────────────────────────────────────────────┤
 │  src/data/index.ts (Data Layer)                             │
 │  └── Transform: ApiPost → FeedItem / Post                   │
+│  └── Parse Markdown pages to ContentBlocks                  │
 │  └── Local data fallback                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -123,64 +124,46 @@ https://spark-api-nvy6vvhfoa-ue.a.run.app
 
 ### Data Structures
 
-The API returns two types of posts:
-
-**1. Simple Post (ApiSimplePost) - Manually Created:**
+**API Post Format (ApiPost):**
 ```typescript
 {
-  platform_post_id: string;  // Unique ID, e.g. "spark_6720"
-  author: string;            // Author, e.g. "User_1Cu8D"
+  platform_post_id: string;  // Unique ID
   title: string;             // Title
-  content: string;           // Plain text content
-  tags: string[];            // Tags, e.g. ["Tech", "Random"]
-  like_count: number;        // Like count
-  collect_count: number;     // Collect count
-  created_at: string;        // ISO8601 timestamp
+  cover_image?: string;      // Cover image URL (direct string, or "prompt:xxx" format)
+  pages: string[];           // Array of Markdown strings, one per page
+  tags?: string[];           // Tags array
+  bucket_key?: string;       // Category identifier
+  author?: string;           // Author name
+  like_count?: number;       // Like count
+  collect_count?: number;    // Collect count
+  created_at?: string;       // ISO8601 timestamp
 }
 ```
 
-**2. Rich Post (ApiRichPost) - AI Generated with Images:**
-```typescript
+**Example:**
+```json
 {
-  uid: string;                    // Unique ID
-  title: string;                  // Title
-  topic: string;                  // Topic
-  cover_image: {                  // Cover image
-    url: string;                  // Google Cloud Storage URL
-  };
-  inline_images: [                // Inline images list
-    { id: "img_1", url: "https://storage.googleapis.com/..." },
-    { id: "img_2", url: "https://storage.googleapis.com/..." }
-  ];
-  pages: [                        // Paginated content
-    {
-      index: 1,
-      blocks: [
-        { type: "h2", text: "Header" },
-        { type: "paragraph", text: "Content..." },
-        { type: "image", ref: "img_1" },
-        { type: "bullets", items: ["Item 1", "Item 2"] },
-        { type: "quote", text: "Quote text" },
-        { type: "spacer", size: "md" }
-      ]
-    }
-  ];
-  author?: string;
-  like_count?: number;
-  collect_count?: number;
+  "platform_post_id": "spark_123",
+  "title": "Article Title",
+  "cover_image": "https://storage.googleapis.com/.../cover.png",
+  "pages": [
+    "First page content in **Markdown** format...\n\n![img_1](https://...)",
+    "Second page content...",
+    "Third page content..."
+  ],
+  "bucket_key": "philosophy",
+  "tags": ["Philosophy", "Life"],
+  "like_count": 42,
+  "collect_count": 10
 }
 ```
 
-### Block Types
-
-| Type | Property | Description |
-|------|----------|-------------|
-| h1, h2, h3 | text | Headers |
-| paragraph | text | Paragraph |
-| image | ref | Image reference (matches inline_images.id) |
-| bullets | items[] | Bullet list items |
-| quote | text | Quoted text |
-| spacer | size | Spacing (sm/md/lg) |
+Each page is a Markdown string that may contain:
+- Headers (`#`, `##`, `###`)
+- Paragraphs
+- Images (`![alt](url)`)
+- Lists (`- item` or `1. item`)
+- Blockquotes (`> quote`)
 
 **App Internal Format (FeedItem / Post):**
 ```typescript
@@ -345,11 +328,13 @@ npm run gen:images
 
 2. **Local Images**: React Native doesn't support dynamic `require()`. Use `gen:images` to pre-map all images.
 
-3. **Data Transform**: API `content` is plain text, automatically parsed to `pages/blocks` in `apiPostToPost()`.
+3. **Data Transform**: API `pages` is a Markdown string array, automatically parsed to `pages/blocks` structure in `apiPostToPost()`.
 
-4. **Offline Fallback**: If API fails, use `getFeedItems()` / `getPost()` for local data.
+4. **Cover Image**: The `cover_image` field may be a direct URL or `prompt:xxx` format. Prompt format is treated as no image.
 
-5. **Local Storage**: Save and Notes use AsyncStorage for persistence. Data survives app restarts.
+5. **Offline Fallback**: If API fails, use `getFeedItems()` / `getPost()` for local data.
+
+6. **Local Storage**: Save and Notes use AsyncStorage for persistence. Data survives app restarts.
 
 ## 🔧 Development
 

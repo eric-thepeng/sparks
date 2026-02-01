@@ -5,9 +5,9 @@
  * ┌─────────────────────────────────────────────────────────────┐
  * │  index.ts (这个文件)                                         │
  * │  ↓ 数据转换层 - 将 API 数据转换为 App 内部格式                  │
- * │  ↓ 支持两种帖子格式：                                          │
- * │    - RichPost: 已有 pages/blocks 结构，直接使用               │
- * │    - SimplePost: 只有 content 文本，需要解析为 blocks          │
+ * │  ↓ API 格式：                                                │
+ * │    - pages: Markdown 字符串数组                              │
+ * │    - cover_image: 直接 URL 字符串                            │
  * └─────────────────────────────────────────────────────────────┘
  */
 
@@ -82,14 +82,23 @@ const MOCK_USERS = [
 ];
 
 // ============================================================
-// 类型判断辅助函数
+// 辅助函数
 // ============================================================
 
 /**
- * 判断是否是 RichPost（有 pages 数组）
+ * 获取封面图 URL
+ * cover_image 是直接的 URL 字符串
+ * 返回 null 如果是 prompt: 前缀或不存在
  */
-function hasPages(post: any): boolean {
-  return post.pages && Array.isArray(post.pages) && post.pages.length > 0;
+function getCoverImageUrl(post: any): string | null {
+  if (!post.cover_image) return null;
+  if (typeof post.cover_image !== 'string') return null;
+  
+  // 检查是否是 prompt: 前缀
+  if (post.cover_image.startsWith('prompt:')) {
+    return null; // prompt 格式不是有效的图片 URL
+  }
+  return post.cover_image;
 }
 
 // ============================================================
@@ -101,96 +110,11 @@ function hasPages(post: any): boolean {
  */
 export function apiPostToFeedItem(apiPost: ApiPost, index: number): FeedItem {
   const post = apiPost as any;
-  
-  if (hasPages(post)) {
-    return richPostToFeedItem(post, index);
-  } else {
-    return simplePostToFeedItem(post, index);
-  }
-}
-
-/**
- * RichPost → FeedItem
- */
-function richPostToFeedItem(post: any, index: number): FeedItem {
   const postUid = post.uid || post.platform_post_id || `unknown-${index}`;
   const title = post.title || post.headline || 'Untitled';
   
   let coverImage: ImageSource;
-  if (post.cover_image?.url) {
-    coverImage = { uri: post.cover_image.url };
-  } else {
-    const localCover = getCoverImage(postUid);
-    coverImage = localCover || {
-      uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(title.slice(0, 10))}`,
-    };
-  }
-
-  const author = post.author || 'AI 创作者';
-  return {
-    uid: postUid,
-    title,
-    topic: post.topic || post.bucket_key || 'General',
-    coverImage,
-    likes: post.like_count || 0,
-    isLiked: !!post.is_liked,
-    comments: post.collect_count ? Math.floor(post.collect_count * 0.3) : Math.floor(Math.random() * 50) + 10,
-    user: {
-      id: author,
-      name: author,
-      avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${author}`,
-    },
-  };
-}
-
-/**
- * 从 content 文本中提取第一张 Markdown 图片 URL
- */
-function extractCoverImageFromContent(content: string): { coverUrl: string | null; contentWithoutCover: string } {
-  const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/;
-  const match = content.match(markdownImageRegex);
-  
-  if (match) {
-    const contentWithoutCover = content.replace(match[0], '').trim();
-    return {
-      coverUrl: match[2],
-      contentWithoutCover,
-    };
-  }
-  
-  return {
-    coverUrl: null,
-    contentWithoutCover: content,
-  };
-}
-
-/**
- * SimplePost → FeedItem
- */
-function simplePostToFeedItem(post: any, index: number): FeedItem {
-  const postUid = post.platform_post_id || post.uid;
-  
-  // Safety check: If no UID, this is likely an error response or invalid data
-  if (!postUid) {
-    console.warn('[simplePostToFeedItem] Invalid post data (no UID):', post);
-    return {
-      uid: `invalid-${index}`,
-      title: 'Invalid Post',
-      topic: 'General',
-      coverImage: { uri: 'https://via.placeholder.com/400x500' },
-      likes: 0,
-      isLiked: false,
-      comments: 0,
-      user: { id: 'error', name: 'System', avatar: '' }
-    };
-  }
-
-  const title = post.title || 'Untitled';
-  
-  // 从 content 中提取封面图
-  const { coverUrl } = extractCoverImageFromContent(post.content || '');
-  
-  let coverImage: ImageSource;
+  const coverUrl = getCoverImageUrl(post);
   if (coverUrl) {
     coverImage = { uri: coverUrl };
   } else {
@@ -202,11 +126,10 @@ function simplePostToFeedItem(post: any, index: number): FeedItem {
 
   const author = post.author || 'AI 创作者';
   const tags = post.tags || [];
-  
   return {
     uid: postUid,
     title,
-    topic: tags[0] || 'General',
+    topic: post.topic || post.bucket_key || tags[0] || 'General',
     coverImage,
     likes: post.like_count || 0,
     isLiked: !!post.is_liked,
@@ -224,47 +147,38 @@ function simplePostToFeedItem(post: any, index: number): FeedItem {
  */
 export function apiPostToPost(apiPost: ApiPost): Post {
   const post = apiPost as any;
-  
-  if (hasPages(post)) {
-    console.log('[apiPostToPost] RichPost detected, using backend pages');
-    return richPostToPost(post);
-  } else {
-    console.log('[apiPostToPost] SimplePost detected, parsing content');
-    return simplePostToPost(post);
-  }
-}
-
-/**
- * RichPost → Post
- */
-function richPostToPost(post: any): Post {
   const postUid = post.uid || post.platform_post_id || 'unknown';
   const title = post.title || post.headline || 'Untitled';
+  const tags = post.tags || [];
   
-  // 构建内嵌图片映射
-  const inlineImages = new Map<string, string>();
-  if (post.inline_images && Array.isArray(post.inline_images)) {
-    post.inline_images.forEach((img: any) => {
-      if (img.id && img.url) {
-        inlineImages.set(img.id, img.url);
+  // 获取封面图 URL
+  const coverUrl = getCoverImageUrl(post);
+  
+  // 解析每个页面的 Markdown 字符串为 blocks
+  const pages: PostPage[] = (post.pages || [])
+    .map((pageMarkdown: string, idx: number) => {
+      const pageBlocks: ContentBlock[] = [];
+      
+      // 第一页自动添加标题
+      if (idx === 0) {
+        pageBlocks.push({ type: 'h1', text: title });
       }
-    });
-  }
-  console.log('[richPostToPost] Inline images count:', inlineImages.size);
+      
+      // 解析 Markdown 内容为 blocks
+      const paragraphs = pageMarkdown.split(/\n\n+/).filter((p: string) => p.trim());
+      paragraphs.forEach((para: string) => {
+        parseAndAddBlocks(para, pageBlocks);
+      });
+      
+      return {
+        index: idx + 1,
+        blocks: pageBlocks,
+      };
+    })
+    .filter((page: PostPage) => page.blocks.length > 0);
 
-  // 直接使用后端的 pages 结构
-  const pages: PostPage[] = post.pages
-    .map((page: any) => ({
-      index: page.index || 1,
-      blocks: Array.isArray(page.blocks) 
-        ? page.blocks.flatMap((block: any) => convertApiBlock(block, inlineImages))
-        : [],
-    }))
-    .filter(page => page.blocks.length > 0); // Remove pages that ended up empty after parsing
-
-  
-  console.log('[richPostToPost] Using backend pages:', pages.length);
-  console.log('[richPostToPost] Cover URL:', post.cover_image?.url);
+  console.log('[apiPostToPost] Parsed pages count:', pages.length);
+  console.log('[apiPostToPost] Cover URL:', coverUrl);
   
   // 统计图片数量
   let imageCount = 0;
@@ -273,62 +187,20 @@ function richPostToPost(post: any): Post {
       if (block.type === 'image') imageCount++;
     });
   });
-  console.log('[richPostToPost] Total image blocks:', imageCount);
+  console.log('[apiPostToPost] Total image blocks:', imageCount);
 
   return {
     uid: postUid,
     title,
-    topic: post.topic || post.bucket_key || 'General',
+    topic: post.topic || post.bucket_key || tags[0] || 'General',
     pages,
-    coverImageUrl: post.cover_image?.url,
-    inlineImages,
+    coverImageUrl: coverUrl || undefined,
     author: post.author,
     likeCount: post.like_count,
     collectCount: post.collect_count,
     createdAt: post.created_at,
     isLiked: !!post.is_liked,
   };
-}
-
-/**
- * 转换 API Block 为 App Block
- */
-function convertApiBlock(apiBlock: any, inlineImages: Map<string, string>): ContentBlock[] {
-  const blockType = apiBlock.type || 'paragraph';
-  
-  if (blockType === 'paragraph' && apiBlock.text) {
-    // Split paragraphs on blank lines, but keep soft-wrapped lines together.
-    // This prevents mid-word breaks caused by single newlines.
-    const normalized = apiBlock.text.replace(/\r\n/g, '\n');
-    const paragraphChunks = normalized
-      .split(/\n\s*\n+/)
-      .map((p: string) => normalizeSoftWrappedText(p))
-      .filter((p: string) => p.length > 0);
-
-    const result: ContentBlock[] = [];
-    paragraphChunks.forEach((p: string) => {
-      addParagraphBlocks(p, result);
-    });
-
-    return result;
-  }
-
-  const block: ContentBlock = {
-    type: blockType,
-    text: apiBlock.text ? sanitizeText(apiBlock.text) : apiBlock.text,
-    ref: apiBlock.ref,
-    items: apiBlock.items,
-    size: apiBlock.size,
-  };
-
-  if (blockType === 'image' && apiBlock.ref) {
-    const imageUrl = inlineImages.get(apiBlock.ref);
-    if (imageUrl) {
-      block.imageUrl = imageUrl;
-    }
-  }
-
-  return [block];
 }
 
 /**
@@ -357,196 +229,9 @@ function sanitizeText(text: string): string {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
-/**
- * SimplePost → Post（解析 content 文本）
- */
-function simplePostToPost(post: any): Post {
-  const postUid = post.platform_post_id || post.uid;
-  const title = post.title || 'Untitled';
-  const content = post.content || '';
-  const tags = post.tags || [];
-  
-  // Safety check: If no UID or content, this is likely an error response or invalid data
-  if (!postUid || (!content && !post.pages)) {
-    console.error('[simplePostToPost] Invalid post data:', post);
-    return {
-      uid: postUid || 'invalid',
-      title: 'Post Not Found',
-      topic: 'Error',
-      pages: [{ index: 1, blocks: [{ type: 'paragraph', text: 'The requested post could not be loaded.' }] }]
-    };
-  }
-
-  // 提取封面图
-  const { coverUrl, contentWithoutCover } = extractCoverImageFromContent(content);
-  
-  // 解析 content 为 pages
-  const pages = parseContentToPages(contentWithoutCover, title);
-  
-  console.log('[simplePostToPost] Parsed content into', pages.length, 'pages');
-  console.log('[simplePostToPost] Cover URL:', coverUrl);
-  
-  // 统计图片数量
-  let imageCount = 0;
-  pages.forEach(page => {
-    page.blocks.forEach(block => {
-      if (block.type === 'image') imageCount++;
-    });
-  });
-  console.log('[simplePostToPost] Total images in pages:', imageCount);
-
-  return {
-    uid: postUid,
-    title,
-    topic: tags[0] || 'General',
-    pages,
-    coverImageUrl: coverUrl || undefined,
-    author: post.author,
-    likeCount: post.like_count,
-    collectCount: post.collect_count,
-    createdAt: post.created_at,
-    isLiked: !!post.is_liked,
-  };
-}
-
 // ============================================================
-// Content 解析函数（SimplePost 使用）
+// Markdown 解析函数
 // ============================================================
-
-/**
- * 分页标记：支持多种格式，确保前后是空行或字符串边界
- */
-const PAGE_BREAK_PATTERN = /(?:\n\s*\n|^|\s)(?:---+|<!--\s*page-break\s*-->|\[PAGE_BREAK\])(?:\n\s*\n|$|\s)/gi;
-
-/**
- * 将纯文本内容解析为 pages 和 blocks 结构
- */
-function parseContentToPages(content: string, title: string): PostPage[] {
-  // Deep clean the content: Remove ANY horizontal rules (---) from the very start or end
-  // Horizontal rules are used only for middle page breaks.
-  let cleanedContent = content.trim();
-  
-  // Use a loop to handle multiple instances or variations at the start
-  while (cleanedContent.match(/^[\s\n]*---+/)) {
-    cleanedContent = cleanedContent.replace(/^[\s\n]*---+/, '').trim();
-  }
-  
-  // Use a loop to handle multiple instances or variations at the end
-  while (cleanedContent.match(/---+[\s\n]*$/)) {
-    cleanedContent = cleanedContent.replace(/---+[\s\n]*$/, '').trim();
-  }
-
-  // Final safety check: remove any leading/trailing whitespace again
-  cleanedContent = cleanedContent.trim();
-
-  // 检查是否有分页标记
-  const hasPageBreaks = PAGE_BREAK_PATTERN.test(cleanedContent);
-  PAGE_BREAK_PATTERN.lastIndex = 0;
-  
-  if (hasPageBreaks) {
-    return parseContentWithPageBreaks(cleanedContent, title);
-  } else {
-    return parseContentWithFallback(cleanedContent, title);
-  }
-}
-
-/**
- * 根据分页标记解析内容
- */
-function parseContentWithPageBreaks(content: string, title: string): PostPage[] {
-  const pageContents = content.split(PAGE_BREAK_PATTERN).filter(p => p.trim());
-  
-  if (pageContents.length === 0) {
-    const fallbackBlocks: ContentBlock[] = [];
-    addParagraphBlocks(content || '暂无内容', fallbackBlocks);
-    return [{
-      index: 1,
-      blocks: fallbackBlocks,
-    }];
-  }
-  
-  const pages: PostPage[] = [];
-  
-  pageContents.forEach((pageContent, pageIdx) => {
-    const pageBlocks: ContentBlock[] = [];
-    
-    // Auto-add title to the first page if it's not a cover-image only page
-    if (pages.length === 0) {
-      pageBlocks.push({ type: 'h1', text: title });
-    }
-    
-    const paragraphs = pageContent.split(/\n\n+/).filter(p => p.trim());
-    paragraphs.forEach((para) => {
-      parseAndAddBlocks(para, pageBlocks);
-    });
-    
-    // Only add the page if it actually has blocks to display
-    if (pageBlocks.length > 0) {
-      pages.push({
-        index: pages.length + 1,
-        blocks: pageBlocks,
-      });
-    }
-  });
-
-  // If after filtering we have no pages, return a fallback
-  if (pages.length === 0) {
-    return [{
-      index: 1,
-      blocks: [{ type: 'paragraph', text: '暂无内容' }]
-    }];
-  }
-  
-  return pages;
-}
-
-/**
- * 默认分页逻辑（每 8 段落一页）
- */
-function parseContentWithFallback(content: string, title: string): PostPage[] {
-  // Split by double newlines first (standard paragraphs)
-  let paragraphs = content.split(/\n\n+/).filter(p => p.trim());
-  
-  // If we only have 1 big chunk, try splitting by single newlines if it's long
-  if (paragraphs.length === 1 && content.length > 500) {
-    paragraphs = content.split(/\n+/).filter(p => p.trim());
-  }
-  
-  if (paragraphs.length === 0) {
-    const fallbackBlocks: ContentBlock[] = [];
-    addParagraphBlocks(content || '暂无内容', fallbackBlocks);
-    return [{
-      index: 1,
-      blocks: fallbackBlocks,
-    }];
-  }
-
-  const PARAGRAPHS_PER_PAGE = 1000; // Effectively no limit to page length
-  const pages: PostPage[] = [];
-  
-  for (let i = 0; i < paragraphs.length; i += PARAGRAPHS_PER_PAGE) {
-    const pageBlocks: ContentBlock[] = [];
-    const pageParagraphs = paragraphs.slice(i, i + PARAGRAPHS_PER_PAGE);
-    
-    // Auto-add title to the first page
-    if (pages.length === 0) {
-      pageBlocks.push({ type: 'h1', text: title });
-    }
-    
-    pageParagraphs.forEach((para) => {
-      parseAndAddBlocks(para, pageBlocks);
-    });
-    
-    if (pageBlocks.length > 0) {
-      pages.push({
-        index: pages.length + 1,
-        blocks: pageBlocks,
-      });
-    }
-  }
-  
-  return pages;
-}
 
 /**
  * 解析单个段落并添加到 blocks 数组

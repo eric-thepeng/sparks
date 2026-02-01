@@ -341,13 +341,17 @@ export function SavedProvider({ children }: SavedProviderProps) {
       console.log('[SavedContext] Remote saved posts:', JSON.stringify(remoteSavedPosts, null, 2));
       
       // 2. Convert remote posts to SavedPost format
-      // All posts are RichPost format
+      // cover_image is a direct URL string (or "prompt:xxx" format)
       const convertedRemotePosts: SavedPost[] = remoteSavedPosts.map(p => {
         const post = p as ApiRichPost;
         const uid = post.uid || (post as any).platform_post_id;
         const title = post.title;
         const topic = post.topic || post.bucket_key || 'General';
-        const coverUri = post.cover_image?.url;
+        
+        // cover_image is a direct URL string, skip prompt: prefix
+        const coverUri = post.cover_image && !post.cover_image.startsWith('prompt:') 
+          ? post.cover_image 
+          : undefined;
         
         return {
           uid,
