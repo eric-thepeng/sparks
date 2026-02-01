@@ -2,47 +2,32 @@
  * API 类型定义
  * 匹配后端 API 返回的数据结构
  * 
- * 所有帖子都是 RichPost 格式，包含 pages/blocks 结构
+ * 格式说明：
+ * - cover_image: 直接是 URL 字符串（或 "prompt:xxx" 格式）
+ * - pages: 字符串数组，每个元素是一页的 Markdown 内容
+ * - 不再有 content 字段
  */
 
 // ============================================================
-// 帖子类型（RichPost - 包含图片和分页内容）
+// 帖子类型（pages 为 Markdown 字符串数组）
 // ============================================================
 
-export interface ApiImage {
-  id?: string;              // 内嵌图片 ID，如 "img_1"
-  url: string;              // 图片 URL
-  prompt?: string;          // 图片描述
-  file_name?: string;       // 文件名
-  placement_hint?: string;  // 放置提示
-}
-
-export interface ApiBlock {
-  type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'image' | 'spacer' | 'bullets' | 'quote';
-  text?: string;           // 标题、段落、引用的文本
-  ref?: string;            // 图片引用，对应 inline_images 的 id
-  items?: string[];        // bullets 列表项
-  size?: 'sm' | 'md' | 'lg'; // spacer 大小
-}
-
-export interface ApiPage {
-  index: number;            // 页码 (1-based)
-  target_words?: number;    // 目标字数
-  actual_words?: number;    // 实际字数
-  blocks: ApiBlock[];
-}
-
-export interface ApiRichPost {
-  uid: string;
+/**
+ * API Post 格式
+ * cover_image 是直接的 URL 字符串
+ * pages 是 Markdown 字符串数组
+ */
+export interface ApiPost {
+  uid?: string;
+  platform_post_id?: string;  // 唯一标识符
   title: string;
-  headline?: string;        // 同 title
+  headline?: string;          // 同 title
   topic?: string;
-  bucket_key?: string;      // 分类标识
-  total_pages?: number;     // 总页数
-  cover_image?: ApiImage;
-  inline_images?: ApiImage[];
-  pages: ApiPage[];
-  // 可选的社交数据
+  bucket_key?: string;        // 分类标识
+  cover_image?: string;       // 封面图 URL，可能为空或 "prompt:xxx" 格式
+  pages: string[];            // 每页内容数组，每个元素是 Markdown 字符串
+  tags?: string[];            // 标签数组
+  // 社交数据
   author?: string;
   like_count?: number;
   collect_count?: number;
@@ -50,11 +35,8 @@ export interface ApiRichPost {
   is_liked?: boolean;
 }
 
-// ============================================================
-// 帖子类型 - 所有帖子都是 RichPost 格式
-// ============================================================
-
-export type ApiPost = ApiRichPost;
+// Alias for compatibility
+export type ApiRichPost = ApiPost;
 
 // ============================================================
 // 其他 API 类型
