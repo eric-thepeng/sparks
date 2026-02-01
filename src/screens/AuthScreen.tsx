@@ -47,16 +47,16 @@ export const AuthScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
 
-  // Google Auth Request
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // Only pass iosClientId on iOS to prevent Web ID usage
-    iosClientId: '346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj.apps.googleusercontent.com',
-    androidClientId: config.googleClientId,
-    // Use scheme for native development builds
-    redirectUri: makeRedirectUri({
-      scheme: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj'
-    })
-  });
+    // Google Auth Request
+    const [request, response, promptAsync] = Google.useAuthRequest({
+      // Only pass iosClientId on iOS to prevent Web ID usage
+      iosClientId: config.viteIosGoogleClientId || config.iosGoogleClientId,
+      androidClientId: config.viteGoogleClientId || config.googleClientId,
+      // Use scheme for native development builds
+      redirectUri: makeRedirectUri({
+        scheme: 'com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q'
+      })
+    });
 
   useEffect(() => {
     if (request) {

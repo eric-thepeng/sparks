@@ -34,4 +34,6 @@ export const config = {
   authStorageKey: getEnv('EXPO_PUBLIC_AUTH_STORAGE_KEY', 'auth'),
   googleClientId: getEnv('EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID', ''),
   iosGoogleClientId: getEnv('EXPO_PUBLIC_IOS_OAUTH_CLIENT_ID'),
+  viteGoogleClientId: getEnv('VITE_GOOGLE_OAUTH_CLIENT_ID'),
+  viteIosGoogleClientId: getEnv('VITE_IOS_OAUTH_CLIENT_ID'),
 };

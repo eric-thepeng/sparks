@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "spark",
+    "slug": "spark",
     "scheme": [
       "sparks",
-      "com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj"
+      "com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q"
     ],
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,7 +18,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sparks",
+      "bundleIdentifier": "com.gc.spark",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -30,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.sparks"
+      "package": "com.gc.spark"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,8 +41,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "9ac143ed-936c-4c44-9688-fb64101b3ffe"
+        "projectId": "20773384-99bf-45a8-b0c5-150db49adb10"
       }
-    }
+    },
+    "owner": "bellinimoon"
   }
 }
