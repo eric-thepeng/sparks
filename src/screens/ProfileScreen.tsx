@@ -137,7 +137,7 @@ export const ProfileScreen = ({
   // Onboarding State (name selection)
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingName, setOnboardingName] = useState('');
-
+  
   // Interests Onboarding Modal
   const [showInterestsModal, setShowInterestsModal] = useState(false);
 
@@ -151,11 +151,11 @@ export const ProfileScreen = ({
       // Trigger onboarding if no display name is set (fresh signup)
       // Check if displayName is empty/null or matches the 8-digit ID exactly
       if (!user.displayName || (user.userid && user.displayName === user.userid)) {
-        // Also check if userid looks like generated ID to be sure
-        if (/^\d{8}$/.test(user.userid || '')) {
-          setShowOnboarding(true);
-          setOnboardingName('');
-        }
+         // Also check if userid looks like generated ID to be sure
+         if (/^\d{8}$/.test(user.userid || '')) {
+            setShowOnboarding(true);
+            setOnboardingName('');
+         }
       }
     }
   }, [user]);

@@ -16,6 +16,35 @@ export interface Bucket {
 }
 
 /**
+ * Tag 数据定义
+ */
+export interface Tag {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
+/**
+ * 15 个内容标签 Tags
+ */
+export const TAGS: Tag[] = [
+  { id: 'myth_mystery', name: 'Myth & Mystery', emoji: '🏺' },
+  { id: 'religion', name: 'Religion', emoji: '🙏' },
+  { id: 'philosophy', name: 'Philosophy', emoji: '🧠' },
+  { id: 'literature', name: 'Literature', emoji: '📖' },
+  { id: 'history', name: 'History', emoji: '🏰' },
+  { id: 'power_society', name: 'Power & Society', emoji: '🏛️' },
+  { id: 'mind', name: 'Mind', emoji: '🧘' },
+  { id: 'science_nature', name: 'Science & Nature', emoji: '🧬' },
+  { id: 'technology', name: 'Technology', emoji: '🤖' },
+  { id: 'art', name: 'Art', emoji: '🖼️' },
+  { id: 'aesthetics', name: 'Aesthetics', emoji: '✨' },
+  { id: 'food', name: 'Food', emoji: '🥑' },
+  { id: 'crime', name: 'Crime', emoji: '🕵️' },
+  { id: 'legacy', name: 'Legacy', emoji: '👤' },
+];
+
+/**
  * 10 个内容分类 Bucket (Initial static data, will be updated from backend)
  */
 export let BUCKETS: Bucket[] = [

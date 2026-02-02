@@ -4,10 +4,9 @@
     "slug": "spark",
     "scheme": [
       "sparks",
-      "com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q",
       "com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj"
     ],
-    "version": "1.0.5",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +18,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gc.spark",
+      "bundleIdentifier": "com.gc.sparks",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,9 +41,8 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "20773384-99bf-45a8-b0c5-150db49adb10"
+        "projectId": "9ac143ed-936c-4c44-9688-fb64101b3ffe"
       }
-    },
-    "owner": "bellinimoon"
+    }
   }
 }

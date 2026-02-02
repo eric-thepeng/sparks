@@ -28,7 +28,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFEF9',         // Lighter Creamy White
+  card: '#FFFFFF',         // Pure White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -47,14 +47,16 @@ export const AuthScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
 
-    // Google Auth Request
-    const [request, response, promptAsync] = Google.useAuthRequest({
-      iosClientId: config.iosGoogleClientId,
-      androidClientId: config.googleClientId,
-      redirectUri: makeRedirectUri({
-        native: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj:/oauth2redirect',
-      })
-    });
+  // Google Auth Request
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    // Only pass iosClientId on iOS to prevent Web ID usage
+    iosClientId: '346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj.apps.googleusercontent.com',
+    androidClientId: config.googleClientId,
+    // Use scheme for native development builds
+    redirectUri: makeRedirectUri({
+      scheme: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj'
+    })
+  });
 
   useEffect(() => {
     if (request) {
