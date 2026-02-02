@@ -28,7 +28,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFFFF',         // Pure White
+  card: '#FFFEF9',         // Lighter Creamy White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -49,12 +49,10 @@ export const AuthScreen = () => {
 
     // Google Auth Request
     const [request, response, promptAsync] = Google.useAuthRequest({
-      // Only pass iosClientId on iOS to prevent Web ID usage
-      iosClientId: config.viteIosGoogleClientId || config.iosGoogleClientId,
-      androidClientId: config.viteGoogleClientId || config.googleClientId,
-      // Use scheme for native development builds
+      iosClientId: config.iosGoogleClientId,
+      androidClientId: config.googleClientId,
       redirectUri: makeRedirectUri({
-        scheme: 'com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q'
+        native: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj:/oauth2redirect',
       })
     });
 

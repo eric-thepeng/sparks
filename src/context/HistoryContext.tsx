@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Post, FeedItem } from '../data';
 import { config } from '../config';
+import { useAuth } from './AuthContext';
 
 // ============================================================
 // Types
@@ -32,34 +33,46 @@ const MAX_HISTORY_SIZE = 100; // Keep last 100 items
 // ============================================================
 
 export function HistoryProvider({ children }: { children: ReactNode }) {
+  const { token } = useAuth();
   const [history, setHistory] = useState<HistoryPost[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Load history when user changes
   useEffect(() => {
     const init = async () => {
+      console.log('[HistoryProvider] Initializing history...');
       const storedAuth = await AsyncStorage.getItem(config.authStorageKey);
       if (storedAuth) {
         try {
-          const { user } = JSON.parse(storedAuth);
+          const parsedAuth = JSON.parse(storedAuth);
+          const user = parsedAuth.user;
           if (user?.id) {
+            console.log('[HistoryProvider] Found user ID:', user.id);
             setUserId(user.id);
             loadHistory(user.id);
             return;
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[HistoryProvider] Failed to parse auth storage:', e);
+        }
       }
+      console.log('[HistoryProvider] No user ID found, resetting history');
       setUserId(null);
       setHistory([]);
     };
     init();
-  }, []); // Basic init, realistically should listen to AuthContext but this matches SavedContext pattern
+  }, [token]); // Add token as dependency to re-init on login/logout
 
   const loadHistory = async (uid: string) => {
+    console.log('[HistoryProvider] Loading history for user UID:', uid);
     try {
       const stored = await AsyncStorage.getItem(`${STORAGE_KEY_PREFIX}${uid}`);
       if (stored) {
-        setHistory(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        console.log('[HistoryProvider] Loaded items from storage:', parsed.length);
+        setHistory(parsed);
+      } else {
+        console.log('[HistoryProvider] No stored history found for this user');
       }
     } catch (e) {
       console.error('Failed to load history', e);
@@ -68,6 +81,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
   const addToHistory = useCallback(async (post: Post | FeedItem) => {
     if (!userId) return;
+
+    console.log('[History] addToHistory called for:', post.uid);
 
     // Call backend API to record history
     try {
@@ -94,7 +109,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
       const newHistory = [newEntry, ...filtered].slice(0, MAX_HISTORY_SIZE);
       
-      // Persist
+      // Persist locally
       AsyncStorage.setItem(`${STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(newHistory));
       return newHistory;
     });

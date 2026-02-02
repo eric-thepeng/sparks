@@ -32,8 +32,8 @@ export const config = {
   apiBaseUrl: getEnv('EXPO_PUBLIC_API_BASE_URL', 'https://spark-api-346549054402.us-east1.run.app'),
   apiPrefix: getEnv('EXPO_PUBLIC_API_PREFIX', ''),
   authStorageKey: getEnv('EXPO_PUBLIC_AUTH_STORAGE_KEY', 'auth'),
-  googleClientId: getEnv('EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID', ''),
-  iosGoogleClientId: getEnv('EXPO_PUBLIC_IOS_OAUTH_CLIENT_ID'),
+  googleClientId: getEnv('EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID', '346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q.apps.googleusercontent.com'),
+  iosGoogleClientId: getEnv('EXPO_PUBLIC_IOS_OAUTH_CLIENT_ID', '346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj.apps.googleusercontent.com'),
   viteGoogleClientId: getEnv('VITE_GOOGLE_OAUTH_CLIENT_ID'),
   viteIosGoogleClientId: getEnv('VITE_IOS_OAUTH_CLIENT_ID'),
 };

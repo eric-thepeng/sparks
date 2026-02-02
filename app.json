@@ -4,9 +4,10 @@
     "slug": "spark",
     "scheme": [
       "sparks",
-      "com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q"
+      "com.googleusercontent.apps.346549054402-k0lf52lcpedvcjs52kug9so94nhp5f4q",
+      "com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj"
     ],
-    "version": "1.0.0",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

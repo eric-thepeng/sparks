@@ -13,33 +13,33 @@ import {
   Platform,
   FlatList,
   RefreshControl,
-  } from 'react-native';
-  import { Image } from 'expo-image';
-  // Use legacy import for getInfoAsync compatibility
-  import * as FileSystem from 'expo-file-system/legacy';
-  import * as ImageManipulator from 'expo-image-manipulator';
-  import { useAuth } from '../context/AuthContext';
-  import { 
-    uploadImage, 
-    getMyHistory, 
-    getMyLikes, 
-    unlikeItem, 
-    clearHistory,
-    ProfileItem,
-    ApiPost 
-  } from '../api';
-  import { 
-  Camera, 
-  LogOut, 
-  Save, 
-  X, 
-  Globe, 
-  Clock, 
-  User as UserIcon, 
-  History as HistoryIcon, 
-  Heart, 
-  ChevronRight, 
-  Trash2, 
+} from 'react-native';
+import { Image } from 'expo-image';
+// Use legacy import for getInfoAsync compatibility
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { useAuth } from '../context/AuthContext';
+import {
+  uploadImage,
+  getMyHistory,
+  getMyLikes,
+  unlikeItem,
+  clearHistory,
+  ProfileItem,
+  ApiPost
+} from '../api';
+import {
+  Camera,
+  LogOut,
+  Save,
+  X,
+  Globe,
+  Clock,
+  User as UserIcon,
+  History as HistoryIcon,
+  Heart,
+  ChevronRight,
+  Trash2,
   Sparkles,
   Pencil
 } from 'lucide-react-native';
@@ -53,7 +53,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFFFF',         // Pure White
+  card: '#FFFEF9',         // Lighter Creamy White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -65,7 +65,7 @@ const colors = {
 // Formatting Helpers
 const formatLanguage = (langCode: string | null) => {
   if (!langCode) return 'English';
-  
+
   try {
     // @ts-ignore
     if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
@@ -78,11 +78,11 @@ const formatLanguage = (langCode: string | null) => {
       if (parts[1] && parts[1].length > 2) {
         codeToUse = `${parts[0]}-${parts[1]}`;
       }
-      
+
       const name = displayNames.of(codeToUse);
       if (name) return name;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Fallback map
   const langMap: Record<string, string> = {
@@ -97,14 +97,14 @@ const formatLanguage = (langCode: string | null) => {
     'pt': 'Portuguese',
     'it': 'Italian',
   };
-  
+
   const base = langCode.split('-')[0].toLowerCase();
   return langMap[base] || langCode;
 };
 
 const formatLocation = (timezone: string | null) => {
   if (!timezone || timezone === 'UTC') return 'Global';
-  
+
   // Asia/Shanghai -> Shanghai
   // America/New_York -> New York
   const parts = timezone.split('/');
@@ -112,19 +112,19 @@ const formatLocation = (timezone: string | null) => {
   return city.replace(/_/g, ' ');
 };
 
-export const ProfileScreen = ({ 
+export const ProfileScreen = ({
   onItemPress,
   onToggleLike,
   onHistoryPress,
   onLikesPress
-}: { 
+}: {
   onItemPress?: (id: string) => void;
   onToggleLike?: () => void;
   onHistoryPress?: () => void;
   onLikesPress?: () => void;
 }) => {
   const { user, updateProfile, logout } = useAuth();
-  
+
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -137,7 +137,7 @@ export const ProfileScreen = ({
   // Onboarding State (name selection)
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingName, setOnboardingName] = useState('');
-  
+
   // Interests Onboarding Modal
   const [showInterestsModal, setShowInterestsModal] = useState(false);
 
@@ -151,11 +151,11 @@ export const ProfileScreen = ({
       // Trigger onboarding if no display name is set (fresh signup)
       // Check if displayName is empty/null or matches the 8-digit ID exactly
       if (!user.displayName || (user.userid && user.displayName === user.userid)) {
-         // Also check if userid looks like generated ID to be sure
-         if (/^\d{8}$/.test(user.userid || '')) {
-            setShowOnboarding(true);
-            setOnboardingName('');
-         }
+        // Also check if userid looks like generated ID to be sure
+        if (/^\d{8}$/.test(user.userid || '')) {
+          setShowOnboarding(true);
+          setOnboardingName('');
+        }
       }
     }
   }, [user]);
@@ -163,30 +163,30 @@ export const ProfileScreen = ({
   const pickImage = async () => {
     if (!isEditing) return;
 
-      try {
-        // Dynamic import to avoid crash if native module not available
-        const ImagePicker = await import('expo-image-picker');
-        
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true, // Allows user to crop ("chop")
-          aspect: [1, 1],      // Force square aspect ratio
-          quality: 1,          // Get full quality first, we compress later
-        });
-  
-        if (!result.canceled && result.assets[0]) {
-          // Resize and Compress ("Decrease Size")
-          const manipResult = await ImageManipulator.manipulateAsync(
-            result.assets[0].uri,
-            [
-              { resize: { width: 800 } } // Resize to 800px width (maintains aspect ratio)
-            ],
-            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70% quality
-          );
+    try {
+      // Dynamic import to avoid crash if native module not available
+      const ImagePicker = await import('expo-image-picker');
 
-          setAvatar(manipResult.uri);
-        }
-      } catch (error) {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true, // Allows user to crop ("chop")
+        aspect: [1, 1],      // Force square aspect ratio
+        quality: 1,          // Get full quality first, we compress later
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        // Resize and Compress ("Decrease Size")
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [
+            { resize: { width: 800 } } // Resize to 800px width (maintains aspect ratio)
+          ],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70% quality
+        );
+
+        setAvatar(manipResult.uri);
+      }
+    } catch (error) {
       console.error('ImagePicker error:', error);
       Alert.alert(
         'Feature Unavailable',
@@ -208,27 +208,27 @@ export const ProfileScreen = ({
 
       // Handle Image Upload if avatar is a local file
       if (avatar && (avatar.startsWith('file://') || avatar.startsWith('content://'))) {
-         try {
-           const fileInfo = await FileSystem.getInfoAsync(avatar);
-           if (fileInfo.exists) {
-             const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-             if (fileInfo.size > MAX_SIZE) {
-               Alert.alert('File too large', 'Profile photo must be under 5MB.');
-               setLoading(false);
-               return;
-             }
-             
-             // Upload
-             console.log('Uploading image...');
-             finalPhotoUrl = await uploadImage(avatar);
-             console.log('Upload success, url:', finalPhotoUrl);
-           }
-         } catch (uploadError: any) {
-           console.error('Upload failed:', uploadError);
-           Alert.alert('Upload Failed', 'Could not upload profile photo. Please try again.');
-           setLoading(false);
-           return;
-         }
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(avatar);
+          if (fileInfo.exists) {
+            const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+            if (fileInfo.size > MAX_SIZE) {
+              Alert.alert('File too large', 'Profile photo must be under 5MB.');
+              setLoading(false);
+              return;
+            }
+
+            // Upload
+            console.log('Uploading image...');
+            finalPhotoUrl = await uploadImage(avatar);
+            console.log('Upload success, url:', finalPhotoUrl);
+          }
+        } catch (uploadError: any) {
+          console.error('Upload failed:', uploadError);
+          Alert.alert('Upload Failed', 'Could not upload profile photo. Please try again.');
+          setLoading(false);
+          return;
+        }
       }
 
       await updateProfile({
@@ -262,7 +262,7 @@ export const ProfileScreen = ({
       Alert.alert('Invalid Name', 'Name must be at least 2 characters.');
       return;
     }
-    
+
     setLoading(true);
     try {
       await updateProfile({ displayName: onboardingName.trim() });
@@ -325,16 +325,16 @@ export const ProfileScreen = ({
       <View style={styles.actions}>
         {isEditing ? (
           <View style={styles.editActions}>
-            <Pressable 
-              style={[styles.button, styles.cancelButton]} 
+            <Pressable
+              style={[styles.button, styles.cancelButton]}
               onPress={handleCancel}
               disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
-            
-            <Pressable 
-              style={[styles.button, styles.saveButton, { flex: 1 }]} 
+
+            <Pressable
+              style={[styles.button, styles.saveButton, { flex: 1 }]}
               onPress={handleSave}
               disabled={loading}
             >
@@ -349,8 +349,8 @@ export const ProfileScreen = ({
         ) : (
           <>
             {/* Update Interests Button */}
-            <Pressable 
-              style={[styles.button, styles.interestsButton]} 
+            <Pressable
+              style={[styles.button, styles.interestsButton]}
               onPress={() => setShowInterestsModal(true)}
             >
               <Sparkles size={18} color="#B45309" />
@@ -391,16 +391,16 @@ export const ProfileScreen = ({
         visible={showOnboarding}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => {}} // Prevent closing
+        onRequestClose={() => { }} // Prevent closing
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Choose a Display Name</Text>
             <Text style={styles.modalSubtitle}>How should we call you?</Text>
-            
+
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Alex"
@@ -408,9 +408,9 @@ export const ProfileScreen = ({
               onChangeText={setOnboardingName}
               autoCapitalize="words"
             />
-            
-            <Pressable 
-              style={[styles.button, styles.saveButton, { width: '100%', marginTop: 16 }]} 
+
+            <Pressable
+              style={[styles.button, styles.saveButton, { width: '100%', marginTop: 16 }]}
               onPress={handleOnboardingSubmit}
               disabled={loading}
             >
@@ -424,26 +424,26 @@ export const ProfileScreen = ({
 
       {/* Header (Avatar & Name) - Always visible */}
       <View style={styles.header}>
-        {/* Top Left Actions */}
+        {/* Top Left Actions (Likes & History) */}
         {!isEditing && (
           <View style={styles.headerLeft}>
-            <Pressable 
-              style={styles.headerActionButton} 
-              onPress={() => setIsEditing(true)}
-            >
-              <Pencil size={20} color={colors.error} />
+            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
+              <Heart size={20} color="#B45309" />
+            </Pressable>
+            <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
+              <HistoryIcon size={20} color="#B45309" />
             </Pressable>
           </View>
         )}
 
-        {/* Top Right Actions */}
+        {/* Top Right Actions (Edit) */}
         {!isEditing && (
           <View style={styles.headerRight}>
-            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
-              <Heart size={24} color={colors.text} />
-            </Pressable>
-            <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
-              <HistoryIcon size={24} color={colors.text} />
+            <Pressable 
+              style={styles.headerEditButton} 
+              onPress={() => setIsEditing(true)}
+            >
+              <Pencil size={16} color={colors.text} />
             </Pressable>
           </View>
         )}
@@ -456,14 +456,14 @@ export const ProfileScreen = ({
               <UserIcon size={40} color={colors.textMuted} />
             </View>
           )}
-          
+
           {isEditing && (
             <View style={styles.cameraButton}>
               <Camera size={16} color="#fff" />
             </View>
           )}
         </Pressable>
-        
+
         {/* Basic Info */}
         {!isEditing && (
           <View style={styles.headerInfo}>
@@ -476,8 +476,8 @@ export const ProfileScreen = ({
       </View>
 
       {/* Content Area */}
-      <ScrollView 
-        style={styles.content} 
+      <ScrollView
+        style={styles.content}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         {renderProfileContent()}
@@ -504,21 +504,37 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     position: 'absolute',
-    top: 20,
+    bottom: 16,
     right: 16,
-    flexDirection: 'column',
-    gap: 8,
+    zIndex: 10,
   },
   headerLeft: {
     position: 'absolute',
     top: 20,
     left: 16,
+    flexDirection: 'column',
+    gap: 8,
     zIndex: 10,
   },
   headerActionButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#B45309',
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  headerEditButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
@@ -562,9 +578,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   idText: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 11,
+    color: colors.textMuted,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    overflow: 'hidden',
   },
   tabs: {
     flexDirection: 'row',
@@ -807,17 +829,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemBadge: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
     color: '#B45309',
     backgroundColor: colors.primaryBg,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1.5,
     borderRadius: 4,
     overflow: 'hidden',
+    textTransform: 'uppercase',
   },
   itemDate: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textSecondary,
   },
   itemTitle: {

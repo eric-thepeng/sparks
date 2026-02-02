@@ -30,7 +30,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFFFF',         // Pure White
+  card: '#FFFEF9',         // Lighter Creamy White
   text: '#451a03',         // Amber 950
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800

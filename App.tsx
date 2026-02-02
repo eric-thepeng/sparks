@@ -113,7 +113,7 @@ const colors = {
   primaryBg: '#FFF0C2',    // Light Amber/Cream for badges (Warmer)
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
-  card: '#FFFFFF',         // Pure White cards for maximum contrast
+  card: '#FFFEF9',         // Lighter Creamy White for better contrast
   text: '#451a03',         // Amber 950 - Darkest Brown
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
@@ -158,22 +158,22 @@ const formatRelativeTime = (dateString?: string) => {
 // ============================================================
 // 自适应图片组件 - 保持原始宽高比
 // ============================================================
-function AdaptiveImage({ 
-  source, 
-  width, 
+function AdaptiveImage({
+  source,
+  width,
   style,
   defaultAspectRatio = 1,
   onLoadEnd,
-  ...props 
-}: { 
-  source: ImageSource; 
+  ...props
+}: {
+  source: ImageSource;
   width: number | string;
   style?: any;
   defaultAspectRatio?: number;
   onLoadEnd?: () => void;
 } & Omit<React.ComponentProps<typeof Image>, 'source' | 'style' | 'onLoadEnd'>) {
   const [aspectRatio, setAspectRatio] = useState(defaultAspectRatio);
-  
+
   return (
     <Image
       source={source}
@@ -302,6 +302,7 @@ function FeedCard({
   index?: number;
 }) {
   const { token, logout } = useAuth();
+  const { sendLike } = useRecommendation();
   const [isLiked, setIsLiked] = useState(item.isLiked);
   const [likeCount, setLikeCount] = useState(item.likes);
   const [isLiking, setIsLiking] = useState(false);
@@ -352,7 +353,6 @@ function FeedCard({
     setIsLiking(true);
 
     // Call sendLike signal for recommendation
-    const { sendLike } = useRecommendation();
     sendLike(item.uid);
 
     // Optimistic Update
@@ -1263,7 +1263,7 @@ const PageItem = React.memo((props: {
             width: 44,
             height: 44,
             borderRadius: 22,
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: 'rgba(255, 254, 249, 0.95)',
             alignItems: 'center',
             justifyContent: 'center',
             // Subtle shadow
@@ -1869,10 +1869,8 @@ function PostLoader({
       console.log('[PostLoader] Calling sendClick and addToHistory for:', post.uid);
       sendClick(post.uid);
 
-      // Only record history if logged in
-      if (token) {
-        addToHistory(post);
-      }
+      // Always call addToHistory, the context will handle the token check internally
+      addToHistory(post);
     }
   }, [post?.uid, status, sendClick, addToHistory, token]);
 
@@ -2094,14 +2092,20 @@ function HistoryScreen({
   const isLoadingRef = useRef(false);
 
   const loadHistory = useCallback(async (isRefresh = false) => {
-    if (!user || isLoadingRef.current) return;
+    if (!user) {
+      console.log('[HistoryScreen] No user logged in, skipping load');
+      return;
+    }
+    if (isLoadingRef.current) return;
     if (!isRefresh && (!hasMore || (!nextCursor && historyData.length > 0))) return;
 
+    console.log('[HistoryScreen] Loading history from backend, cursor:', isRefresh ? 'none' : nextCursor);
     isLoadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
+      console.log('[HistoryScreen] Backend response items:', response.items?.length || 0);
 
       const newItems = response.items || [];
       setHistoryData(prev => {
@@ -2116,7 +2120,7 @@ function HistoryScreen({
       setNextCursor(response.nextCursor);
       setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
-      console.log('Failed to load history', e);
+      console.error('[HistoryScreen] Failed to load history:', e);
       setError(true);
     } finally {
       setLoading(false);
@@ -2165,7 +2169,7 @@ function HistoryScreen({
       <View style={styles.historyCard}>
         <Pressable
           style={styles.historyCardInner}
-          onPress={() => historyItem.itemType === 'post' && onItemPress(historyItem.itemId)}
+          onPress={() => (historyItem.itemType === 'post' || historyItem.itemType === 'article') && onItemPress(historyItem.itemId)}
         >
           <View style={styles.historyImageContainer}>
             {historyItem.thumbnail ? (
@@ -2333,7 +2337,7 @@ function LikesScreen({
       <View style={styles.historyCard}>
         <Pressable
           style={styles.historyCardInner}
-          onPress={() => likeItem.itemType === 'post' && onItemPress(likeItem.itemId)}
+          onPress={() => (likeItem.itemType === 'post' || likeItem.itemType === 'article') && onItemPress(likeItem.itemId)}
         >
           <View style={styles.historyImageContainer}>
             {likeItem.thumbnail ? (
@@ -4042,8 +4046,8 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   collectionTitle: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -4292,7 +4296,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   savedHeaderTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
     color: colors.text,
   },
@@ -4751,27 +4755,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   historyBadge: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '800',
     color: colors.textSecondary,
     backgroundColor: colors.primaryBg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
     overflow: 'hidden',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   historyDate: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textMuted,
     fontWeight: '500',
   },
   historyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: 18,
   },
   unlikeButton: {
     width: 44,
