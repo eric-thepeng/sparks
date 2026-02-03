@@ -3,7 +3,7 @@
  * Let users choose their tag preferences
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,16 +11,17 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
-  ScrollView
+  ScrollView,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Settings2, X } from 'lucide-react-native';
 import { TAGS, InterestLevel } from '../data/buckets';
 import { submitOnboarding } from '../api';
-import { useRecommendation } from '../context';
+import { useRecommendation, useAuth } from '../context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_GAP = 12;
+const CARD_GAP = 10;
 const PADDING_HORIZONTAL = 24;
 
 // Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
@@ -32,7 +33,7 @@ const colors = {
   accent: '#f43f5e',       // rose-500
   bg: '#F4F1E6',           // Distinct Sand background
   card: '#FFFEF9',         // Lighter Creamy White
-  text: '#451a03',         // Amber 950
+  text: '#451a03',         // Amber 950 - Darkest Brown
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
   border: '#E8E4D6',       // Sand Border
@@ -41,29 +42,79 @@ const colors = {
   selectedBorder: '#B45309', // Deep Amber for selected
 };
 
+interface OnboardingScreenProps {
+  /** Completion callback */
+  onComplete: () => void;
+  /** Show close button (for re-onboard mode) */
+  showCloseButton?: boolean;
+  /** Close callback */
+  onClose?: () => void;
+  /** Initial interests from user profile */
+  initialInterests?: Record<string, InterestLevel>;
+}
+
 export function OnboardingScreen({ 
   onComplete, 
   showCloseButton = false,
-  onClose 
-}: {
-  onComplete: () => void;
-  showCloseButton?: boolean;
-  onClose?: () => void;
-}) {
+  onClose,
+  initialInterests
+}: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
   const { updateFromResponse } = useRecommendation();
+  const { user, updateProfile } = useAuth();
   
-  const [interests, setInterests] = useState<Record<string, InterestLevel>>({});
+  // Initialize from props, then from user context, then empty
+  const [interests, setInterests] = useState<Record<string, InterestLevel>>(initialInterests || user?.interests || {});
+  
+  // Track the order in which tags were selected
+  const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
+  
+  // Track the order of unselected tags
+  const [unselectedOrder, setUnselectedOrder] = useState<string[]>([]);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedCount = Object.values(interests).filter(
-    level => level === 'interested' || level === 'super_interested'
-  ).length;
+  // Effect to initialize orders based on interests
+  useEffect(() => {
+    const currentInterests = initialInterests || user?.interests || {};
+    setInterests(currentInterests);
+    
+    const selected = Object.keys(currentInterests).filter(id => currentInterests[id] !== 'none');
+    setSelectionOrder(selected);
+    
+    const unselected = TAGS.map(t => t.id).filter(id => !currentInterests[id] || currentInterests[id] === 'none');
+    setUnselectedOrder(unselected);
+  }, [initialInterests, user?.interests]);
+
+  // Use selectionOrder to determine the display order of selected tags
+  const selectedTags = useMemo(() => {
+    return selectionOrder
+      .map(id => TAGS.find(tag => tag.id === id))
+      .filter((tag): tag is typeof TAGS[0] => !!tag && !!interests[tag.id] && interests[tag.id] !== 'none');
+  }, [interests, selectionOrder]);
+
+  // Use unselectedOrder to determine the display order of unselected tags
+  const availableTags = useMemo(() => {
+    return unselectedOrder
+      .map(id => TAGS.find(tag => tag.id === id))
+      .filter((tag): tag is typeof TAGS[0] => !!tag && (!interests[tag.id] || interests[tag.id] === 'none'));
+  }, [interests, unselectedOrder]);
+
+  const selectedCount = selectedTags.length;
 
   const handleToggle = useCallback((tagId: string) => {
     setInterests(prev => {
       const current = prev[tagId] || 'none';
       const next: InterestLevel = current === 'none' ? 'interested' : 'none';
+      
+      // Update selection order: add to end if selected, remove if deselected
+      if (next === 'interested') {
+        setSelectionOrder(order => [...order, tagId]);
+        setUnselectedOrder(order => order.filter(id => id !== tagId));
+      } else {
+        setSelectionOrder(order => order.filter(id => id !== tagId));
+        setUnselectedOrder(order => [...order, tagId]);
+      }
       
       if (next === 'none') {
         const { [tagId]: _, ...rest } = prev;
@@ -79,19 +130,37 @@ export function OnboardingScreen({
     
     setIsSubmitting(true);
     try {
+      console.log('[Onboarding] Submitting tag interests:', interests);
+      
+      // 1. Submit tag interests to the backend (updates recommendation weights)
       const response = await submitOnboarding(interests);
+      console.log('[Onboarding] Success, response:', response);
+      
+      // 2. Update the local user profile state immediately
+      // This ensures the profile page updates without re-login
+      try {
+        await updateProfile({ interests });
+        console.log('[Onboarding] Successfully updated local profile and persisted to backend');
+      } catch (profileErr) {
+        console.error('[Onboarding] Failed to update profile:', profileErr);
+      }
+      
       if (response && response.bucket_count) {
         updateFromResponse(response.bucket_count, response.click_count || 0);
       }
     } catch (err: any) {
-      console.warn('[Onboarding] Failed:', err);
+      if (err?.status === 404) {
+        console.warn('[Onboarding] API not implemented yet, continuing anyway');
+      } else {
+        console.warn('[Onboarding] Failed:', err);
+      }
     } finally {
       setIsSubmitting(false);
       onComplete();
     }
-  }, [interests, selectedCount, onComplete, updateFromResponse]);
+  }, [interests, selectedCount, onComplete, updateFromResponse, updateProfile]);
 
-  const renderTagCard = (tag: typeof TAGS[0]) => {
+  const renderTagCard = (tag: typeof TAGS[0], isSmall = false) => {
     const isSelected = !!interests[tag.id] && interests[tag.id] !== 'none';
 
     return (
@@ -99,20 +168,24 @@ export function OnboardingScreen({
         key={tag.id}
         style={[
           styles.card,
-          isSelected && styles.cardSelected,
+          isSmall && styles.cardSmall,
         ]}
         onPress={() => handleToggle(tag.id)}
       >
         <View style={styles.cardContentInner}>
-          <View style={styles.emojiContainer}>
-            <Text style={styles.emoji}>{tag.emoji}</Text>
+          <View style={[styles.emojiContainer, isSmall && styles.emojiContainerSmall]}>
+            <Text style={[styles.emoji, isSmall && styles.emojiSmall]}>{tag.emoji}</Text>
           </View>
           <Text style={[
             styles.cardName,
-            isSelected && styles.cardNameSelected
+            isSmall && styles.cardNameSmall,
+            isSelected && !isSmall && styles.cardNameSelected
           ]}>
             {tag.name}
           </Text>
+          {isSmall && (
+            <X size={12} color={colors.textMuted} style={{ marginLeft: 4 }} />
+          )}
         </View>
       </Pressable>
     );
@@ -126,26 +199,42 @@ export function OnboardingScreen({
         style={[styles.closeButton, { top: insets.top + 16 }]} 
         onPress={onClose || onComplete}
       >
-        <X size={28} color={colors.textSecondary} />
+        <X size={24} color={colors.textSecondary} />
       </Pressable>
       
       <View style={styles.header}>
-        <Settings2 size={40} color={colors.textSecondary} style={styles.headerIcon} />
+        <Settings2 size={32} color={colors.textSecondary} style={styles.headerIcon} />
         <Text style={styles.title}>Manage your interests</Text>
         <Text style={styles.subtitle}>
           Adjust anytime to modify personalized contents
         </Text>
       </View>
 
+      {/* Selected Interests Area */}
+      {selectedCount > 0 && (
+        <View style={styles.selectedArea}>
+          <Text style={styles.selectedTitle}>Selected Interests</Text>
+          <View style={styles.selectedTagsContainer}>
+            {selectedTags.map(tag => renderTagCard(tag, true))}
+          </View>
+        </View>
+      )}
+
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
       >
-        {TAGS.map(renderTagCard)}
+        {availableTags.map(tag => renderTagCard(tag))}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
+        <Text style={styles.selectedHint}>
+          {selectedCount === 0 
+            ? 'Select at least one tag' 
+            : `${selectedCount} tag${selectedCount > 1 ? 's' : ''} selected`}
+        </Text>
+        
         <Pressable
           style={[
             styles.continueButton,
@@ -156,7 +245,7 @@ export function OnboardingScreen({
           disabled={!isAnySelected || isSubmitting}
         >
           {isSubmitting ? (
-            <ActivityIndicator color={isAnySelected ? colors.text : '#9CA3AF'} />
+            <ActivityIndicator color={colors.text} />
           ) : (
             <Text style={[
               styles.continueButtonText,
@@ -184,94 +273,145 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingTop: 40,
-    paddingBottom: 24,
-    paddingHorizontal: 40,
+    paddingTop: 32,
+    paddingBottom: 16,
+    paddingHorizontal: 24,
   },
   headerIcon: {
-    marginBottom: 20,
+    marginBottom: 16,
     opacity: 0.6,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 17,
+    fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 20,
+  },
+  selectedArea: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  selectedTitle: {
+    fontSize: 11,    fontWeight: '700',
+    color: colors.textMuted,
+    paddingHorizontal: 24,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  selectedTagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 24,
+    gap: 8,
+    paddingBottom: 4,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: PADDING_HORIZONTAL,
-    paddingBottom: 40,
-    gap: CARD_GAP,
+    paddingTop: 20,
+    paddingBottom: 32,
+    gap: 10,
     justifyContent: 'flex-start',
   },
   card: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 1.5,
+    borderRadius: 20, // Pill shape
+    borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 4,
     shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  cardSmall: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20, // Pill shape
+    borderWidth: 1,
+    borderColor: colors.selectedBorder,
+    backgroundColor: colors.primaryBg,
+    elevation: 1,
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    shadowOffset: { width: 0, height: 1 },
   },
   cardSelected: {
     borderColor: colors.selectedBorder,
     backgroundColor: colors.primaryBg,
-    shadowOpacity: 0.2,
-    elevation: 4,
   },
   cardContentInner: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   emojiContainer: {
-    width: 32,
-    height: 32,
-    backgroundColor: colors.bg,
-    borderRadius: 8,
+    marginRight: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+  },
+  emojiContainerSmall: {
+    marginRight: 4,
+    backgroundColor: 'transparent',
   },
   emoji: {
-    fontSize: 20,
+    fontSize: 14,
+  },
+  emojiSmall: {
+    fontSize: 12,
   },
   cardName: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.textSecondary,
+  },
+  cardNameSmall: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
   },
   cardNameSelected: {
     color: colors.text,
   },
   footer: {
     paddingHorizontal: PADDING_HORIZONTAL,
-    paddingTop: 20,
+    paddingTop: 16,
     backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  selectedHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 10,
+    textTransform: 'uppercase',
   },
   continueButton: {
-    height: 56,
+    height: 50,
     backgroundColor: colors.card,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: colors.border,
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   continueButtonActive: {
     backgroundColor: colors.primary,
@@ -287,7 +427,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   continueButtonText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
   },
   continueButtonTextDisabled: {

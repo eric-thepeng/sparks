@@ -90,6 +90,7 @@ export interface User {
   bio: string | null;
   timezone: string | null;
   language: string | null;
+  interests?: Record<string, InterestLevel>; // User's selected tag interests
 }
 
 export interface AuthResponse {

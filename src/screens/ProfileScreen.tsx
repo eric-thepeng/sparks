@@ -28,21 +28,23 @@ import {
   ProfileItem,
   ApiPost
 } from '../api';
-import {
-  Camera,
-  LogOut,
-  Save,
-  X,
-  Globe,
-  Clock,
-  User as UserIcon,
-  History as HistoryIcon,
-  Heart,
-  ChevronRight,
-  Trash2,
+import { 
+  Camera, 
+  LogOut, 
+  Save, 
+  X, 
+  Globe, 
+  Clock, 
+  User as UserIcon, 
+  History as HistoryIcon, 
+  Heart, 
+  ChevronRight, 
+  Trash2, 
   Sparkles,
-  Pencil
+  Pencil,
+  Check
 } from 'lucide-react-native';
+import { TAGS, InterestLevel } from '../data/buckets';
 import { OnboardingScreen } from './OnboardingScreen';
 
 // Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
@@ -137,13 +139,15 @@ export const ProfileScreen = ({
   // Onboarding State (name selection)
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingName, setOnboardingName] = useState('');
-  
+
   // Interests Onboarding Modal
   const [showInterestsModal, setShowInterestsModal] = useState(false);
 
   // Sync state with user data
   useEffect(() => {
     if (user) {
+      console.log('[ProfileScreen] Current user data:', JSON.stringify(user, null, 2));
+      console.log('[ProfileScreen] Interests field:', user.interests);
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
       setAvatar(user.photoUrl || null);
@@ -151,11 +155,11 @@ export const ProfileScreen = ({
       // Trigger onboarding if no display name is set (fresh signup)
       // Check if displayName is empty/null or matches the 8-digit ID exactly
       if (!user.displayName || (user.userid && user.displayName === user.userid)) {
-         // Also check if userid looks like generated ID to be sure
-         if (/^\d{8}$/.test(user.userid || '')) {
-            setShowOnboarding(true);
-            setOnboardingName('');
-         }
+        // Also check if userid looks like generated ID to be sure
+        if (/^\d{8}$/.test(user.userid || '')) {
+          setShowOnboarding(true);
+          setOnboardingName('');
+        }
       }
     }
   }, [user]);
@@ -262,12 +266,12 @@ export const ProfileScreen = ({
       Alert.alert('Invalid Name', 'Name must be at least 2 characters.');
       return;
     }
-
+    
     setLoading(true);
     try {
       await updateProfile({ displayName: onboardingName.trim() });
       setShowOnboarding(false);
-      Alert.alert('Welcome!', `Hello, ${onboardingName}`);
+      // Alert.alert('Welcome!', `Hello, ${onboardingName}`);
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -284,83 +288,49 @@ export const ProfileScreen = ({
 
   const renderProfileContent = () => (
     <View style={styles.form}>
-      {/* Edit Mode: Display Name Input */}
-      {isEditing && (
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Display Name</Text>
-          <TextInput
-            style={styles.input}
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder="Your Name"
-          />
+      {/* Selected Interests Display */}
+      {!isEditing && user?.interests && Object.keys(user.interests).filter(k => user.interests![k] !== 'none').length > 0 && (
+        <View style={styles.interestsDisplay}>
+          <View style={styles.interestsHeaderRow}>
+            <Text style={styles.interestsLabel}>My Interests</Text>
+            <Pressable
+              style={styles.interestsUpdateSmall}
+              onPress={() => setShowInterestsModal(true)}
+            >
+              <Text style={styles.interestsUpdateSmallText}>Update</Text>
+            </Pressable>
+          </View>
+          <View style={styles.interestsGrid}>
+            {Object.keys(user.interests)
+              .filter(id => user.interests![id] !== 'none')
+              .map(id => {
+                const tag = TAGS.find(t => t.id === id);
+                if (!tag) return null;
+                return (
+                  <View key={id} style={styles.interestTag}>
+                    <Text style={styles.interestEmoji}>{tag.emoji}</Text>
+                    <Text style={styles.interestName}>{tag.name}</Text>
+                  </View>
+                );
+              })}
+          </View>
         </View>
       )}
 
-      {/* Bio Field (View/Edit) */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Bio</Text>
-        <TextInput
-          style={[styles.input, styles.textArea, !isEditing && styles.inputDisabled]}
-          value={bio}
-          onChangeText={setBio}
-          editable={isEditing}
-          placeholder={isEditing ? "Write something about yourself..." : "No bio yet."}
-          multiline
-          numberOfLines={4}
-        />
-      </View>
-
-      {/* Info Rows (ReadOnly) */}
-      <View style={styles.infoRow}>
-        <Globe size={16} color={colors.textMuted} />
-        <Text style={styles.infoText}>{formatLanguage(user?.language)}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Clock size={16} color={colors.textMuted} />
-        <Text style={styles.infoText}>{formatLocation(user?.timezone)}</Text>
-      </View>
-
       {/* Actions */}
       <View style={styles.actions}>
-        {isEditing ? (
-          <View style={styles.editActions}>
-            <Pressable
-              style={[styles.button, styles.cancelButton]}
-              onPress={handleCancel}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.button, styles.saveButton, { flex: 1 }]}
-              onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color={colors.text} /> : (
-                <>
-                  <Save size={18} color={colors.text} />
-                  <Text style={[styles.buttonText, { color: colors.text }]}>Save Changes</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        ) : (
+        {!isEditing && (
           <>
-            {/* Update Interests Button */}
-            <Pressable
-              style={[styles.button, styles.interestsButton]}
-              onPress={() => setShowInterestsModal(true)}
-            >
-              <Sparkles size={18} color="#B45309" />
-              <Text style={[styles.buttonText, { color: '#B45309' }]}>Update Interests</Text>
-            </Pressable>
-
-            <Pressable style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
-              <LogOut size={18} color={colors.error} />
-              <Text style={[styles.buttonText, { color: colors.error }]}>Log Out</Text>
-            </Pressable>
+            {/* Update Interests Button - Only show if no interests yet */}
+            {(!user?.interests || Object.keys(user.interests).filter(k => user.interests![k] !== 'none').length === 0) && (
+              <Pressable
+                style={[styles.button, styles.interestsButton]}
+                onPress={() => setShowInterestsModal(true)}
+              >
+                <Sparkles size={18} color="#B45309" />
+                <Text style={[styles.buttonText, { color: '#B45309' }]}>Update Interests</Text>
+              </Pressable>
+            )}
           </>
         )}
       </View>
@@ -379,9 +349,10 @@ export const ProfileScreen = ({
         <OnboardingScreen
           showCloseButton={true}
           onClose={() => setShowInterestsModal(false)}
+          initialInterests={user?.interests}
           onComplete={() => {
             setShowInterestsModal(false);
-            Alert.alert('Success', 'Your preferences have been updated');
+            // Alert.alert('Success', 'Your preferences have been updated');
           }}
         />
       </Modal>
@@ -407,6 +378,7 @@ export const ProfileScreen = ({
               value={onboardingName}
               onChangeText={setOnboardingName}
               autoCapitalize="words"
+              maxLength={9}
             />
 
             <Pressable
@@ -424,31 +396,29 @@ export const ProfileScreen = ({
 
       {/* Header (Avatar & Name) - Always visible */}
       <View style={styles.header}>
-        {/* Top Left Actions (Likes & History) */}
-        {!isEditing && (
-          <View style={styles.headerLeft}>
-            <Pressable style={styles.headerActionButton} onPress={onLikesPress}>
-              <Heart size={20} color="#B45309" />
-            </Pressable>
-            <Pressable style={styles.headerActionButton} onPress={onHistoryPress}>
-              <HistoryIcon size={20} color="#B45309" />
-            </Pressable>
-          </View>
-        )}
-
-        {/* Top Right Actions (Edit) */}
-        {!isEditing && (
-          <View style={styles.headerRight}>
+        {/* Top Right Actions (Logout) */}
+        <View style={styles.headerRight}>
+          {!isEditing ? (
+            <View style={styles.headerRightActions}>
+              <Pressable 
+                style={styles.headerLogoutButton} 
+                onPress={handleLogout}
+              >
+                <LogOut size={20} color={colors.error} />
+              </Pressable>
+            </View>
+          ) : (
             <Pressable 
-              style={styles.headerEditButton} 
-              onPress={() => setIsEditing(true)}
+              style={[styles.headerActionButton, { backgroundColor: colors.primary, borderColor: colors.selectedBorder }]} 
+              onPress={handleSave}
+              disabled={loading}
             >
-              <Pencil size={16} color={colors.text} />
+              {loading ? <ActivityIndicator size="small" color={colors.text} /> : <Check size={20} color={colors.text} />}
             </Pressable>
-          </View>
-        )}
+          )}
+        </View>
 
-        <Pressable onPress={pickImage} disabled={!isEditing} style={styles.avatarContainer}>
+        <Pressable onPress={pickImage} style={styles.avatarContainer}>
           {avatar ? (
             <Image source={{ uri: avatar }} style={styles.avatar} contentFit="cover" />
           ) : (
@@ -456,30 +426,66 @@ export const ProfileScreen = ({
               <UserIcon size={40} color={colors.textMuted} />
             </View>
           )}
-
-          {isEditing && (
-            <View style={styles.cameraButton}>
-              <Camera size={16} color="#fff" />
+          
+          <View style={styles.cameraButton}>
+            <Camera size={16} color={colors.text} />
+          </View>
+        </Pressable>
+        
+        {/* Basic Info */}
+        <View style={styles.headerInfo}>
+          {!isEditing ? (
+            <View style={styles.nameRow}>
+              <Text style={styles.name}>{displayName || 'User'}</Text>
+              <Pressable 
+                style={styles.inlineEditButton} 
+                onPress={() => setIsEditing(true)}
+              >
+                <Pencil size={12} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.editNameContainer}>
+              <TextInput
+                style={styles.editNameInput}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Name"
+                maxLength={9}
+                autoFocus
+                onBlur={() => {
+                  // Optional: auto-save or cancel on blur
+                }}
+              />
+              <Pressable onPress={handleCancel} style={styles.editCancelButton}>
+                <X size={16} color={colors.textMuted} />
+              </Pressable>
             </View>
           )}
-        </Pressable>
-
-        {/* Basic Info */}
-        {!isEditing && (
-          <View style={styles.headerInfo}>
-            <Text style={styles.name}>{displayName || 'User'}</Text>
-            {user?.userid && (
-              <Text style={styles.idText}>ID: {user.userid}</Text>
-            )}
-          </View>
-        )}
+          {!isEditing && user?.userid && (
+            <Text style={styles.idText}>ID: {user.userid}</Text>
+          )}
+        </View>
       </View>
 
       {/* Content Area */}
-      <ScrollView
-        style={styles.content}
+      <ScrollView 
+        style={styles.content} 
         contentContainerStyle={{ paddingBottom: 40 }}
       >
+        {!isEditing && (
+          <View style={styles.profileQuickActions}>
+            <Pressable style={styles.quickActionButton} onPress={onLikesPress}>
+              <Heart size={20} color={colors.textSecondary} />
+              <Text style={styles.quickActionText}>My Likes</Text>
+            </Pressable>
+            <View style={styles.quickActionDivider} />
+            <Pressable style={styles.quickActionButton} onPress={onHistoryPress}>
+              <HistoryIcon size={20} color={colors.textSecondary} />
+              <Text style={styles.quickActionText}>History</Text>
+            </Pressable>
+          </View>
+        )}
         {renderProfileContent()}
       </ScrollView>
     </View>
@@ -492,21 +498,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 0,
   },
   header: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingTop: 24,
+    paddingBottom: 12,
     backgroundColor: colors.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     position: 'relative',
   },
   headerRight: {
     position: 'absolute',
-    bottom: 16,
+    top: 20,
     right: 16,
     zIndex: 10,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerLeft: {
     position: 'absolute',
@@ -515,6 +526,34 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: 8,
     zIndex: 10,
+  },
+  profileQuickActions: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg, // Match background
+    paddingVertical: 14,
+    marginBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#B45309', // Deep Amber bottom line
+  },
+  quickActionButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  quickActionDivider: {
+    width: 1,
+    height: '60%',
+    backgroundColor: '#B45309', // Same Deep Amber
+    alignSelf: 'center',
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   headerActionButton: {
     width: 38,
@@ -532,14 +571,34 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerEditButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary, // Bright Yellow
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#B45309', // Deep Amber border
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerLogoutButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.error + '60', // Red outline
+    shadowColor: colors.error,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   avatarContainer: {
     position: 'relative',
@@ -570,6 +629,42 @@ const styles = StyleSheet.create({
   },
   headerInfo: {
     alignItems: 'center',
+    marginTop: 8,
+  },
+  editNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: 20,
+    paddingLeft: 12,
+    paddingRight: 4,
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editNameInput: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    minWidth: 80,
+    paddingVertical: 0,
+  },
+  editCancelButton: {
+    padding: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineEditButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 0,
   },
   name: {
     fontSize: 24,
@@ -621,10 +716,17 @@ const styles = StyleSheet.create({
   inputGroup: {
     gap: 8,
   },
+  bioHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   label: {
     fontSize: 14,
-    fontWeight: '500',
-    color: colors.textSecondary,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   input: {
     backgroundColor: colors.card,
@@ -695,6 +797,61 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryBg,
     borderWidth: 1,
     borderColor: '#B45309',
+  },
+  interestsDisplay: {
+    marginTop: 10,
+    gap: 10,
+  },
+  interestsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  interestsUpdateSmall: {
+    backgroundColor: colors.bg, // Same as background
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#B45309',
+  },
+  interestsUpdateSmallText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+    textTransform: 'uppercase',
+  },
+  interestsLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  interestsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  interestTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#B45309',
+  },
+  interestEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  interestName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
   },
   buttonText: {
     fontSize: 16,

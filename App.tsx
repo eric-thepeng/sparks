@@ -3111,12 +3111,17 @@ function AppContent() {
 
   // 加载所有帖子用于 Collection 标签页
   useEffect(() => {
-    if (bottomTab === 'collection') {
-      setIsAllPostsLoading(true);
-      fetchAllPosts().then(posts => {
-        setAllPosts(posts);
-        setIsAllPostsLoading(false);
-      });
+    const loadAll = async () => {
+      if (bottomTab === 'collection') {
+        setIsAllPostsLoading(true);
+      }
+      const posts = await fetchAllPosts();
+      setAllPosts(posts);
+      setIsAllPostsLoading(false);
+    };
+
+    if (bottomTab === 'collection' || bottomTab === 'explore') {
+      loadAll();
     }
   }, [bottomTab, fetchAllPosts]);
 
