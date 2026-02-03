@@ -393,6 +393,14 @@ export async function fetchBuckets(): Promise<any[]> {
 }
 
 /**
+ * 获取所有可用的 Tags
+ * GET /api/tags
+ */
+export async function fetchTags(): Promise<any[]> {
+  return request<any[]>('/api/tags');
+}
+
+/**
  * 兴趣等级类型
  */
 export type InterestLevel = 'none' | 'interested' | 'super_interested';

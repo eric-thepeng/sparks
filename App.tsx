@@ -65,7 +65,8 @@ import {
   PostPage,
   ContentBlock,
   getBucketSubtitle,
-  syncBucketsFromBackend
+  syncBucketsFromBackend,
+  syncTagsFromBackend
 } from './src/data';
 
 import {
@@ -3049,9 +3050,10 @@ function AppContent() {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Sync buckets from backend on mount
+  // Sync buckets and tags from backend on mount
   useEffect(() => {
     syncBucketsFromBackend();
+    syncTagsFromBackend();
   }, []);
 
   // 使用帖子缓存系统

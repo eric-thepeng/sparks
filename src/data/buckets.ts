@@ -3,7 +3,7 @@
  * 用于 Onboarding 和推荐系统
  */
 
-import { fetchBuckets } from '../api';
+import { fetchBuckets, fetchTags } from '../api';
 
 /**
  * Bucket 数据定义
@@ -25,9 +25,9 @@ export interface Tag {
 }
 
 /**
- * 15 个内容标签 Tags
+ * 15 个内容标签 Tags (Initial static data, will be updated from backend)
  */
-export const TAGS: Tag[] = [
+export let TAGS: Tag[] = [
   { id: 'myth_mystery', name: 'Myth & Mystery', emoji: '🏺' },
   { id: 'religion', name: 'Religion', emoji: '🙏' },
   { id: 'philosophy', name: 'Philosophy', emoji: '🧠' },
@@ -109,6 +109,23 @@ export let BUCKETS: Bucket[] = [
     subtitle: 'Crafting experiences that bridge people and things'
   },
 ];
+
+/**
+ * 从后端同步 Tags 数据
+ */
+export async function syncTagsFromBackend() {
+  try {
+    const backendTags = await fetchTags();
+    if (backendTags && Array.isArray(backendTags)) {
+      TAGS = backendTags.map(t => ({
+        id: t.id || t.key || t.tag_id,
+        name: t.name || t.title || t.display_name,
+        emoji: t.emoji || '🏷️'
+      }));
+    }
+  } catch (error) {
+  }
+}
 
 /**
  * 从后端同步 Buckets 数据
