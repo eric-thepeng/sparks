@@ -71,18 +71,14 @@ async function request<T>(
     }
 
     const url = `${API_BASE_URL}${API_PREFIX}${endpoint}`;
-    console.log(`[API] Fetching: ${url}`);
     if (options.body) {
-      console.log(`[API] Body:`, options.body);
     }
-    console.log(`[API] Headers:`, JSON.stringify(headers));
     
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
       headers,
     }).catch(e => {
-       console.error(`[API] Network Fail: ${url}`, e);
        throw e;
     });
 
@@ -92,7 +88,6 @@ async function request<T>(
       let errorMessage = `HTTP error: ${response.status}`;
       try {
         const errorText = await response.text();
-        console.log(`[API] Error Response: ${errorText}`);
         const errorData = JSON.parse(errorText);
         
         // Handle Pydantic/FastAPI validation errors (array of details)

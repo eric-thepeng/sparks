@@ -123,10 +123,8 @@ export async function syncBucketsFromBackend() {
         emoji: b.emoji || '📚',
         subtitle: b.subtitle || b.description || ''
       }));
-      console.log('[Buckets] Successfully synced from backend:', BUCKETS.length);
     }
   } catch (error) {
-    console.error('[Buckets] Failed to sync from backend:', error);
   }
 }
 

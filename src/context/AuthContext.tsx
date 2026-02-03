@@ -53,7 +53,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         }
       } catch (e) {
-        console.warn('Timezone detection failed, using UTC');
       }
       needsUpdate.timezone = timeZone;
     }
@@ -70,14 +69,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            locale = (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
         }
       } catch (e) {
-        console.warn('Language detection failed, using en-US');
       }
       needsUpdate.language = locale;
     }
 
     if (Object.keys(needsUpdate).length > 0) {
       try {
-        console.log('[Auth] Updating missing metadata:', needsUpdate);
         await apiUpdateMe(needsUpdate);
         
         // Fetch fresh user again to sync state
@@ -95,7 +92,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            }
         }
       } catch (err) {
-        console.error('[Auth] Failed to auto-update metadata:', err);
       }
     }
   };
@@ -132,7 +128,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }
       } catch (e) {
-        console.error('Failed to load auth state', e);
       } finally {
         setIsLoading(false);
       }
@@ -147,7 +142,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setToken(newToken);
       setUser(newUser);
     } catch (e) {
-      console.error('Failed to save auth state', e);
     }
   };
 
@@ -213,7 +207,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setToken(null);
       setUser(null);
     } catch (e) {
-      console.error('Failed to logout', e);
     }
   };
 
@@ -221,7 +214,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-      console.log('[Auth] Updating profile:', data);
       // 1. Call update
       await apiUpdateMe(data);
       
@@ -231,13 +223,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // @ts-ignore - Check if response is the user object itself
       const freshUser = freshUserResponse.user || (freshUserResponse.id ? freshUserResponse : null);
       
-      console.log('[Auth] Fresh user:', freshUser);
 
       if (token && freshUser) {
         await saveAuth(token, freshUser);
       }
     } catch (err: any) {
-      console.error('[Auth] Update failed:', err);
       setError(err.message || 'Update profile failed');
       throw err;
     } finally {

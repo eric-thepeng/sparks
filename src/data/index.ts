@@ -177,8 +177,6 @@ export function apiPostToPost(apiPost: ApiPost): Post {
     })
     .filter((page: PostPage) => page.blocks.length > 0);
 
-  console.log('[apiPostToPost] Parsed pages count:', pages.length);
-  console.log('[apiPostToPost] Cover URL:', coverUrl);
   
   // 统计图片数量
   let imageCount = 0;
@@ -187,7 +185,6 @@ export function apiPostToPost(apiPost: ApiPost): Post {
       if (block.type === 'image') imageCount++;
     });
   });
-  console.log('[apiPostToPost] Total image blocks:', imageCount);
 
   return {
     uid: postUid,
@@ -403,7 +400,6 @@ function parseAndAddBlocks(para: string, pageBlocks: ContentBlock[]): void {
       const lastBlock = pageBlocks[pageBlocks.length - 1];
       if (lastBlock && lastBlock.type === 'image' && !lastBlock.caption && trimmed.startsWith('*') && trimmed.endsWith('*')) {
         lastBlock.caption = trimmed;
-        console.log('[parseAndAddBlocks] Attached separate paragraph as caption:', trimmed);
         return;
       }
       addParagraphBlocks(normalizeSoftWrappedText(trimmed), pageBlocks);

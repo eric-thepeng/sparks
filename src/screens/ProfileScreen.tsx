@@ -15,7 +15,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
-// Use legacy import for getInfoAsync compatibility
+import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuth } from '../context/AuthContext';
@@ -62,6 +62,7 @@ const colors = {
   border: '#E8E4D6',       // Sand Border
   error: '#ef4444',
   success: '#22c55e',
+  selectedBorder: '#B45309', // Deep Amber for selected
 };
 
 // Formatting Helpers
@@ -146,8 +147,6 @@ export const ProfileScreen = ({
   // Sync state with user data
   useEffect(() => {
     if (user) {
-      console.log('[ProfileScreen] Current user data:', JSON.stringify(user, null, 2));
-      console.log('[ProfileScreen] Interests field:', user.interests);
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
       setAvatar(user.photoUrl || null);
@@ -157,7 +156,8 @@ export const ProfileScreen = ({
       if (!user.displayName || (user.userid && user.displayName === user.userid)) {
         // Also check if userid looks like generated ID to be sure
         if (/^\d{8}$/.test(user.userid || '')) {
-          setShowOnboarding(true);
+          // NEW: Show interests onboarding first
+          setShowInterestsModal(true);
           setOnboardingName('');
         }
       }
@@ -165,14 +165,14 @@ export const ProfileScreen = ({
   }, [user]);
 
   const pickImage = async () => {
-    if (!isEditing) return;
-
     try {
-      // Dynamic import to avoid crash if native module not available
-      const ImagePicker = await import('expo-image-picker');
+      // If not already editing, enter edit mode
+      if (!isEditing) {
+        setIsEditing(true);
+      }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true, // Allows user to crop ("chop")
         aspect: [1, 1],      // Force square aspect ratio
         quality: 1,          // Get full quality first, we compress later
@@ -191,7 +191,6 @@ export const ProfileScreen = ({
         setAvatar(manipResult.uri);
       }
     } catch (error) {
-      console.error('ImagePicker error:', error);
       Alert.alert(
         'Feature Unavailable',
         'Image picker is not available in this environment. Please use a development build.',
@@ -223,12 +222,9 @@ export const ProfileScreen = ({
             }
 
             // Upload
-            console.log('Uploading image...');
             finalPhotoUrl = await uploadImage(avatar);
-            console.log('Upload success, url:', finalPhotoUrl);
           }
         } catch (uploadError: any) {
-          console.error('Upload failed:', uploadError);
           Alert.alert('Upload Failed', 'Could not upload profile photo. Please try again.');
           setLoading(false);
           return;
@@ -289,7 +285,7 @@ export const ProfileScreen = ({
   const renderProfileContent = () => (
     <View style={styles.form}>
       {/* Selected Interests Display */}
-      {!isEditing && user?.interests && Object.keys(user.interests).filter(k => user.interests![k] !== 'none').length > 0 && (
+      {!isEditing && (
         <View style={styles.interestsDisplay}>
           <View style={styles.interestsHeaderRow}>
             <Text style={styles.interestsLabel}>My Interests</Text>
@@ -300,39 +296,30 @@ export const ProfileScreen = ({
               <Text style={styles.interestsUpdateSmallText}>Update</Text>
             </Pressable>
           </View>
-          <View style={styles.interestsGrid}>
-            {Object.keys(user.interests)
-              .filter(id => user.interests![id] !== 'none')
-              .map(id => {
-                const tag = TAGS.find(t => t.id === id);
-                if (!tag) return null;
-                return (
-                  <View key={id} style={styles.interestTag}>
-                    <Text style={styles.interestEmoji}>{tag.emoji}</Text>
-                    <Text style={styles.interestName}>{tag.name}</Text>
-                  </View>
-                );
-              })}
-          </View>
+          
+          {user?.interests && Object.keys(user.interests).filter(k => user.interests![k] !== 'none').length > 0 ? (
+            <View style={styles.interestsGrid}>
+              {Object.keys(user.interests)
+                .filter(id => user.interests![id] !== 'none')
+                .map(id => {
+                  const tag = TAGS.find(t => t.id === id);
+                  if (!tag) return null;
+                  return (
+                    <View key={id} style={styles.interestTag}>
+                      <Text style={styles.interestEmoji}>{tag.emoji}</Text>
+                      <Text style={styles.interestName}>{tag.name}</Text>
+                    </View>
+                  );
+                })}
+            </View>
+          ) : (
+            <Text style={styles.noInterestsText}>Please add your interests</Text>
+          )}
         </View>
       )}
 
       {/* Actions */}
       <View style={styles.actions}>
-        {!isEditing && (
-          <>
-            {/* Update Interests Button - Only show if no interests yet */}
-            {(!user?.interests || Object.keys(user.interests).filter(k => user.interests![k] !== 'none').length === 0) && (
-              <Pressable
-                style={[styles.button, styles.interestsButton]}
-                onPress={() => setShowInterestsModal(true)}
-              >
-                <Sparkles size={18} color="#B45309" />
-                <Text style={[styles.buttonText, { color: '#B45309' }]}>Update Interests</Text>
-              </Pressable>
-            )}
-          </>
-        )}
       </View>
     </View>
   );
@@ -352,7 +339,12 @@ export const ProfileScreen = ({
           initialInterests={user?.interests}
           onComplete={() => {
             setShowInterestsModal(false);
-            // Alert.alert('Success', 'Your preferences have been updated');
+            // After interests are done, check if we need to show name onboarding
+            if (!user?.displayName || (user?.userid && user?.displayName === user?.userid)) {
+              if (/^\d{8}$/.test(user?.userid || '')) {
+                setShowOnboarding(true);
+              }
+            }
           }}
         />
       </Modal>
@@ -408,13 +400,21 @@ export const ProfileScreen = ({
               </Pressable>
             </View>
           ) : (
-            <Pressable 
-              style={[styles.headerActionButton, { backgroundColor: colors.primary, borderColor: colors.selectedBorder }]} 
-              onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator size="small" color={colors.text} /> : <Check size={20} color={colors.text} />}
-            </Pressable>
+            <View style={styles.headerRightActions}>
+              <Pressable 
+                style={styles.headerReturnButton} 
+                onPress={handleCancel}
+              >
+                <X size={20} color={colors.textSecondary} />
+              </Pressable>
+              <Pressable 
+                style={[styles.headerActionButton, { backgroundColor: colors.primary, borderColor: colors.selectedBorder }]} 
+                onPress={handleSave}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator size="small" color={colors.text} /> : <Check size={20} color={colors.text} />}
+              </Pressable>
+            </View>
           )}
         </View>
 
@@ -435,15 +435,12 @@ export const ProfileScreen = ({
         {/* Basic Info */}
         <View style={styles.headerInfo}>
           {!isEditing ? (
-            <View style={styles.nameRow}>
+            <Pressable onPress={() => setIsEditing(true)} style={styles.nameRow}>
               <Text style={styles.name}>{displayName || 'User'}</Text>
-              <Pressable 
-                style={styles.inlineEditButton} 
-                onPress={() => setIsEditing(true)}
-              >
+              <View style={styles.inlineEditButton}>
                 <Pencil size={12} color={colors.textSecondary} />
-              </Pressable>
-            </View>
+              </View>
+            </Pressable>
           ) : (
             <View style={styles.editNameContainer}>
               <TextInput
@@ -599,6 +596,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  headerReturnButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatarContainer: {
     position: 'relative',
@@ -828,6 +835,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  noInterestsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   interestsGrid: {
     flexDirection: 'row',

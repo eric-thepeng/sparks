@@ -118,6 +118,7 @@ const colors = {
   textSecondary: '#78350f',// Amber 900
   textMuted: '#92400e',    // Amber 800
   border: '#E8E4D6',       // Sand border for contrast
+  selectedBorder: '#B45309', // Deep Amber for selected
 };
 
 /**
@@ -386,7 +387,6 @@ function FeedCard({
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
-      console.error('Like failed', error);
 
       if (error?.status === 401) {
         Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
@@ -525,7 +525,6 @@ function CommentSection({ postId }: { postId: string }) {
       const data = await fetchComments(postId);
       setComments(data);
     } catch (err) {
-      console.log('Failed to load comments (API might not be ready yet)');
     } finally {
       setIsLoading(false);
     }
@@ -578,7 +577,6 @@ function CommentSection({ postId }: { postId: string }) {
     } catch (error: any) {
       // Rollback
       setComments(comments);
-      console.error('Comment like failed', error);
       if (error?.status === 401) {
         Alert.alert('Session Expired', 'Please log in again.');
         logout();
@@ -890,16 +888,6 @@ const PageItem = React.memo((props: {
   }, [imageCount]);
 
   // Moved contentReady definition up
-
-
-  const fadeHint = (to: number) => {
-    Animated.timing(hintOpacity, {
-      toValue: to,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const isNavigationZone = () =>
     touchStartX.current < 44 ||
     touchStartX.current > SCREEN_WIDTH - 44 ||
@@ -1188,7 +1176,6 @@ const PageItem = React.memo((props: {
           }
         }}
         onContentSizeChange={(w, h) => {
-          // console.log('[PageItem] Content size changed:', w, h);
           if (contentHeightRef.current !== h) {
             contentHeightRef.current = h;
             lastScrollMetricsRef.current.contentHeight = h;
@@ -1538,7 +1525,6 @@ function SinglePostReader({
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
-      console.error('Like failed', error);
 
       if (error?.status === 401) {
         Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
@@ -1587,7 +1573,6 @@ function SinglePostReader({
         sendSave(post.uid);
       }
     } catch (err) {
-      console.error('Failed to toggle save:', err);
     } finally {
       setIsSaving(false);
     }
@@ -1644,7 +1629,6 @@ function SinglePostReader({
       }, 500);
     } else {
       // Last page reached
-      console.log('Last page finished');
     }
   };
 
@@ -1857,16 +1841,13 @@ function PostLoader({
   // Handle missing post
   useEffect(() => {
     if (status === 'error' && error === 'POST_NOT_FOUND') {
-      console.log('[PostLoader] Post missing, notifying parent:', uid);
       onMissing?.(uid);
     }
   }, [status, error, uid, onMissing]);
 
   // 发送 CLICK 信号（帖子加载成功时）并记录历史
   useEffect(() => {
-    console.log('[PostLoader] useEffect triggered:', { postUid: post?.uid, status, hasToken: !!token });
     if (post && status === 'success') {
-      console.log('[PostLoader] Calling sendClick and addToHistory for:', post.uid);
       sendClick(post.uid);
 
       // Always call addToHistory, the context will handle the token check internally
@@ -2093,19 +2074,16 @@ function HistoryScreen({
 
   const loadHistory = useCallback(async (isRefresh = false) => {
     if (!user) {
-      console.log('[HistoryScreen] No user logged in, skipping load');
       return;
     }
     if (isLoadingRef.current) return;
     if (!isRefresh && (!hasMore || (!nextCursor && historyData.length > 0))) return;
 
-    console.log('[HistoryScreen] Loading history from backend, cursor:', isRefresh ? 'none' : nextCursor);
     isLoadingRef.current = true;
     setLoading(true);
     setError(false);
     try {
       const response = await getMyHistory(20, isRefresh ? undefined : nextCursor);
-      console.log('[HistoryScreen] Backend response items:', response.items?.length || 0);
 
       const newItems = response.items || [];
       setHistoryData(prev => {
@@ -2120,7 +2098,6 @@ function HistoryScreen({
       setNextCursor(response.nextCursor);
       setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
-      console.error('[HistoryScreen] Failed to load history:', e);
       setError(true);
     } finally {
       setLoading(false);
@@ -2296,7 +2273,6 @@ function LikesScreen({
       setNextCursor(response.nextCursor);
       setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
-      console.log('Failed to load likes', e);
       setError(true);
     } finally {
       setLoading(false);
@@ -2456,11 +2432,6 @@ function DebugPanel({
 
   // Debug: 监控状态变化
   useEffect(() => {
-    console.log('[DebugPanel] State updated:', {
-      bucketCount: Object.keys(bucketCount).length,
-      clickCount,
-      lastSignal: lastSignal?.signalType
-    });
   }, [bucketCount, clickCount, lastSignal]);
 
   // 计算总权重和每个 bucket 的百分比
@@ -2694,14 +2665,7 @@ function SavedScreen({
             <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
           </View>
         </>
-      ) : (
-        <Pressable
-          style={styles.savedLoginButton}
-          onPress={() => onLoginPress?.()}
-        >
-          <Text style={styles.savedLoginButtonText}>Log In</Text>
-        </Pressable>
-      )}
+      ) : null}
     </View>
   );
 
@@ -3037,7 +3001,6 @@ function CollectionScreen({
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.collectionHorizontalScroll}
-              clipChildren={false}
             >
               {items.map((item) => (
                 <Pressable
@@ -3167,11 +3130,9 @@ function AppContent() {
 
         if (!completed) {
           // 用户尚未完成 onboarding
-          console.log('[Onboarding] First time user, showing interests selection');
           setShowInterestsOnboarding(true);
         }
       } catch (error) {
-        console.log('[Onboarding] Failed to check status:', error);
       }
 
       setOnboardingChecked(true);
@@ -3187,15 +3148,12 @@ function AppContent() {
       try {
         const key = `${ONBOARDING_COMPLETED_KEY}_${user.userid}`;
         await AsyncStorage.setItem(key, 'true');
-        console.log('[Onboarding] Marked as completed');
       } catch (error) {
-        console.log('[Onboarding] Failed to save status:', error);
       }
     }
     setShowInterestsOnboarding(false);
 
     // 刷新所有相关数据（后端会清空用户数据）
-    console.log('[Onboarding] Refreshing all user data...');
     refetchFeed();           // 刷新帖子推荐
     refreshSavedPosts();     // 刷新收藏列表（会变空）
   }, [user, refetchFeed, refreshSavedPosts]);
@@ -3205,7 +3163,6 @@ function AppContent() {
     try {
       await refetchFeed();
     } catch (e) {
-      console.error('Pull to refresh failed', e);
     } finally {
       setIsRefreshing(false);
     }
@@ -3249,7 +3206,6 @@ function AppContent() {
           const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
 
           if (isNearBottom && hasMore && !feedLoading) {
-            console.log('[Feed] Near bottom, loading more...');
             consumeMultiple(2);
           }
         };
@@ -3409,7 +3365,6 @@ function AppContent() {
               onFeedLikeUpdate={updateFeedLike}
               onLoadMore={() => consumeMultiple(1)}
               onMissing={(uid) => {
-                console.log('[App] Post missing handler:', uid);
                 removeFeedPost(uid);
                 removeFromHistory(uid);
                 unsavePost(uid);
@@ -3457,7 +3412,6 @@ function AppContent() {
           onClose={() => setShowDebugPanel(false)}
           onResetComplete={() => {
             // 后端会清空所有用户数据，同步刷新前端
-            console.log('[DebugPanel] Reset complete, refreshing all data...');
             refetchFeed();
             refreshSavedPosts();
           }}
@@ -4041,7 +3995,7 @@ const styles = StyleSheet.create({
   },
   collectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'center', // Align button to bottom of text area
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     marginBottom: 4,
@@ -4067,16 +4021,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#B45309',
-    shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: colors.bg, // Match screen background
   },
   seeAllText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.text,
+    color: '#B45309', // Match the amber border color
   },
   collectionHorizontalScroll: {
     paddingLeft: 16,
@@ -4427,8 +4377,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   savedEmptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
   },

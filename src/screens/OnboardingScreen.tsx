@@ -130,19 +130,15 @@ export function OnboardingScreen({
     
     setIsSubmitting(true);
     try {
-      console.log('[Onboarding] Submitting tag interests:', interests);
       
       // 1. Submit tag interests to the backend (updates recommendation weights)
       const response = await submitOnboarding(interests);
-      console.log('[Onboarding] Success, response:', response);
       
       // 2. Update the local user profile state immediately
       // This ensures the profile page updates without re-login
       try {
         await updateProfile({ interests });
-        console.log('[Onboarding] Successfully updated local profile and persisted to backend');
       } catch (profileErr) {
-        console.error('[Onboarding] Failed to update profile:', profileErr);
       }
       
       if (response && response.bucket_count) {
@@ -150,9 +146,7 @@ export function OnboardingScreen({
       }
     } catch (err: any) {
       if (err?.status === 404) {
-        console.warn('[Onboarding] API not implemented yet, continuing anyway');
       } else {
-        console.warn('[Onboarding] Failed:', err);
       }
     } finally {
       setIsSubmitting(false);
@@ -378,8 +372,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   cardNameSmall: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.text,
   },
   cardNameSelected: {

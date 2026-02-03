@@ -40,23 +40,19 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   // Load history when user changes
   useEffect(() => {
     const init = async () => {
-      console.log('[HistoryProvider] Initializing history...');
       const storedAuth = await AsyncStorage.getItem(config.authStorageKey);
       if (storedAuth) {
         try {
           const parsedAuth = JSON.parse(storedAuth);
           const user = parsedAuth.user;
           if (user?.id) {
-            console.log('[HistoryProvider] Found user ID:', user.id);
             setUserId(user.id);
             loadHistory(user.id);
             return;
           }
         } catch (e) {
-          console.error('[HistoryProvider] Failed to parse auth storage:', e);
         }
       }
-      console.log('[HistoryProvider] No user ID found, resetting history');
       setUserId(null);
       setHistory([]);
     };
@@ -64,33 +60,26 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   }, [token]); // Add token as dependency to re-init on login/logout
 
   const loadHistory = async (uid: string) => {
-    console.log('[HistoryProvider] Loading history for user UID:', uid);
     try {
       const stored = await AsyncStorage.getItem(`${STORAGE_KEY_PREFIX}${uid}`);
       if (stored) {
         const parsed = JSON.parse(stored);
-        console.log('[HistoryProvider] Loaded items from storage:', parsed.length);
         setHistory(parsed);
       } else {
-        console.log('[HistoryProvider] No stored history found for this user');
       }
     } catch (e) {
-      console.error('Failed to load history', e);
     }
   };
 
   const addToHistory = useCallback(async (post: Post | FeedItem) => {
     if (!userId) return;
 
-    console.log('[History] addToHistory called for:', post.uid);
 
     // Call backend API to record history
     try {
       const { recordHistory } = await import('../api');
       await recordHistory(post.uid, 'post');
-      console.log('[History] Successfully recorded to backend:', post.uid);
     } catch (error) {
-      console.error('[History] Failed to record to backend:', error);
     }
 
     setHistory(prev => {
@@ -103,7 +92,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         topic: post.topic,
         coverImageUri: 'coverImage' in post && typeof post.coverImage === 'object' && 'uri' in post.coverImage 
           ? (post.coverImage as { uri: string }).uri 
-          : ('coverUrl' in post ? (post as any).coverUrl : undefined),
+          : ('coverUrl' in post ? (post as any).coverUrl : ('coverImageUrl' in post ? (post as any).coverImageUrl : undefined)),
         viewedAt: new Date().toISOString(),
       };
 

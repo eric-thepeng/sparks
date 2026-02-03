@@ -96,7 +96,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 初始化加载
    */
   const initialize = useCallback(async () => {
-    console.log('[PostCache] Initializing...');
     setIsLoading(true);
     setError(null);
 
@@ -105,7 +104,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       const posts = await fetchAndConvert(totalNeeded);
       const newPosts = filterNewPosts(posts);
 
-      console.log(`[PostCache] Loaded ${newPosts.length} posts`);
 
       // 分配到显示和缓存
       const displayed = newPosts.slice(0, INITIAL_DISPLAY_COUNT);
@@ -115,10 +113,8 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       setCachedPosts(cached);
       setHasMore(posts.length >= totalNeeded);
 
-      console.log(`[PostCache] Displayed: ${displayed.length}, Cached: ${cached.length}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载失败';
-      console.error('[PostCache] Initialize failed:', err);
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -130,18 +126,15 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    */
   const refillCache = useCallback(async () => {
     if (isRefilling.current || isLoading || !hasMore) {
-      console.log('[PostCache] Skip refill:', { isRefilling: isRefilling.current, isLoading, hasMore });
       return;
     }
 
     isRefilling.current = true;
-    console.log('[PostCache] Refilling cache...');
 
     try {
       const posts = await fetchAndConvert(FETCH_BATCH_SIZE);
       const newPosts = filterNewPosts(posts);
 
-      console.log(`[PostCache] Fetched ${posts.length}, new: ${newPosts.length}`);
 
       if (newPosts.length > 0) {
         setCachedPosts(prev => [...prev, ...newPosts]);
@@ -150,10 +143,8 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       // 如果返回的帖子都是已见过的或数量不足，可能没有更多了
       if (posts.length < FETCH_BATCH_SIZE) {
         setHasMore(false);
-        console.log('[PostCache] No more posts available');
       }
     } catch (err) {
-      console.warn('[PostCache] Refill failed:', err);
       // 静默失败，不影响用户体验
     } finally {
       isRefilling.current = false;
@@ -165,7 +156,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    */
   const consumePost = useCallback((): FeedItem | null => {
     if (cachedPosts.length === 0) {
-      console.log('[PostCache] No cached posts available');
       return null;
     }
 
@@ -173,7 +163,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     setCachedPosts(remaining);
     setDisplayedPosts(prev => [...prev, post]);
 
-    console.log(`[PostCache] Consumed 1 post, remaining cache: ${remaining.length}`);
 
     // 检查是否需要补充
     if (remaining.length < REFILL_THRESHOLD) {
@@ -189,7 +178,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   const consumeMultiple = useCallback((count: number): FeedItem[] => {
     const toConsume = Math.min(count, cachedPosts.length);
     if (toConsume === 0) {
-      console.log('[PostCache] No cached posts to consume');
       return [];
     }
 
@@ -199,7 +187,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     setCachedPosts(remaining);
     setDisplayedPosts(prev => [...prev, ...consumed]);
 
-    console.log(`[PostCache] Consumed ${toConsume} posts, remaining cache: ${remaining.length}`);
 
     // 检查是否需要补充
     if (remaining.length < REFILL_THRESHOLD) {
@@ -215,7 +202,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   const removePost = useCallback((uid: string) => {
     setDisplayedPosts(prev => prev.filter(item => item.uid !== uid));
     setCachedPosts(prev => prev.filter(item => item.uid !== uid));
-    console.log(`[PostCache] Removed post: ${uid}`);
   }, []);
 
   /**
@@ -227,7 +213,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       const apiPosts = await fetchPosts(1000);
       return apiPosts.map((post, index) => apiPostToFeedItem(post, index));
     } catch (err) {
-      console.error('[PostCache] fetchAllPosts failed:', err);
       return [];
     }
   }, []);
@@ -236,7 +221,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 重新加载
    */
   const refetch = useCallback(async () => {
-    console.log('[PostCache] Refetching...');
     seenUids.current.clear();
     setDisplayedPosts([]);
     setCachedPosts([]);

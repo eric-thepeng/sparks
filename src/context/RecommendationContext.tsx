@@ -65,7 +65,6 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
   
   // Debug: 监控 token 变化
   useEffect(() => {
-    console.log('[RecommendationProvider] Token changed:', token ? 'exists' : 'null');
   }, [token]);
   
   // 推荐状态
@@ -88,24 +87,19 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
    * 内部发送信号方法
    */
   const sendSignalSilent = useCallback(async (postId: string, signalType: SignalType) => {
-    console.log('[Recommendation] sendSignalSilent called:', { postId, signalType, hasToken: !!token });
     
     if (!token) {
-      console.log('[Recommendation] Skipped signal (not logged in):', signalType);
       return;
     }
 
     try {
-      console.log('[Recommendation] Sending signal to API...');
       const response = await sendSignalApi(postId, signalType);
-      console.log(`[Recommendation] Signal response:`, JSON.stringify(response, null, 2));
       
       // 更新状态 - 检查各种可能的响应格式
       if (response) {
         const bucketCount = response.bucket_count || response.bucketCount || {};
         const clickCount = response.click_count ?? response.clickCount ?? 0;
         
-        console.log('[Recommendation] Updating state with:', { bucketCount, clickCount });
         
         setState({
           bucketCount,
@@ -118,7 +112,6 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error) {
-      console.log(`[Recommendation] Failed to send signal ${signalType}:`, error);
     }
   }, [token]);
 
@@ -126,7 +119,6 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
    * 发送点击信号（去重）
    */
   const sendClick = useCallback((postId: string) => {
-    console.log('[Recommendation] sendClick called:', postId, 'already sent:', sentClicks.current.has(postId));
     if (sentClicks.current.has(postId)) {
       return;
     }
@@ -193,14 +185,12 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
    */
   const resetRecommendation = useCallback(async () => {
     if (!token) {
-      console.log('[Recommendation] Cannot reset: not logged in');
       return;
     }
 
     setIsResetting(true);
     try {
       const response = await resetRecommendationApi();
-      console.log('[Recommendation] Reset successful:', response);
       
       if (response && response.bucket_count) {
         setState({
@@ -214,10 +204,7 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
       sentClicks.current.clear();
       readProgress.current.clear();
     } catch (error: any) {
-      // 使用 console.warn 而不是 console.error，避免触发 React Native 的红色错误屏幕
-      console.warn('[Recommendation] Reset failed:', error);
       if (error?.status === 404) {
-        console.warn('[Recommendation] Reset endpoint not found - backend may not have deployed yet');
       }
     } finally {
       setIsResetting(false);
@@ -228,7 +215,6 @@ export function RecommendationProvider({ children }: { children: ReactNode }) {
    * 从 API 响应更新状态 (用于 onboarding)
    */
   const updateFromResponse = useCallback((bucketCount: BucketCount, clickCount: number) => {
-    console.log('[Recommendation] Updating state from response:', { bucketCount, clickCount });
     setState({
       bucketCount,
       clickCount,

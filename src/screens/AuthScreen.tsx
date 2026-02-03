@@ -34,6 +34,7 @@ const colors = {
   textMuted: '#92400e',    // Amber 800
   border: '#E8E4D6',       // Sand Border
   error: '#ef4444',
+  selectedBorder: '#B45309', // Deep Amber for selected
 };
 
 export const AuthScreen = () => {
@@ -47,16 +48,17 @@ export const AuthScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
 
-  // Google Auth Request
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    // Only pass iosClientId on iOS to prevent Web ID usage
-    iosClientId: '346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj.apps.googleusercontent.com',
-    androidClientId: config.googleClientId,
-    // Use scheme for native development builds
-    redirectUri: makeRedirectUri({
-      scheme: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj'
-    })
-  });
+    // Google Auth Request
+    const [request, response, promptAsync] = Google.useAuthRequest({
+      // Use the iOS Client ID from config (EAS Secrets)
+      iosClientId: config.iosGoogleClientId,
+      // Use the Web Client ID from config (EAS Secrets)
+      androidClientId: config.googleClientId,
+      // Use the correct redirect scheme for native builds
+      redirectUri: makeRedirectUri({
+        scheme: 'com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj'
+      })
+    });
 
   useEffect(() => {
     if (request) {
@@ -251,7 +253,7 @@ export const AuthScreen = () => {
             {/* Show error text if configured wrong but still allow button to be there */}
             {!config.googleClientId && (
                <Text style={[styles.textSecondary, {textAlign: 'center', fontSize: 12, marginTop: 4}]}>
-                 (Setup VITE_GOOGLE_OAUTH_CLIENT_ID to enable)
+                 (Setup EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID to enable)
                </Text>
             )}
           </View>

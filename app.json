@@ -6,7 +6,7 @@
       "sparks",
       "com.googleusercontent.apps.346549054402-ht0fov6e0c1amn2ec1v6o5sd0i8vmjrj"
     ],
-    "version": "1.0.0",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gc.sparks",
+      "bundleIdentifier": "com.gc.spark",
+      "buildNumber": "12",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -41,8 +42,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "9ac143ed-936c-4c44-9688-fb64101b3ffe"
+        "projectId": "20773384-99bf-45a8-b0c5-150db49adb10"
       }
-    }
+    },
+    "owner": "bellinimoon"
   }
 }
