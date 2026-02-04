@@ -50,6 +50,8 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  ArrowDown,
+  ArrowRight,
 } from 'lucide-react-native';
 
 // 数据层
@@ -761,6 +763,8 @@ const PageItem = React.memo((props: {
   onRequestPrev?: () => void;
   onPageCompleted?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
+  onScrollAction?: () => void;
+  onScrollProgress?: (progress: number) => void;
 }) => {
   const {
     item,
@@ -774,6 +778,8 @@ const PageItem = React.memo((props: {
     onRequestPrev,
     onPageCompleted,
     onSwipeEnableChange,
+    onScrollAction,
+    onScrollProgress,
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -821,7 +827,6 @@ const PageItem = React.memo((props: {
     }
   }, []);
 
-  const readyIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const [imagesLoaded, setImagesLoaded] = useState(imageCount === 0);
   // Track content stability separately from reveal
   const [heightStable, setHeightStable] = useState(false);
@@ -862,23 +867,6 @@ const PageItem = React.memo((props: {
       ]).start();
     }
   }, [isVisible, revealed, contentReady]);
-
-  // Update ready indicator based on hasReadEnd
-  useEffect(() => {
-    if (isComplete) { // Use isComplete for visibility
-      Animated.timing(readyIndicatorOpacity, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(readyIndicatorOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isComplete]);
 
   useEffect(() => {
     setImagesLoaded(imageCount === 0);
@@ -1093,8 +1081,15 @@ const PageItem = React.memo((props: {
           isDragging.current = false;
         }}
         onScroll={(e) => {
+          onScrollAction?.();
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
           const y = contentOffset.y;
+
+          // Calculate intra-page progress (0 to 1) for the progress bar
+          const maxScroll = Math.max(1, contentSize.height - layoutMeasurement.height);
+          const intraProgress = Math.max(0, Math.min(1, y / maxScroll));
+          onScrollProgress?.(intraProgress);
+
           dragDir.current = y > lastY.current ? "up" : "down";
           lastY.current = y;
           lastScrollMetricsRef.current = {
@@ -1232,38 +1227,6 @@ const PageItem = React.memo((props: {
         </View>
       )}
 
-      {/* Ready Indicator Overlay (Chevron Right - Appears only after full read) */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: bottomClearance + 16,
-          opacity: readyIndicatorOpacity,
-        }}
-        pointerEvents={isComplete ? 'auto' : 'none'}
-      >
-        <Pressable
-          onPress={() => {
-            onRequestNext?.();
-          }}
-          disabled={!isComplete}
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: 'rgba(255, 254, 249, 0.95)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            // Subtle shadow
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.15,
-            shadowRadius: 4,
-            elevation: 4,
-          }}>
-          <ChevronRight size={24} color={colors.primary} />
-        </Pressable>
-      </Animated.View>
     </Animated.View>
   );
 });
@@ -1291,6 +1254,43 @@ function SinglePostReader({
   const currentPageRef = useRef(0); // Add ref to track latest page for viewability logic
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0]));
   const isNavigatingRef = useRef(false);
+
+  // Floating indicator opacity
+  const indicatorOpacity = useRef(new Animated.Value(0)).current;
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSuppressedRef = useRef(false);
+
+  const showIndicator = useCallback(() => {
+    // HARD LOCK: If suppressed (during navigation), strictly don't show
+    if (isSuppressedRef.current || isNavigatingRef.current) {
+      indicatorOpacity.stopAnimation();
+      indicatorOpacity.setValue(0);
+      return;
+    }
+
+    // Cancel existing timer
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+
+    // Show immediately
+    indicatorOpacity.stopAnimation();
+    indicatorOpacity.setValue(1);
+
+    // Set timer to fade out
+    hideTimerRef.current = setTimeout(() => {
+      Animated.timing(indicatorOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }, 50); // Reduced to 50ms for instant disappearance after stopping
+  }, []);
+
+  // Set initial opacity to 0 (hidden until scroll)
+  useEffect(() => {
+    indicatorOpacity.setValue(0);
+  }, []);
 
   // Recommendation signals
   const { sendLike, sendSave, trackReadProgress, resetProgress } = useRecommendation();
@@ -1385,6 +1385,7 @@ function SinglePostReader({
 
   const pageTextScale = useRef(new Animated.Value(1)).current;
   const dotScales = useRef(post.pages.map(() => new Animated.Value(1))).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   // Like functionality
   const [isLiked, setIsLiked] = useState(!!post.isLiked);
@@ -1402,6 +1403,21 @@ function SinglePostReader({
 
   // Update dots and text animation when page changes
   useEffect(() => {
+    // PRIORITY: Ensure indicator stays hidden during page changes
+    if (isNavigatingRef.current || isSuppressedRef.current) {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      indicatorOpacity.stopAnimation(); // Stop any ongoing fade animations
+      indicatorOpacity.setValue(0);
+    }
+
+    // Animate the minimalist progress dot smoothly
+    Animated.spring(progressAnim, {
+      toValue: currentPage,
+      useNativeDriver: false,
+      tension: 40,
+      friction: 10, // Slightly more dampened for smooth page arrival
+    }).start();
+
     // Animate the active dot and reset others
     dotScales.forEach((scale, idx) => {
       Animated.spring(scale, {
@@ -1597,6 +1613,13 @@ function SinglePostReader({
     const prevIndex = currentPage - 1;
     if (prevIndex >= 0) {
       isNavigatingRef.current = true;
+      isSuppressedRef.current = true; // Enable suppression
+
+      // PRIORITY: Immediately hide progress bar on page change
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      indicatorOpacity.stopAnimation();
+      indicatorOpacity.setValue(0);
+
       flatListRef.current?.scrollToIndex({
         index: prevIndex,
         animated: true,
@@ -1607,7 +1630,11 @@ function SinglePostReader({
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
-      }, 500);
+        isSuppressedRef.current = false; // Disable suppression
+        // Ensure it stays hidden after navigation completes
+        indicatorOpacity.stopAnimation();
+        indicatorOpacity.setValue(0);
+      }, 800); // Increased to 800ms to be absolutely sure the list has settled
     }
   };
 
@@ -1617,6 +1644,13 @@ function SinglePostReader({
     const nextIndex = currentPage + 1;
     if (nextIndex < post.pages.length) {
       isNavigatingRef.current = true;
+      isSuppressedRef.current = true; // Enable suppression
+      
+      // PRIORITY: Immediately hide progress bar on page change
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      indicatorOpacity.stopAnimation();
+      indicatorOpacity.setValue(0);
+
       flatListRef.current?.scrollToIndex({
         index: nextIndex,
         animated: true,
@@ -1627,9 +1661,14 @@ function SinglePostReader({
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
-      }, 500);
+        isSuppressedRef.current = false; // Disable suppression
+        // Ensure it stays hidden after navigation completes
+        indicatorOpacity.stopAnimation();
+        indicatorOpacity.setValue(0);
+      }, 800); // Increased to 800ms to be absolutely sure the list has settled
     } else {
-      // Last page reached
+      // Last page reached, go to next post
+      onRequestNext?.();
     }
   };
 
@@ -1644,75 +1683,117 @@ function SinglePostReader({
           <ChevronLeft size={28} color={colors.text} />
         </Pressable>
 
-        {/* 页码指示器 */}
-        <View style={styles.pageDotsHeader}>
-          {post.pages.map((_, idx) => (
-            <Animated.View
-              key={idx}
-              style={[
-                styles.dotSmall,
-                currentPage === idx && styles.dotSmallActive,
-                { transform: [{ scale: dotScales[idx] || 1 }] }
-              ]}
-            />
-          ))}
+        <View style={styles.headerInstructions}>
+          <Pressable 
+            style={({ pressed }) => [
+              styles.instructionItem,
+              pressed && { opacity: 0.6 }
+            ]}
+            onPress={scrollToNextPage}
+          >
+            <ArrowDown size={12} color={colors.textSecondary} strokeWidth={3} />
+            <Text style={styles.instructionText}>Page</Text>
+          </Pressable>
+          <View style={styles.instructionDivider} />
+          <Pressable 
+            style={({ pressed }) => [
+              styles.instructionItem,
+              pressed && { opacity: 0.6 }
+            ]}
+            onPress={onRequestNext}
+          >
+            <ArrowRight size={12} color={colors.textSecondary} strokeWidth={3} />
+            <Text style={styles.instructionText}>Next</Text>
+          </Pressable>
         </View>
-
-        <Animated.Text style={[
-          styles.pageIndicator,
-          { transform: [{ scale: pageTextScale }] }
-        ]}>
-          {currentPage + 1}/{post.pages.length}
-        </Animated.Text>
       </View>
 
-      {/* 垂直滚动内容 (使用 FlatList + snapToInterval) */}
-      <GHFlatList
-        ref={flatListRef}
-        data={readerData}
-        scrollEnabled={false} // Lock manual scrolling between pages
-        keyExtractor={(_, index) => `reader-item-${index}`}
-        renderItem={({ item, index }) => (
-          <View style={{ height: Math.floor(containerHeight) }}>
-            <PageItem
-              item={item}
-              post={post}
-              isVisible={visiblePages.has(index)}
-              containerHeight={Math.floor(containerHeight)}
-              isLastPage={index === readerData.length - 1}
-              bottomBarHeight={measuredBottomBarHeight}
-              hasReadEnd={hasReadEnd}
-              onRequestNext={scrollToNextPage} // Always provide next page function
-              onRequestPrev={scrollToPrevPage}
-              onPageCompleted={index === readerData.length - 1 ? () => setHasReadEnd(true) : undefined}
-              onSwipeEnableChange={undefined} // No longer needed
+      <View style={styles.readerMainLayout}>
+        {/* 垂直滚动内容 (使用 FlatList + snapToInterval) */}
+        <GHFlatList
+          ref={flatListRef}
+          data={readerData}
+          scrollEnabled={false} // Lock manual scrolling between pages
+          keyExtractor={(_, index) => `reader-item-${index}`}
+          renderItem={({ item, index }) => (
+            <View style={{ height: Math.floor(containerHeight) }}>
+              <PageItem
+                item={item}
+                post={post}
+                isVisible={visiblePages.has(index)}
+                containerHeight={Math.floor(containerHeight)}
+                isLastPage={index === readerData.length - 1}
+                bottomBarHeight={measuredBottomBarHeight}
+                hasReadEnd={hasReadEnd}
+                onRequestNext={scrollToNextPage} // Always provide next page function
+                onRequestPrev={scrollToPrevPage}
+                onPageCompleted={index === readerData.length - 1 ? () => setHasReadEnd(true) : undefined}
+                onSwipeEnableChange={undefined} // No longer needed
+                onScrollAction={showIndicator}
+                onScrollProgress={(p) => {
+                  // Only update if this is the current page to avoid multi-page updates
+                  if (currentPage === index && !isNavigatingRef.current && !isSuppressedRef.current) {
+                    progressAnim.setValue(index + p);
+                  }
+                }}
+              />
+            </View>
+          )}
+          style={styles.readerScroll}
+          showsVerticalScrollIndicator={false}
+          pagingEnabled={false}
+          snapToInterval={Math.floor(containerHeight)}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          disableIntervalMomentum={true}
+          scrollEventThrottle={16}
+          getItemLayout={(data, index) => ({
+            length: Math.floor(containerHeight),
+            offset: Math.floor(containerHeight) * index,
+            index,
+          })}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          onLayout={(e) => {
+            const { height } = e.nativeEvent.layout;
+            if (height > 0) setContainerHeight(height);
+          }}
+          initialNumToRender={3}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          removeClippedSubviews={false}
+        />
+
+        {/* 侧边页码指示器 (Floating Minimalist Vertical Line) */}
+        <Animated.View 
+          pointerEvents="none"
+          style={[
+            styles.sidePageIndicator,
+            { opacity: indicatorOpacity }
+          ]}
+        >
+          <View style={styles.minimalistTrack}>
+            <View style={styles.minimalistLine} />
+            <Animated.View 
+              style={[
+                styles.minimalistDot,
+                { 
+                  top: progressAnim.interpolate({
+                    inputRange: [0, post.pages.length],
+                    outputRange: ['0%', '100%']
+                  }),
+                  transform: [{ translateY: -7 }] 
+                }
+              ]} 
             />
           </View>
-        )}
-        style={styles.readerScroll}
-        showsVerticalScrollIndicator={false}
-        pagingEnabled={false}
-        snapToInterval={Math.floor(containerHeight)}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        disableIntervalMomentum={true}
-        scrollEventThrottle={16}
-        getItemLayout={(data, index) => ({
-          length: Math.floor(containerHeight),
-          offset: Math.floor(containerHeight) * index,
-          index,
-        })}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          if (height > 0) setContainerHeight(height);
-        }}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        removeClippedSubviews={false}
-      />
+          <View style={styles.pageIndicatorTextContainer}>
+            <Text style={styles.pageIndicatorFloatingText}>{currentPage + 1}</Text>
+            <View style={styles.pageIndicatorDivider} />
+            <Text style={styles.pageIndicatorFloatingText}>{post.pages.length}</Text>
+          </View>
+        </Animated.View>
+      </View>
 
       {/* 底部操作栏 */}
       <View
@@ -1824,7 +1905,7 @@ function PostLoader({
   onMissing,
   onRequestNext,
   onRequestPrev,
-  onSwipeEnableChange, // NEW
+  onSwipeEnableChange,
 }: {
   uid: string,
   onClose: () => void,
@@ -1928,6 +2009,15 @@ function PostSwiper({
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
 
+  const handleRequestNext = useCallback(() => {
+    if (currentIndex < items.length - 1) {
+      flatListRef.current?.scrollToIndex({
+        index: currentIndex + 1,
+        animated: true
+      });
+    }
+  }, [currentIndex, items.length]);
+
   // Sync index externally (if needed, though usually initialIndex is enough)
   useEffect(() => {
     if (initialIndex !== currentIndex && initialIndex >= 0 && initialIndex < items.length) {
@@ -2014,6 +2104,7 @@ function PostSwiper({
             onClose={onClose}
             onFeedLikeUpdate={onFeedLikeUpdate}
             onMissing={onMissing}
+            onRequestNext={handleRequestNext}
           />
         </Animated.View>
       </View>
@@ -3672,13 +3763,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
   },
+  headerInstructions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(180, 83, 9, 0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    gap: 8,
+    marginRight: 8,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  instructionText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  instructionDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: 'rgba(180, 83, 9, 0.2)',
+  },
   closeButton: {
     padding: 6,
-  },
-  pageIndicator: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   readerScroll: {
     flex: 1,
@@ -3748,20 +3861,77 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  pageDotsHeader: {
+  readerMainLayout: {
+    flex: 1,
     flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  sidePageIndicator: {
+    position: 'absolute',
+    right: 8,
+    top: 20,
+    bottom: 120,
+    width: 24,
+    backgroundColor: 'rgba(255, 254, 249, 0.8)', // Semi-transparent Soft Sand
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    paddingVertical: 12, // Added top and bottom padding
+  },
+  minimalistTrack: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  minimalistLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: 'rgba(180, 83, 9, 0.15)',
+    borderRadius: 2,
+  },
+  minimalistDot: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#D97706',
+    left: '50%',
+    marginLeft: -7,
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  pageIndicatorTextContainer: {
+    alignItems: 'center',
+    marginTop: 12,
     gap: 4,
+    paddingBottom: 10,
   },
-  dotSmall: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
+  pageIndicatorFloatingText: {
+    fontSize: 12,
+    color: '#D97706',
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
-  dotSmallActive: {
-    backgroundColor: colors.primary,
+  pageIndicatorDivider: {
     width: 16,
+    height: 1.5,
+    backgroundColor: 'rgba(180, 83, 9, 0.3)',
+    marginVertical: 2,
   },
   coverImage: {
     backgroundColor: colors.border,
