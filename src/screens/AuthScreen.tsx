@@ -140,7 +140,7 @@ export const AuthScreen = () => {
         <View style={styles.header}>
           <Text style={styles.title}>{isLogin ? 'Welcome Back' : 'Create Account'}</Text>
           <Text style={styles.subtitle}>
-            {isLogin ? 'Sign in to continue' : 'Join our community today'}
+            {isLogin ? 'Log in to continue' : 'Join our community today'}
           </Text>
         </View>
 
@@ -217,9 +217,9 @@ export const AuthScreen = () => {
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#451a03" />
             ) : (
-              <Text style={styles.buttonText}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>
+              <Text style={styles.buttonText}>{isLogin ? 'Log In' : 'Sign Up'}</Text>
             )}
           </Pressable>
 
@@ -347,19 +347,28 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: colors.primary,
-    height: 50,
-    borderRadius: 12,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
+    // Add subtle depth
+    borderWidth: 1,
+    borderColor: colors.primaryDark,
+    shadowColor: colors.primaryDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: '#451a03', // Match the main text color for high contrast on yellow
+    letterSpacing: 0.5,
   },
   divider: {
     flexDirection: 'row',
@@ -383,21 +392,28 @@ const styles = StyleSheet.create({
   },
   socialButton: {
     width: '100%', // Full width
-    height: 50,
+    height: 52,
     backgroundColor: colors.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    // Add subtle depth to match primary button
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   googleButton: {
     // specific styles if needed
   },
   socialButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.text,
+    letterSpacing: 0.2,
   },
   footer: {
     flexDirection: 'row',
@@ -410,8 +426,8 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
+    fontWeight: '700',
+    color: '#D97706', // More saturated Amber for better readability while staying in the yellow family
   },
   errorBanner: {
     backgroundColor: '#fee2e2',

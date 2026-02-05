@@ -1406,12 +1406,12 @@ function SinglePostReader({
 
   // Update dots and text animation when page changes
   useEffect(() => {
-    // MAGNETIC SNAP: High-speed spring for a premium feel
+    // MAGNETIC SNAP: Balanced spring for a smooth, premium feel
     Animated.spring(progressAnim, {
       toValue: currentPage,
       useNativeDriver: false,
-      tension: 150, // Very high tension for speed
-      friction: 12,  // Enough friction to stop instantly without bounce
+      tension: 60,   // Reduced tension for a smoother glide
+      friction: 10,  // Balanced friction for a gentle settle
     }).start();
 
     // Animate the active dot and reset others
@@ -1751,7 +1751,8 @@ function SinglePostReader({
             
             {/* Page Markers */}
             {readerData.map((_, idx) => {
-              const top = (idx / readerData.length) * 100;
+              const total = Math.max(1, readerData.length - 1);
+              const top = (idx / total) * 100;
 
               return (
                 <View 
@@ -1769,7 +1770,7 @@ function SinglePostReader({
                 styles.minimalistDot,
                 { 
                   top: progressAnim.interpolate({
-                    inputRange: [0, post.pages.length],
+                    inputRange: [0, Math.max(1, post.pages.length - 1)],
                     outputRange: ['0%', '100%']
                   }),
                   transform: [{ translateY: -7 }] 
@@ -2774,7 +2775,7 @@ function SavedScreen({
         <BookmarkPlus size={48} color="#B45309" strokeWidth={1.5} />
       </Pressable>
       <Text style={styles.savedEmptyTitle}>
-        {token ? 'No Saved Posts' : 'Please log in to save'}
+        {token ? 'No Saved Posts' : 'Please Join Us to Save'}
       </Text>
       {token ? (
         <>
