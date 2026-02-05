@@ -46,6 +46,7 @@ import {
 } from 'lucide-react-native';
 import { TAGS, InterestLevel } from '../data/buckets';
 import { OnboardingScreen } from './OnboardingScreen';
+import { FeedItem } from '../data';
 
 // Yellow (Sunglow) 色彩系统 - Warm Stone/Grey Contrast
 const colors = {
@@ -121,7 +122,7 @@ export const ProfileScreen = ({
   onHistoryPress,
   onLikesPress
 }: {
-  onItemPress?: (id: string) => void;
+  onItemPress?: (id: string, items: FeedItem[]) => void;
   onToggleLike?: () => void;
   onHistoryPress?: () => void;
   onLikesPress?: () => void;

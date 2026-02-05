@@ -181,7 +181,7 @@ function AdaptiveImage({
   return (
     <Image
       source={source}
-      style={[{ width, aspectRatio }, style]}
+      style={[style, { width, aspectRatio }]}
       contentFit="cover"
       onLoad={(e) => {
         const { width: w, height: h } = e.source;
@@ -765,6 +765,7 @@ const PageItem = React.memo((props: {
   onSwipeEnableChange?: (canSwipe: boolean) => void;
   onScrollAction?: () => void;
   onScrollProgress?: (progress: number) => void;
+  onPageTypeReport?: (index: number, type: 'dot' | 'line') => void;
 }) => {
   const {
     item,
@@ -780,6 +781,7 @@ const PageItem = React.memo((props: {
     onSwipeEnableChange,
     onScrollAction,
     onScrollProgress,
+    onPageTypeReport,
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -1085,11 +1087,6 @@ const PageItem = React.memo((props: {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
           const y = contentOffset.y;
 
-          // Calculate intra-page progress (0 to 1) for the progress bar
-          const maxScroll = Math.max(1, contentSize.height - layoutMeasurement.height);
-          const intraProgress = Math.max(0, Math.min(1, y / maxScroll));
-          onScrollProgress?.(intraProgress);
-
           dragDir.current = y > lastY.current ? "up" : "down";
           lastY.current = y;
           lastScrollMetricsRef.current = {
@@ -1176,6 +1173,11 @@ const PageItem = React.memo((props: {
             contentHeightRef.current = h;
             lastScrollMetricsRef.current.contentHeight = h;
             markContentUnstable();
+
+            // Report page type based on height relative to viewport (containerHeight)
+            // Use a small buffer (10px) to avoid flickering on exact matches
+            const type = h > containerHeight + 10 ? 'line' : 'dot';
+            onPageTypeReport?.(item.index, type);
           }
         }}
         onLayout={(e) => {
@@ -1261,13 +1263,6 @@ function SinglePostReader({
   const isSuppressedRef = useRef(false);
 
   const showIndicator = useCallback(() => {
-    // HARD LOCK: If suppressed (during navigation), strictly don't show
-    if (isSuppressedRef.current || isNavigatingRef.current) {
-      indicatorOpacity.stopAnimation();
-      indicatorOpacity.setValue(0);
-      return;
-    }
-
     // Cancel existing timer
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
@@ -1284,7 +1279,7 @@ function SinglePostReader({
         duration: 200,
         useNativeDriver: true,
       }).start();
-    }, 50); // Reduced to 50ms for instant disappearance after stopping
+    }, 70); // Reduced to 70ms for instant disappearance after stopping
   }, []);
 
   // Set initial opacity to 0 (hidden until scroll)
@@ -1301,6 +1296,14 @@ function SinglePostReader({
   const [containerHeight, setContainerHeight] = useState(SCREEN_HEIGHT - insets.top - readerHeaderHeight - bottomBarHeight);
   const [measuredBottomBarHeight, setMeasuredBottomBarHeight] = useState(0);
   const [hasReadEnd, setHasReadEnd] = useState(false);
+  const [pageTypes, setPageTypes] = useState<Record<number, 'dot' | 'line'>>({});
+
+  const handlePageTypeReport = useCallback((index: number, type: 'dot' | 'line') => {
+    setPageTypes(prev => {
+      if (prev[index] === type) return prev;
+      return { ...prev, [index]: type };
+    });
+  }, []);
 
   // Prepare list data: Combine header into first page
   const readerData: ReaderItem[] = useMemo(() => {
@@ -1403,19 +1406,12 @@ function SinglePostReader({
 
   // Update dots and text animation when page changes
   useEffect(() => {
-    // PRIORITY: Ensure indicator stays hidden during page changes
-    if (isNavigatingRef.current || isSuppressedRef.current) {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      indicatorOpacity.stopAnimation(); // Stop any ongoing fade animations
-      indicatorOpacity.setValue(0);
-    }
-
-    // Animate the minimalist progress dot smoothly
+    // MAGNETIC SNAP: High-speed spring for a premium feel
     Animated.spring(progressAnim, {
       toValue: currentPage,
       useNativeDriver: false,
-      tension: 40,
-      friction: 10, // Slightly more dampened for smooth page arrival
+      tension: 150, // Very high tension for speed
+      friction: 12,  // Enough friction to stop instantly without bounce
     }).start();
 
     // Animate the active dot and reset others
@@ -1613,12 +1609,6 @@ function SinglePostReader({
     const prevIndex = currentPage - 1;
     if (prevIndex >= 0) {
       isNavigatingRef.current = true;
-      isSuppressedRef.current = true; // Enable suppression
-
-      // PRIORITY: Immediately hide progress bar on page change
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      indicatorOpacity.stopAnimation();
-      indicatorOpacity.setValue(0);
 
       flatListRef.current?.scrollToIndex({
         index: prevIndex,
@@ -1630,10 +1620,6 @@ function SinglePostReader({
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
-        isSuppressedRef.current = false; // Disable suppression
-        // Ensure it stays hidden after navigation completes
-        indicatorOpacity.stopAnimation();
-        indicatorOpacity.setValue(0);
       }, 800); // Increased to 800ms to be absolutely sure the list has settled
     }
   };
@@ -1644,13 +1630,7 @@ function SinglePostReader({
     const nextIndex = currentPage + 1;
     if (nextIndex < post.pages.length) {
       isNavigatingRef.current = true;
-      isSuppressedRef.current = true; // Enable suppression
       
-      // PRIORITY: Immediately hide progress bar on page change
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      indicatorOpacity.stopAnimation();
-      indicatorOpacity.setValue(0);
-
       flatListRef.current?.scrollToIndex({
         index: nextIndex,
         animated: true,
@@ -1661,10 +1641,6 @@ function SinglePostReader({
       // Unlock after animation
       setTimeout(() => {
         isNavigatingRef.current = false;
-        isSuppressedRef.current = false; // Disable suppression
-        // Ensure it stays hidden after navigation completes
-        indicatorOpacity.stopAnimation();
-        indicatorOpacity.setValue(0);
       }, 800); // Increased to 800ms to be absolutely sure the list has settled
     } else {
       // Last page reached, go to next post
@@ -1730,11 +1706,9 @@ function SinglePostReader({
                 onPageCompleted={index === readerData.length - 1 ? () => setHasReadEnd(true) : undefined}
                 onSwipeEnableChange={undefined} // No longer needed
                 onScrollAction={showIndicator}
-                onScrollProgress={(p) => {
-                  // Only update if this is the current page to avoid multi-page updates
-                  if (currentPage === index && !isNavigatingRef.current && !isSuppressedRef.current) {
-                    progressAnim.setValue(index + p);
-                  }
+                onPageTypeReport={handlePageTypeReport}
+                onScrollProgress={(_p) => {
+                  // Continuous tracking disabled: dot only moves when page index actually changes
                 }}
               />
             </View>
@@ -1774,6 +1748,22 @@ function SinglePostReader({
         >
           <View style={styles.minimalistTrack}>
             <View style={styles.minimalistLine} />
+            
+            {/* Page Markers */}
+            {readerData.map((_, idx) => {
+              const top = (idx / readerData.length) * 100;
+
+              return (
+                <View 
+                  key={`page-marker-${idx}`}
+                  style={[
+                    styles.pageMarkerDot,
+                    { top: `${top}%` }
+                  ]}
+                />
+              );
+            })}
+
             <Animated.View 
               style={[
                 styles.minimalistDot,
@@ -2151,11 +2141,24 @@ function HistoryScreen({
   onItemPress,
   onBack
 }: {
-  onItemPress: (uid: string) => void;
+  onItemPress: (uid: string, items: FeedItem[]) => void;
   onBack: () => void;
 }) {
   const { user } = useAuth();
   const [historyData, setHistoryData] = useState<ProfileItem[]>([]);
+
+  // Convert ProfileItem to FeedItem for the swiper
+  const historyFeedItems = useMemo(() => {
+    return historyData.map((item, index) => ({
+      uid: item.itemId,
+      title: item.title,
+      coverImage: item.imageUrl,
+      topic: item.topic || 'General',
+      likes: 0,
+      isLiked: false,
+      index
+    }));
+  }, [historyData]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
@@ -2238,7 +2241,7 @@ function HistoryScreen({
       <View style={styles.historyCard}>
         <Pressable
           style={styles.historyCardInner}
-          onPress={() => (historyItem.itemType === 'post' || historyItem.itemType === 'article') && onItemPress(historyItem.itemId)}
+          onPress={() => (historyItem.itemType === 'post' || historyItem.itemType === 'article') && onItemPress(historyItem.itemId, historyFeedItems)}
         >
           <View style={styles.historyImageContainer}>
             {historyItem.thumbnail ? (
@@ -2328,12 +2331,25 @@ function LikesScreen({
   onToggleLike,
   onBack
 }: {
-  onItemPress: (uid: string) => void;
+  onItemPress: (uid: string, items: FeedItem[]) => void;
   onToggleLike?: () => void;
   onBack: () => void;
 }) {
   const { user } = useAuth();
   const [likesData, setLikesData] = useState<ProfileItem[]>([]);
+
+  // Convert ProfileItem to FeedItem for the swiper
+  const likesFeedItems = useMemo(() => {
+    return likesData.map((item, index) => ({
+      uid: item.itemId,
+      title: item.title,
+      coverImage: item.imageUrl,
+      topic: item.topic || 'General',
+      likes: 0,
+      isLiked: true,
+      index
+    }));
+  }, [likesData]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
@@ -2405,7 +2421,7 @@ function LikesScreen({
       <View style={styles.historyCard}>
         <Pressable
           style={styles.historyCardInner}
-          onPress={() => (likeItem.itemType === 'post' || likeItem.itemType === 'article') && onItemPress(likeItem.itemId)}
+          onPress={() => (likeItem.itemType === 'post' || likeItem.itemType === 'article') && onItemPress(likeItem.itemId, likesFeedItems)}
         >
           <View style={styles.historyImageContainer}>
             {likeItem.thumbnail ? (
@@ -2691,12 +2707,25 @@ function SavedScreen({
   onItemPress,
   onLoginPress
 }: {
-  onItemPress: (uid: string) => void;
+  onItemPress: (uid: string, items: FeedItem[]) => void;
   onLoginPress?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
+
+  // Convert SavedPost to FeedItem for the swiper
+  const savedFeedItems = useMemo(() => {
+    return savedPosts.map((sp, index) => ({
+      uid: sp.uid,
+      title: sp.title,
+      coverImage: sp.coverImage,
+      topic: sp.topic || 'General',
+      likes: 0, // Not available in SavedPost
+      isLiked: false,
+      index
+    }));
+  }, [savedPosts]);
 
   // 删除动画
   const handleUnsave = useCallback((uid: string, title: string) => {
@@ -2775,7 +2804,7 @@ function SavedScreen({
       >
         <Pressable
           style={styles.savedCardInner}
-          onPress={() => onItemPress(savedItem.uid)}
+          onPress={() => onItemPress(savedItem.uid, savedFeedItems)}
         >
           {/* 封面图 */}
           <Image
@@ -2912,7 +2941,7 @@ function SearchScreen({
   onClose
 }: {
   items: FeedItem[];
-  onItemPress: (uid: string) => void;
+  onItemPress: (uid: string, items: FeedItem[]) => void;
   onClose: () => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -2934,8 +2963,8 @@ function SearchScreen({
   const filteredItems = searchQuery.trim() === ''
     ? []
     : items.filter(item =>
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.topic.toLowerCase().includes(searchQuery.toLowerCase())
+      (item.title && item.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (item.topic && item.topic.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
   const handleSearch = async (text: string) => {
@@ -3026,7 +3055,7 @@ function SearchScreen({
                 items={filteredItems}
                 onItemPress={(uid) => {
                   handleSearch(searchQuery);
-                  onItemPress(uid);
+                  onItemPress(uid, filteredItems);
                 }}
               />
             ) : (
@@ -3050,7 +3079,7 @@ function CollectionScreen({
   onTopicPress
 }: {
   items: FeedItem[];
-  onItemPress: (uid: string) => void;
+  onItemPress: (uid: string, items: FeedItem[]) => void;
   onTopicPress: (topic: string) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -3073,7 +3102,7 @@ function CollectionScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        {groupedItems.map(({ topic, items }) => (
+        {groupedItems.map(({ topic, items: topicItems }) => (
           <View key={topic} style={styles.collectionSection}>
             {/* Section Header */}
             <View style={styles.collectionHeader}>
@@ -3094,11 +3123,11 @@ function CollectionScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.collectionHorizontalScroll}
             >
-              {items.map((item) => (
+              {topicItems.map((item) => (
                 <Pressable
                   key={item.uid}
                   style={styles.collectionCard}
-                  onPress={() => onItemPress(item.uid)}
+                  onPress={() => onItemPress(item.uid, topicItems)}
                 >
                   <Image
                     source={item.coverImage}
@@ -3129,6 +3158,7 @@ const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
 
 function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
+  const [swiperItems, setSwiperItems] = useState<FeedItem[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
@@ -3165,7 +3195,7 @@ function AppContent() {
   const [allPosts, setAllPosts] = useState<FeedItem[]>([]);
   const [isAllPostsLoading, setIsAllPostsLoading] = useState(false);
 
-  // 加载所有帖子用于 Collection 标签页
+  // 加载所有帖子用于 Collection 标签页和搜索
   useEffect(() => {
     const loadAll = async () => {
       if (bottomTab === 'collection') {
@@ -3176,10 +3206,11 @@ function AppContent() {
       setIsAllPostsLoading(false);
     };
 
-    if (bottomTab === 'collection' || bottomTab === 'explore') {
+    // Always load all posts if we haven't yet, or if on relevant tabs
+    if (allPosts.length === 0 || bottomTab === 'collection' || bottomTab === 'explore' || showSearchModal) {
       loadAll();
     }
-  }, [bottomTab, fetchAllPosts]);
+  }, [bottomTab, fetchAllPosts, showSearchModal]);
 
   const { removeFromHistory } = usePostHistory();
   const { unsavePost } = useSaved();
@@ -3187,10 +3218,27 @@ function AppContent() {
   // 收藏系统（用于刷新）
   const { refreshSavedPosts } = useSaved();
 
+  const closePost = useCallback(() => {
+    setSelectedPostUid(null);
+    setSwiperItems([]);
+  }, []);
+
+  const openPost = useCallback((uid: string, items: FeedItem[]) => {
+    // Ensure we have a valid list of items and the UID exists in it
+    if (!items || items.length === 0) return;
+    
+    setSwiperItems(items);
+    setSelectedPostUid(uid);
+  }, []);
+
+  const currentPostIndex = useMemo(() => {
+    if (!selectedPostUid || !swiperItems || swiperItems.length === 0) return 0;
+    const index = swiperItems.findIndex(p => p.uid === selectedPostUid);
+    return index >= 0 ? index : 0;
+  }, [selectedPostUid, swiperItems]);
+
   // 兼容旧的 status 变量
   const feedStatus = feedLoading ? 'loading' : feedError ? 'error' : 'success';
-
-  const currentPostIndex = feedItems ? feedItems.findIndex(p => p.uid === selectedPostUid) : -1;
 
   const { token, user } = useAuth();
 
@@ -3325,7 +3373,7 @@ function AppContent() {
             >
               <MasonryFeed
                 items={feedItems}
-                onItemPress={(uid) => setSelectedPostUid(uid)}
+                onItemPress={(uid) => openPost(uid, feedItems)}
               />
               {feedLoading ? (
                 <View style={styles.loadingMore}>
@@ -3360,7 +3408,7 @@ function AppContent() {
                   <LoadingScreen />
                 ) : (
                   <>
-                    <MasonryFeed items={topicItems} onItemPress={(uid) => setSelectedPostUid(uid)} />
+                    <MasonryFeed items={topicItems} onItemPress={(uid) => openPost(uid, topicItems)} />
                     <Text style={styles.endText}>— End of Topic —</Text>
                   </>
                 )}
@@ -3376,7 +3424,7 @@ function AppContent() {
             ) : (
               <CollectionScreen
                 items={allPosts}
-                onItemPress={(uid) => setSelectedPostUid(uid)}
+                onItemPress={(uid, items) => openPost(uid, items)}
                 onTopicPress={(topic) => setSelectedTopic(topic)}
               />
             )}
@@ -3385,7 +3433,7 @@ function AppContent() {
       case 'saved':
         return (
           <SavedScreen
-            onItemPress={(uid) => setSelectedPostUid(uid)}
+            onItemPress={(uid, savedItems) => openPost(uid, savedItems)}
             onLoginPress={() => setBottomTab('me')}
           />
         );
@@ -3394,7 +3442,7 @@ function AppContent() {
         if (showHistoryModal) {
           return (
             <HistoryScreen
-              onItemPress={(uid) => setSelectedPostUid(uid)}
+              onItemPress={(uid, historyItems) => openPost(uid, historyItems)}
               onBack={() => setShowHistoryModal(false)}
             />
           );
@@ -3402,7 +3450,7 @@ function AppContent() {
         if (showLikesModal) {
           return (
             <LikesScreen
-              onItemPress={(uid) => setSelectedPostUid(uid)}
+              onItemPress={(uid, likesItems) => openPost(uid, likesItems)}
               onToggleLike={refetchFeed}
               onBack={() => setShowLikesModal(false)}
             />
@@ -3410,7 +3458,7 @@ function AppContent() {
         }
         return (
           <ProfileScreen
-            onItemPress={(uid) => setSelectedPostUid(uid)}
+            onItemPress={(uid, profileItems) => openPost(uid, profileItems)}
             onToggleLike={refetchFeed}
             onHistoryPress={() => setShowHistoryModal(true)}
             onLikesPress={() => setShowLikesModal(true)}
@@ -3448,15 +3496,20 @@ function AppContent() {
           visible={selectedPostUid !== null}
           animationType="slide"
           presentationStyle="fullScreen"
-          onRequestClose={() => setSelectedPostUid(null)}
+          onRequestClose={closePost}
         >
-          {feedItems && feedItems.length > 0 && selectedPostUid ? (
+          {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
             <PostSwiper
-              items={feedItems}
+              items={swiperItems}
               initialIndex={Math.max(0, currentPostIndex)}
-              onClose={() => setSelectedPostUid(null)}
+              onClose={closePost}
               onFeedLikeUpdate={updateFeedLike}
-              onLoadMore={() => consumeMultiple(1)}
+              onLoadMore={() => {
+                // Only load more if we are using the main feed
+                if (swiperItems === feedItems) {
+                  consumeMultiple(1);
+                }
+              }}
               onMissing={(uid) => {
                 removeFeedPost(uid);
                 removeFromHistory(uid);
@@ -3464,7 +3517,7 @@ function AppContent() {
 
                 // If it's the current post, we must close
                 if (uid === selectedPostUid) {
-                  setSelectedPostUid(null);
+                  closePost();
                   Alert.alert('Post Unavailable', 'This post has been deleted or is no longer available.');
                 }
               }}
@@ -3474,7 +3527,7 @@ function AppContent() {
               <LoadingScreen />
               <Pressable
                 style={styles.modalCloseButton}
-                onPress={() => setSelectedPostUid(null)}
+                onPress={closePost}
               >
                 <X size={24} color={colors.text} />
               </Pressable>
@@ -3490,10 +3543,10 @@ function AppContent() {
           onRequestClose={() => setShowSearchModal(false)}
         >
           <SearchScreen
-            items={feedItems}
-            onItemPress={(uid) => {
+            items={allPosts.length > 0 ? allPosts : feedItems}
+            onItemPress={(uid, searchItems) => {
               setShowSearchModal(false);
-              setSelectedPostUid(uid);
+              openPost(uid, searchItems);
             }}
             onClose={() => setShowSearchModal(false)}
           />
@@ -3678,9 +3731,12 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     backgroundColor: colors.border,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    overflow: 'hidden',
+    // Use slightly smaller radius for the image to perfectly match the inner curve of the card border
+    // Inner radius = Outer radius (12) - Border width (1.5) = 10.5
+    borderTopLeftRadius: 10.5, 
+    borderTopRightRadius: 10.5,
+    transform: [{ scale: 1.04 }], // Scale up to ensure it overflows the border
+    marginTop: -1, // Adjust for scaling
   },
   cardContent: {
     padding: 10,
@@ -3891,28 +3947,40 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     position: 'relative',
+    marginVertical: 40, // Reduced space for dots by shortening the track
   },
   minimalistLine: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 4,
-    backgroundColor: 'rgba(180, 83, 9, 0.15)',
-    borderRadius: 2,
+    width: 2, // Slightly thicker for visibility
+    backgroundColor: 'rgba(180, 83, 9, 0.2)', // Darker amber tint
+    borderRadius: 1,
+  },
+  pageMarkerDot: {
+    position: 'absolute',
+    width: 10, // Wider tick
+    height: 2, // Thicker tick
+    backgroundColor: 'rgba(180, 83, 9, 0.4)', // More opaque
+    left: '50%',
+    marginLeft: -5,
+    zIndex: 1,
+    borderRadius: 1,
   },
   minimalistDot: {
     position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12, // Slightly larger for better visibility
+    height: 12,
+    borderRadius: 6,
     backgroundColor: '#D97706',
     left: '50%',
-    marginLeft: -7,
-    shadowColor: '#D97706',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.4,
+    marginLeft: -6,
+    shadowColor: '#000', // Black shadow for better contrast on images
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
     shadowRadius: 3,
-    elevation: 3,
+    elevation: 5,
+    zIndex: 10,
   },
   pageIndicatorTextContainer: {
     alignItems: 'center',
@@ -4221,10 +4289,12 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   collectionCardImage: {
-    width: '101%',
-    marginLeft: '-0.5%',
     height: 110,
     backgroundColor: colors.border,
+    borderTopLeftRadius: 10.5,
+    borderTopRightRadius: 10.5,
+    transform: [{ scale: 1.04 }],
+    marginTop: -1,
   },
   collectionCardContent: {
     padding: 10,

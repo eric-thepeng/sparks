@@ -137,7 +137,12 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
 
 
       if (newPosts.length > 0) {
-        setCachedPosts(prev => [...prev, ...newPosts]);
+        setCachedPosts(prev => {
+          // Deduplicate: filter out posts that already exist in cachedPosts
+          const existingUids = new Set(prev.map(p => p.uid));
+          const uniqueNewPosts = newPosts.filter(p => !existingUids.has(p.uid));
+          return [...prev, ...uniqueNewPosts];
+        });
       }
 
       // 如果返回的帖子都是已见过的或数量不足，可能没有更多了
@@ -161,7 +166,13 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
 
     const [post, ...remaining] = cachedPosts;
     setCachedPosts(remaining);
-    setDisplayedPosts(prev => [...prev, post]);
+    setDisplayedPosts(prev => {
+      // Deduplicate: check if post already exists in displayedPosts
+      if (prev.some(p => p.uid === post.uid)) {
+        return prev;
+      }
+      return [...prev, post];
+    });
 
 
     // 检查是否需要补充
@@ -185,7 +196,12 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     const remaining = cachedPosts.slice(toConsume);
 
     setCachedPosts(remaining);
-    setDisplayedPosts(prev => [...prev, ...consumed]);
+    setDisplayedPosts(prev => {
+      // Deduplicate: filter out posts that already exist in displayedPosts
+      const existingUids = new Set(prev.map(p => p.uid));
+      const uniqueConsumed = consumed.filter(p => !existingUids.has(p.uid));
+      return [...prev, ...uniqueConsumed];
+    });
 
 
     // 检查是否需要补充
