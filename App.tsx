@@ -68,7 +68,9 @@ import {
   ContentBlock,
   getBucketSubtitle,
   syncBucketsFromBackend,
-  syncTagsFromBackend
+  syncTagsFromBackend,
+  BUCKETS,
+  Bucket
 } from './src/data';
 
 import {
@@ -766,6 +768,7 @@ const PageItem = React.memo((props: {
   onScrollAction?: () => void;
   onScrollProgress?: (progress: number) => void;
   onPageTypeReport?: (index: number, type: 'dot' | 'line') => void;
+  onTopicClick?: (topic: string) => void;
 }) => {
   const {
     item,
@@ -782,6 +785,7 @@ const PageItem = React.memo((props: {
     onScrollAction,
     onScrollProgress,
     onPageTypeReport,
+    onTopicClick,
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -1204,9 +1208,12 @@ const PageItem = React.memo((props: {
             />
             <View style={styles.titleContainer}>
               <Text style={styles.postTitle}>{post.title}</Text>
-              <View style={styles.topicBadge}>
+              <Pressable
+                style={styles.topicBadge}
+                onPress={() => onTopicClick?.(post.topic)}
+              >
                 <Text style={styles.topicBadgeText}>#{formatTopicName(post.topic)}</Text>
-              </View>
+              </Pressable>
             </View>
           </View>
         )}
@@ -1242,12 +1249,14 @@ function SinglePostReader({
   onLikeUpdate,
   onRequestNext,
   onSwipeEnableChange, // NEW
+  onTopicClick,
 }: {
   post: Post;
   onClose: () => void;
   onLikeUpdate?: (isLiked: boolean, likeCount: number) => void;
   onRequestNext?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
+  onTopicClick?: (topic: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { token, logout } = useAuth();
@@ -1630,7 +1639,7 @@ function SinglePostReader({
     const nextIndex = currentPage + 1;
     if (nextIndex < post.pages.length) {
       isNavigatingRef.current = true;
-      
+
       flatListRef.current?.scrollToIndex({
         index: nextIndex,
         animated: true,
@@ -1660,7 +1669,7 @@ function SinglePostReader({
         </Pressable>
 
         <View style={styles.headerInstructions}>
-          <Pressable 
+          <Pressable
             style={({ pressed }) => [
               styles.instructionItem,
               pressed && { opacity: 0.6 }
@@ -1671,7 +1680,7 @@ function SinglePostReader({
             <Text style={styles.instructionText}>Page</Text>
           </Pressable>
           <View style={styles.instructionDivider} />
-          <Pressable 
+          <Pressable
             style={({ pressed }) => [
               styles.instructionItem,
               pressed && { opacity: 0.6 }
@@ -1710,6 +1719,7 @@ function SinglePostReader({
                 onScrollProgress={(_p) => {
                   // Continuous tracking disabled: dot only moves when page index actually changes
                 }}
+                onTopicClick={onTopicClick}
               />
             </View>
           )}
@@ -1739,7 +1749,7 @@ function SinglePostReader({
         />
 
         {/* 侧边页码指示器 (Floating Minimalist Vertical Line) */}
-        <Animated.View 
+        <Animated.View
           pointerEvents="none"
           style={[
             styles.sidePageIndicator,
@@ -1748,14 +1758,14 @@ function SinglePostReader({
         >
           <View style={styles.minimalistTrack}>
             <View style={styles.minimalistLine} />
-            
+
             {/* Page Markers */}
             {readerData.map((_, idx) => {
               const total = Math.max(1, readerData.length - 1);
               const top = (idx / total) * 100;
 
               return (
-                <View 
+                <View
                   key={`page-marker-${idx}`}
                   style={[
                     styles.pageMarkerDot,
@@ -1765,17 +1775,17 @@ function SinglePostReader({
               );
             })}
 
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.minimalistDot,
-                { 
+                {
                   top: progressAnim.interpolate({
                     inputRange: [0, Math.max(1, post.pages.length - 1)],
                     outputRange: ['0%', '100%']
                   }),
-                  transform: [{ translateY: -7 }] 
+                  transform: [{ translateY: -7 }]
                 }
-              ]} 
+              ]}
             />
           </View>
           <View style={styles.pageIndicatorTextContainer}>
@@ -1897,6 +1907,7 @@ function PostLoader({
   onRequestNext,
   onRequestPrev,
   onSwipeEnableChange,
+  onTopicClick,
 }: {
   uid: string,
   onClose: () => void,
@@ -1905,6 +1916,7 @@ function PostLoader({
   onRequestNext?: () => void;
   onRequestPrev?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
+  onTopicClick?: (topic: string) => void;
 }) {
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
@@ -1972,6 +1984,7 @@ function PostLoader({
       }}
       onRequestNext={onRequestNext}
       onSwipeEnableChange={onSwipeEnableChange}
+      onTopicClick={onTopicClick}
     />
   );
 }
@@ -1987,7 +2000,8 @@ function PostSwiper({
   onClose,
   onFeedLikeUpdate,
   onLoadMore,
-  onMissing
+  onMissing,
+  onTopicClick,
 }: {
   items: FeedItem[];
   initialIndex: number;
@@ -1995,6 +2009,7 @@ function PostSwiper({
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
+  onTopicClick?: (topic: string) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef<FlatList>(null);
@@ -2096,6 +2111,7 @@ function PostSwiper({
             onFeedLikeUpdate={onFeedLikeUpdate}
             onMissing={onMissing}
             onRequestNext={handleRequestNext}
+            onTopicClick={onTopicClick}
           />
         </Animated.View>
       </View>
@@ -3084,6 +3100,16 @@ function CollectionScreen({
   onTopicPress: (topic: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const [expanded, setExpanded] = useState(false);
+
+  // Shuffle buckets once on mount to get "randomly exposed"
+  const [randomBuckets, setRandomBuckets] = useState<Bucket[]>([]);
+
+  useEffect(() => {
+    setRandomBuckets([...BUCKETS].sort(() => 0.5 - Math.random()));
+  }, []); // Run on mount (every time CollectionScreen is rendered)
+
+  const visibleBuckets = expanded ? randomBuckets : randomBuckets.slice(0, 4);
 
   // Group items by topic
   const groupedItems = useMemo(() => {
@@ -3103,6 +3129,33 @@ function CollectionScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        {/* Topic Index (Randomly exposed) */}
+        <View style={styles.tagsHeader}>
+          <View style={styles.tagsContainer}>
+            {visibleBuckets.map(bucket => (
+              <Pressable key={bucket.id} style={styles.tag} onPress={() => onTopicPress(bucket.id)}>
+                <Text style={styles.tagText}>#{bucket.name}</Text>
+              </Pressable>
+            ))}
+            {!expanded && randomBuckets.length > 4 && (
+              <Pressable style={[styles.tag, styles.moreTag]} onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setExpanded(true);
+              }}>
+                <Text style={[styles.tagText, styles.moreTagText]}>More +</Text>
+              </Pressable>
+            )}
+            {expanded && (
+              <Pressable style={[styles.tag, styles.moreTag]} onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setExpanded(false);
+              }}>
+                <Text style={[styles.tagText, styles.moreTagText]}>Less -</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+
         {groupedItems.map(({ topic, items: topicItems }) => (
           <View key={topic} style={styles.collectionSection}>
             {/* Section Header */}
@@ -3227,7 +3280,7 @@ function AppContent() {
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
     if (!items || items.length === 0) return;
-    
+
     setSwiperItems(items);
     setSelectedPostUid(uid);
   }, []);
@@ -3310,13 +3363,42 @@ function AppContent() {
     }
   }, [refetchFeed]);
 
-  // Reset internal states when switching tabs
-  useEffect(() => {
-    setSelectedTopic(null);
-  }, [bottomTab]);
+  const handleTopicClick = useCallback((topic: string) => {
+    closePost();
+    setSelectedTopic(topic);
+    // Don't switch tab: setBottomTab('collection');
+  }, [closePost]);
 
   // 渲染当前页面内容
   const renderContent = () => {
+    // Global Topic View Overlay: If a topic is selected, show it regardless of current tab
+    if (selectedTopic) {
+      const topicItems = allPosts.filter(item => item.topic === selectedTopic);
+      return (
+        <>
+          <Header
+            title={formatTopicName(selectedTopic)}
+            onBack={() => setSelectedTopic(null)}
+            onSearchPress={() => setShowSearchModal(true)}
+          />
+          <ScrollView
+            style={styles.collectionContainer}
+            contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {isAllPostsLoading ? (
+              <LoadingScreen />
+            ) : (
+              <>
+                <MasonryFeed items={topicItems} onItemPress={(uid) => openPost(uid, topicItems)} />
+                <Text style={styles.endText}>— End of Topic —</Text>
+              </>
+            )}
+          </ScrollView>
+        </>
+      );
+    }
+
     switch (bottomTab) {
       case 'explore':
         // 处理加载状态
@@ -3391,32 +3473,6 @@ function AppContent() {
           </>
         );
       case 'collection':
-        if (selectedTopic) {
-          const topicItems = allPosts.filter(item => item.topic === selectedTopic);
-          return (
-            <>
-              <Header
-                title={formatTopicName(selectedTopic)}
-                onBack={() => setSelectedTopic(null)}
-                onSearchPress={() => setShowSearchModal(true)}
-              />
-              <ScrollView
-                style={styles.collectionContainer}
-                contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
-                showsVerticalScrollIndicator={false}
-              >
-                {isAllPostsLoading ? (
-                  <LoadingScreen />
-                ) : (
-                  <>
-                    <MasonryFeed items={topicItems} onItemPress={(uid) => openPost(uid, topicItems)} />
-                    <Text style={styles.endText}>— End of Topic —</Text>
-                  </>
-                )}
-              </ScrollView>
-            </>
-          );
-        }
         return (
           <>
             <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
@@ -3522,6 +3578,7 @@ function AppContent() {
                   Alert.alert('Post Unavailable', 'This post has been deleted or is no longer available.');
                 }
               }}
+              onTopicClick={handleTopicClick}
             />
           ) : (
             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -3734,7 +3791,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     // Use slightly smaller radius for the image to perfectly match the inner curve of the card border
     // Inner radius = Outer radius (12) - Border width (1.5) = 10.5
-    borderTopLeftRadius: 10.5, 
+    borderTopLeftRadius: 10.5,
     borderTopRightRadius: 10.5,
     transform: [{ scale: 1.04 }], // Scale up to ensure it overflows the border
     marginTop: -1, // Adjust for scaling
@@ -3928,9 +3985,9 @@ const styles = StyleSheet.create({
     right: 8,
     top: 20,
     bottom: 120,
-    width: 24,
+    width: 18,
     backgroundColor: 'rgba(255, 254, 249, 0.8)', // Semi-transparent Soft Sand
-    borderRadius: 12,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
@@ -3954,28 +4011,28 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 2, // Slightly thicker for visibility
+    width: 1.5, // Slightly thinner
     backgroundColor: 'rgba(180, 83, 9, 0.2)', // Darker amber tint
     borderRadius: 1,
   },
   pageMarkerDot: {
     position: 'absolute',
-    width: 10, // Wider tick
-    height: 2, // Thicker tick
+    width: 6, // Slightly narrower
+    height: 1.5, // Thinner tick
     backgroundColor: 'rgba(180, 83, 9, 0.4)', // More opaque
     left: '50%',
-    marginLeft: -5,
+    marginLeft: -3,
     zIndex: 1,
     borderRadius: 1,
   },
   minimalistDot: {
     position: 'absolute',
-    width: 12, // Slightly larger for better visibility
-    height: 12,
-    borderRadius: 6,
+    width: 8, // Slightly smaller
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#D97706',
     left: '50%',
-    marginLeft: -6,
+    marginLeft: -4,
     shadowColor: '#000', // Black shadow for better contrast on images
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -3990,14 +4047,14 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   pageIndicatorFloatingText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#D97706',
     fontWeight: '900',
     textAlign: 'center',
     letterSpacing: 0.5,
   },
   pageIndicatorDivider: {
-    width: 16,
+    width: 12,
     height: 1.5,
     backgroundColor: 'rgba(180, 83, 9, 0.3)',
     marginVertical: 2,
@@ -5216,5 +5273,42 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
+  },
+
+  // Tags Header
+  tagsHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12, // Increased top padding slightly
+    paddingBottom: 12, // Increased bottom padding slightly
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tag: {
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 6,
+    paddingVertical: 4, // Slightly taller for better touch target than topicName
+    borderRadius: 6,
+    overflow: 'hidden',
+    // Remove border to match topicName style exactly
+    // borderWidth: 1, 
+    // borderColor: colors.border,
+  },
+  tagText: {
+    fontSize: 12, // Increased from 10 to be readable as chips
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  moreTag: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  moreTagText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
