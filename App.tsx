@@ -1783,7 +1783,7 @@ function SinglePostReader({
                     inputRange: [0, Math.max(1, post.pages.length - 1)],
                     outputRange: ['0%', '100%']
                   }),
-                  transform: [{ translateY: -7 }]
+                  transform: [{ translateY: -4 }]
                 }
               ]}
             />
@@ -4014,6 +4014,8 @@ const styles = StyleSheet.create({
     width: 1.5, // Slightly thinner
     backgroundColor: 'rgba(180, 83, 9, 0.2)', // Darker amber tint
     borderRadius: 1,
+    left: '50%',
+    marginLeft: -0.75,
   },
   pageMarkerDot: {
     position: 'absolute',
