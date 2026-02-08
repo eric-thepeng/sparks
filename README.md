@@ -1,6 +1,8 @@
 # Spark
 
-A premium, intellectual feed-reading application built with Expo and React Native. Features a highly curated, warm aesthetic and a personalized recommendation engine.
+**Spark** is a premium, intellectual feed-reading app for iOS. Built with **Expo** and **React Native**, it offers a calm, curated reading experience with a warm visual style and a recommendation engine that adapts to your interests.
+
+You choose topics you care about; Spark surfaces a masonry-style feed of articles and long-form posts. Tap any card to open a focused reader with vertical paging and subtle progress tracking. Tags open “buckets” for deeper exploration without losing your place. History and likes sync to the cloud, so your reading state follows you across devices. Sign in with email or Google, tweak your profile and interests anytime, and discover new content through dynamic collections. Under the hood, **Gemini** powers AI-generated posts so the feed stays fresh and on-topic.
 
 ## ✨ Features
 

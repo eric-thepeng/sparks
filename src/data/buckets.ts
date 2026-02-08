@@ -45,70 +45,9 @@ export let TAGS: Tag[] = [
 ];
 
 /**
- * 10 个内容分类 Bucket (Initial static data, will be updated from backend)
+ * Buckets are loaded from the backend only (syncBucketsFromBackend).
  */
-export let BUCKETS: Bucket[] = [
-  { 
-    id: 'cognition_thinking', 
-    name: 'Cognition', 
-    emoji: '🧠',
-    subtitle: 'Explore the patterns of thought and human intelligence'
-  },
-  { 
-    id: 'psychology_emotion', 
-    name: 'Psychology', 
-    emoji: '💭',
-    subtitle: 'Understand the science of behavior and mental processes'
-  },
-  { 
-    id: 'decision_risk_uncertainty', 
-    name: 'Decisions', 
-    emoji: '🎲',
-    subtitle: 'Master the art of logic and strategic choice'
-  },
-  { 
-    id: 'life_biology_evolution', 
-    name: 'Biology', 
-    emoji: '🧬',
-    subtitle: 'Discover the mysteries of living organisms and life'
-  },
-  { 
-    id: 'universe_earth_nature', 
-    name: 'Universe', 
-    emoji: '🌍',
-    subtitle: 'Journey through space, time, and the natural world'
-  },
-  { 
-    id: 'history_science_invention', 
-    name: 'History', 
-    emoji: '⚡',
-    subtitle: 'The epic story of human progress and discovery'
-  },
-  { 
-    id: 'society_organizations_business', 
-    name: 'Society', 
-    emoji: '🏛️',
-    subtitle: 'How we build structures and organize our world'
-  },
-  { 
-    id: 'technology_humanity', 
-    name: 'Technology', 
-    emoji: '🤖',
-    subtitle: 'The intersection of digital tools and human life'
-  },
-  { 
-    id: 'art_aesthetics', 
-    name: 'Art', 
-    emoji: '🎨',
-    subtitle: 'Creative expression and the philosophy of beauty'
-  },
-  { 
-    id: 'design_product_hci', 
-    name: 'Design', 
-    emoji: '✨',
-    subtitle: 'Crafting experiences that bridge people and things'
-  },
-];
+export let BUCKETS: Bucket[] = [];
 
 /**
  * 从后端同步 Tags 数据
@@ -127,6 +66,14 @@ export async function syncTagsFromBackend() {
   }
 }
 
+/** Normalize bucket display name (e.g. backend "AI & Future Tech" → "Ai Innovations") */
+function normalizeBucketName(name: string): string {
+  if (!name || typeof name !== 'string') return name;
+  const t = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (t === 'ai & future tech' || t === 'ai and future tech') return 'Ai Innovations';
+  return name;
+}
+
 /**
  * 从后端同步 Buckets 数据
  */
@@ -134,12 +81,15 @@ export async function syncBucketsFromBackend() {
   try {
     const backendBuckets = await fetchBuckets();
     if (backendBuckets && Array.isArray(backendBuckets)) {
-      BUCKETS = backendBuckets.map(b => ({
-        id: b.key || b.id || b.bucket_key,
-        name: b.title || b.name || b.display_name,
-        emoji: b.emoji || '📚',
-        subtitle: b.subtitle || b.description || ''
-      }));
+      BUCKETS = backendBuckets.map(b => {
+        const rawName = b.title || b.name || b.display_name || '';
+        return {
+          id: b.key || b.id || b.bucket_key,
+          name: normalizeBucketName(rawName),
+          emoji: b.emoji || '📚',
+          subtitle: b.subtitle || b.description || ''
+        };
+      });
     }
   } catch (error) {
   }

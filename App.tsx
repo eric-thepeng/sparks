@@ -66,6 +66,7 @@ import {
   Post,
   PostPage,
   ContentBlock,
+  getBucketName,
   getBucketSubtitle,
   syncBucketsFromBackend,
   syncTagsFromBackend,
@@ -3256,7 +3257,7 @@ function CollectionScreen({
             {/* Section Header */}
             <View style={styles.collectionHeader}>
               <View style={styles.collectionHeaderLeft}>
-                <Text style={styles.collectionTitle}>{formatTopicName(topic)}</Text>
+                <Text style={styles.collectionTitle}>{getBucketName(topic)}</Text>
                 <Text style={styles.collectionSubtitle}>
                   {getBucketSubtitle(topic)}
                 </Text>
@@ -3380,24 +3381,24 @@ function AppContent() {
 
   const handleLikeUpdate = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
     console.log(`[handleLikeUpdate] Syncing UID: ${uid}, isLiked: ${isLiked}, count: ${likeCount}`);
-    
+
     // 1. Update PostCacheContext (source of truth for feedItems)
     updateFeedLike(uid, isLiked, likeCount);
-    
+
     // 2. Update allPosts (Collections tab)
     setAllPosts(prev => {
       const exists = prev.some(item => item.uid === uid);
       if (!exists) return prev;
-      return prev.map(item => 
+      return prev.map(item =>
         item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
       );
     });
-    
+
     // 3. Update swiperItems (Current Swiper context)
     setSwiperItems(prev => {
       const exists = prev.some(item => item.uid === uid);
       if (!exists) return prev;
-      return prev.map(item => 
+      return prev.map(item =>
         item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
       );
     });
@@ -3524,14 +3525,14 @@ function AppContent() {
             {isAllPostsLoading ? (
               <LoadingScreen />
             ) : (
-                  <>
-                    <MasonryFeed 
-                      items={topicItems} 
-                      onItemPress={(uid) => openPost(uid, topicItems)} 
-                      onLikeUpdate={handleLikeUpdate}
-                    />
-                    <Text style={styles.endText}>— End of Topic —</Text>
-                  </>
+              <>
+                <MasonryFeed
+                  items={topicItems}
+                  onItemPress={(uid) => openPost(uid, topicItems)}
+                  onLikeUpdate={handleLikeUpdate}
+                />
+                <Text style={styles.endText}>— End of Topic —</Text>
+              </>
             )}
           </ScrollView>
         </>
@@ -3697,40 +3698,40 @@ function AppContent() {
         >
           {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
             <>
-            <PostSwiper
-              items={swiperItems}
-              initialIndex={Math.max(0, currentPostIndex)}
-              onClose={closePost}
-              onFeedLikeUpdate={handleLikeUpdate}
-              onLoadMore={() => {
-                // Only load more if we are using the main feed
-                if (isViewingFeed) {
-                  consumeMultiple(1);
-                }
-              }}
-              onMissing={(uid) => {
-                removeFeedPost(uid);
-                removeFromHistory(uid);
-                unsavePost(uid);
+              <PostSwiper
+                items={swiperItems}
+                initialIndex={Math.max(0, currentPostIndex)}
+                onClose={closePost}
+                onFeedLikeUpdate={handleLikeUpdate}
+                onLoadMore={() => {
+                  // Only load more if we are using the main feed
+                  if (isViewingFeed) {
+                    consumeMultiple(1);
+                  }
+                }}
+                onMissing={(uid) => {
+                  removeFeedPost(uid);
+                  removeFromHistory(uid);
+                  unsavePost(uid);
 
-                // If it's the current post, we must close
-                if (uid === selectedPostUid) {
+                  // If it's the current post, we must close
+                  if (uid === selectedPostUid) {
+                    closePost();
+                    showAlert({
+                      title: 'Post Unavailable',
+                      message: 'This post has been deleted or is no longer available.'
+                    });
+                  }
+                }}
+                onTopicClick={handleTopicClick}
+                onNavigateToAuth={() => {
                   closePost();
-                  showAlert({
-                    title: 'Post Unavailable',
-                    message: 'This post has been deleted or is no longer available.'
-                  });
-                }
-              }}
-              onTopicClick={handleTopicClick}
-              onNavigateToAuth={() => {
-                closePost();
-                setBottomTab('me');
-              }}
-            />
-            {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
-            <AlertOverlay />
-          </>
+                  setBottomTab('me');
+                }}
+              />
+              {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
+              <AlertOverlay />
+            </>
           ) : (
             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
               <LoadingScreen />
