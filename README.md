@@ -5,9 +5,10 @@ A premium, intellectual feed-reading application built with Expo and React Nativ
 ## ✨ Features
 
 - **Personalized Feed** - Masonry-style discovery feed with a smart recommendation system based on user interests.
-- **Library (Collections)** - A structured library of all available content, categorized by high-level "Buckets."
-- **Interactive Interests** - Granular tag-based interest management with a real-time "Selected Interests" dashboard.
-- **Deep Reading Experience** - A unique, vertical-paging post reader designed for focus and comprehension.
+- **Topic Buckets & Tag Navigation** - Context-aware topic exploration. Click any tag to open a focused "Bucket" overlay without leaving your current post or tab.
+- **Deep Reading Experience** - A focused, vertical-paging reader with a **decoupled gesture system**. Vertical scrolling always takes priority, with horizontal paging enabled only after the page is fully read.
+- **Minimalist Progress Tracking** - A refined, non-intrusive vertical progress bar that visualizes reading position with precision.
+- **Dynamic Collections** - A library view that surfaces random interesting tags on every visit to encourage serendipitous discovery.
 - **Cloud-Synced History & Likes** - View history and liked posts are persisted to the backend for a consistent multi-device experience.
 - **On-the-Spot Profile Management** - Quick, inline editing of display names and profile photos.
 
@@ -25,6 +26,7 @@ scrollden/
 │   │   ├── AuthContext.tsx  ← Identity, JWT, and Profile state
 │   │   ├── HistoryContext.tsx ← View history persistence logic
 │   │   ├── PostCacheContext.tsx ← Smart feed caching & infinite scroll
+│   │   ├── SavedContext.tsx   ← Bookmarks management
 │   │   └── RecommendationContext.tsx ← Signal tracking & rebalancing
 │   ├── data/                ← Data Definitions
 │   │   └── buckets.ts       ← Bucket and Tag definitions & sync logic

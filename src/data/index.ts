@@ -155,7 +155,8 @@ export function apiPostToPost(apiPost: ApiPost): Post {
   const coverUrl = getCoverImageUrl(post);
   
   // 解析每个页面的 Markdown 字符串为 blocks
-  const pages: PostPage[] = (post.pages || [])
+  let rawPages: PostPage[] = (post.pages || [])
+    .filter((pageMarkdown: string) => pageMarkdown && pageMarkdown.trim().length > 0) // Filter out empty pages first
     .map((pageMarkdown: string, idx: number) => {
       const pageBlocks: ContentBlock[] = [];
       
@@ -176,6 +177,32 @@ export function apiPostToPost(apiPost: ApiPost): Post {
       };
     })
     .filter((page: PostPage) => page.blocks.length > 0);
+
+  // Merge pages that only contain headers (h1, h2, h3) into the next page
+  const mergedPages: PostPage[] = [];
+  for (let i = 0; i < rawPages.length; i++) {
+    const currentPage = rawPages[i];
+    
+    // Check if current page only contains headers
+    const isHeaderOnly = currentPage.blocks.every(block => 
+      ['h1', 'h2', 'h3'].includes(block.type)
+    );
+
+    if (isHeaderOnly && i < rawPages.length - 1) {
+      // Merge current page blocks into the next page
+      const nextPage = rawPages[i + 1];
+      nextPage.blocks = [...currentPage.blocks, ...nextPage.blocks];
+      // Skip adding this page to mergedPages, effectively deleting it
+    } else {
+      mergedPages.push(currentPage);
+    }
+  }
+
+  // Re-index pages
+  const pages = mergedPages.map((page, index) => ({
+    ...page,
+    index: index + 1
+  }));
 
   
   // 统计图片数量

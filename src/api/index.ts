@@ -33,10 +33,19 @@ const API_PREFIX = config.apiPrefix;
 const REQUEST_TIMEOUT = 15000;
 
 // 获取 Token 辅助函数
+let memoryToken: string | null = null;
+
+export const setMemoryToken = (token: string | null) => {
+  memoryToken = token;
+};
+
 const getToken = async (): Promise<string | null> => {
+  if (memoryToken) return memoryToken;
   try {
     const jsonValue = await AsyncStorage.getItem(config.authStorageKey);
-    return jsonValue != null ? JSON.parse(jsonValue).token : null;
+    const token = jsonValue != null ? JSON.parse(jsonValue).token : null;
+    if (token) memoryToken = token;
+    return token;
   } catch (e) {
     return null;
   }
@@ -71,7 +80,9 @@ async function request<T>(
     }
 
     const url = `${API_BASE_URL}${API_PREFIX}${endpoint}`;
+    console.log(`[API Request] ${options.method || 'GET'} ${url}`);
     if (options.body) {
+      console.log(`[API Body] ${options.body}`);
     }
     
     const response = await fetch(url, {
@@ -313,9 +324,11 @@ export async function likeItem(itemId: string, itemType: string = 'post'): Promi
 }
 
 export async function unlikeItem(itemId: string, itemType: string = 'post'): Promise<void> {
-  return request<void>(`/me/likes`, {
-    method: 'DELETE',
-    body: JSON.stringify({ itemId, itemType })
+  // 404 on /me/likes/{type}/{id} suggests the endpoint doesn't exist.
+  // Let's try query parameters with DELETE /me/likes?itemId=...&itemType=...
+  // This is the most common alternative for DELETE when body is not supported.
+  return request<void>(`/me/likes?itemId=${itemId}&itemType=${itemType}`, {
+    method: 'DELETE'
   });
 }
 

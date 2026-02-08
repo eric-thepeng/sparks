@@ -7,7 +7,8 @@ import {
   signup as apiSignup, 
   getMe as apiGetMe, 
   updateMe as apiUpdateMe,
-  loginWithGoogle as apiLoginWithGoogle
+  loginWithGoogle as apiLoginWithGoogle,
+  setMemoryToken
 } from '../api';
 import { config } from '../config';
 
@@ -104,6 +105,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (storedAuth) {
           const { token: storedToken, user: storedUser } = JSON.parse(storedAuth);
           if (storedToken) {
+            setMemoryToken(storedToken);
             setToken(storedToken);
               // Verify token and refresh user data
             try {
@@ -137,11 +139,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const saveAuth = async (newToken: string, newUser: User) => {
+    setMemoryToken(newToken);
+    setToken(newToken);
+    setUser(newUser);
     try {
       await AsyncStorage.setItem(config.authStorageKey, JSON.stringify({ token: newToken, user: newUser }));
-      setToken(newToken);
-      setUser(newUser);
     } catch (e) {
+      console.error('Failed to save auth to storage', e);
     }
   };
 
@@ -202,10 +206,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    setMemoryToken(null);
+    setToken(null);
+    setUser(null);
     try {
       await AsyncStorage.removeItem(config.authStorageKey);
-      setToken(null);
-      setUser(null);
     } catch (e) {
     }
   };

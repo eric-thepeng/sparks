@@ -12,6 +12,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { Mail, Lock, User, Check, AlertCircle } from 'lucide-react-native';
 import { config } from '../config';
 import * as WebBrowser from 'expo-web-browser';
@@ -38,6 +39,7 @@ const colors = {
 };
 
 export const AuthScreen = () => {
+  const { showAlert } = useAlert();
   const [isLogin, setIsLogin] = useState(true);
   const { login, signup, loginGoogle, isLoading, error, setError, clearError } = useAuth();
   
@@ -235,11 +237,17 @@ export const AuthScreen = () => {
               style={[styles.socialButton, styles.googleButton]}
               onPress={() => {
                 if (!config.googleClientId) {
-                  Alert.alert("Configuration Error", "Google Client ID is missing.");
+                  showAlert({
+                    title: "Configuration Error",
+                    message: "Google Client ID is missing."
+                  });
                   return;
                 }
                 if (!request) {
-                   Alert.alert("Error", "Auth request not ready.");
+                   showAlert({
+                     title: "Error",
+                     message: "Auth request not ready."
+                   });
                    return;
                 }
                 promptAsync();

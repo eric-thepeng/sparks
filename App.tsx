@@ -88,7 +88,7 @@ import { Comment, ProfileItem } from './src/api/types';
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
 
 // Context
-import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache, HistoryProvider, usePostHistory } from './src/context';
+import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache, HistoryProvider, usePostHistory, AlertProvider, useAlert, AlertContainer, AlertOverlay } from './src/context';
 
 // Screens
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -183,8 +183,9 @@ function AdaptiveImage({
   return (
     <Image
       source={source}
-      style={[style, { width, aspectRatio }]}
+      style={[style, { width, aspectRatio, backgroundColor: '#f0f0f0' }]}
       contentFit="cover"
+      cachePolicy="memory-disk"
       onLoad={(e) => {
         const { width: w, height: h } = e.source;
         if (w && h && h > 0) {
@@ -301,12 +302,15 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
 function FeedCard({
   item,
   onPress,
+  onLikeUpdate,
   index = 0,
 }: {
   item: FeedItem;
   onPress: () => void;
+  onLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   index?: number;
 }) {
+  const { showAlert } = useAlert();
   const { token, logout } = useAuth();
   const { sendLike } = useRecommendation();
   const [isLiked, setIsLiked] = useState(item.isLiked);
@@ -338,32 +342,34 @@ function FeedCard({
     ]).start();
   }, []);
 
-  // Sync with item prop if it changes (e.g. pull to refresh)
+  // Sync with item prop if it changes (e.g. pull to refresh or sync from reader)
   useEffect(() => {
+    console.log(`[FeedCard useEffect] Syncing item: ${item.uid}, isLiked: ${item.isLiked}, likes: ${item.likes}`);
     setIsLiked(item.isLiked);
     setLikeCount(item.likes);
-  }, [item.isLiked, item.likes]);
+  }, [item.isLiked, item.likes, item.uid]); // Added item.uid just in case of recycling
 
   const handleLike = async () => {
     if (isLiking) return;
 
     if (!token) {
-      Alert.alert(
-        'Login Required',
-        'Please log in to like posts.',
-        [{ text: 'OK' }]
-      );
+      showAlert({
+        title: 'Login Required',
+        message: 'Please log in to like posts.'
+      });
       return;
     }
 
-    setIsLiking(true);
-
-    // Call sendLike signal for recommendation
-    sendLike(item.uid);
-
-    // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
+
+    setIsLiking(true);
+    console.log(`[FeedCard handleLike] ${prevIsLiked ? 'Unliking' : 'Liking'} post: ${item.uid}`);
+
+    // Call sendLike signal for recommendation
+    if (!prevIsLiked) {
+      sendLike(item.uid);
+    }
 
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
@@ -385,16 +391,24 @@ function FeedCard({
     try {
       if (prevIsLiked) {
         await unlikeItem(item.uid, 'post');
+        console.log(`[FeedCard handleLike] Successfully unliked: ${item.uid}`);
       } else {
         await likeItem(item.uid, 'post');
+        console.log(`[FeedCard handleLike] Successfully liked: ${item.uid}`);
       }
+      // Sync back to parent context
+      onLikeUpdate?.(item.uid, !prevIsLiked, !prevIsLiked ? prevLikeCount + 1 : prevLikeCount - 1);
     } catch (error: any) {
+      console.error(`[FeedCard handleLike] Failed to ${prevIsLiked ? 'unlike' : 'like'}:`, error);
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
 
       if (error?.status === 401) {
-        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        showAlert({
+          title: 'Session Expired',
+          message: 'Your session has expired. Please log in again.'
+        });
         logout();
       }
     } finally {
@@ -459,10 +473,12 @@ function FeedCard({
 // ============================================================
 function MasonryFeed({
   items,
-  onItemPress
+  onItemPress,
+  onLikeUpdate
 }: {
   items: FeedItem[];
   onItemPress: (uid: string) => void;
+  onLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
 }) {
   // 分配到两列
   const leftColumn: FeedItem[] = [];
@@ -485,6 +501,7 @@ function MasonryFeed({
             key={item.uid}
             item={item}
             onPress={() => onItemPress(item.uid)}
+            onLikeUpdate={onLikeUpdate}
             index={index * 2} // Approximate original index for staggering
           />
         ))}
@@ -497,6 +514,7 @@ function MasonryFeed({
             key={item.uid}
             item={item}
             onPress={() => onItemPress(item.uid)}
+            onLikeUpdate={onLikeUpdate}
             index={index * 2 + 1} // Approximate original index for staggering
           />
         ))}
@@ -511,6 +529,7 @@ function MasonryFeed({
 // 评论区组件
 // ============================================================
 function CommentSection({ postId }: { postId: string }) {
+  const { showAlert } = useAlert();
   const { user, token, logout } = useAuth();
   const { sendComment } = useRecommendation();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -546,7 +565,10 @@ function CommentSection({ postId }: { postId: string }) {
       // Send COMMENT signal for recommendation
       sendComment(postId);
     } catch (err) {
-      Alert.alert('Error', 'Failed to post comment');
+      showAlert({
+        title: 'Error',
+        message: 'Failed to post comment'
+      });
     } finally {
       setIsSending(false);
     }
@@ -554,7 +576,10 @@ function CommentSection({ postId }: { postId: string }) {
 
   const handleLikeComment = async (commentId: string) => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in to like comments.');
+      showAlert({
+        title: 'Login Required',
+        message: 'Please log in to like comments.'
+      });
       return;
     }
 
@@ -583,7 +608,10 @@ function CommentSection({ postId }: { postId: string }) {
       // Rollback
       setComments(comments);
       if (error?.status === 401) {
-        Alert.alert('Session Expired', 'Please log in again.');
+        showAlert({
+          title: 'Session Expired',
+          message: 'Please log in again.'
+        });
         logout();
       }
     }
@@ -630,7 +658,7 @@ function CommentSection({ postId }: { postId: string }) {
       {/* Comment Input */}
       {user ? (
         <View style={styles.commentInputRow}>
-          <Image source={{ uri: user.photoUrl || undefined }} style={styles.commentAvatarSmall} />
+          <Image source={{ uri: user.photoUrl || undefined }} style={[styles.commentAvatarSmall, { backgroundColor: '#f0f0f0' }]} cachePolicy="memory-disk" />
           <TextInput
             style={styles.commentInput}
             placeholder="Add a comment..."
@@ -655,7 +683,7 @@ function CommentSection({ postId }: { postId: string }) {
       <View style={styles.commentList}>
         {sortedComments.map((item) => (
           <View key={item.id} style={styles.commentItem}>
-            <Image source={{ uri: item.user?.photoUrl || undefined }} style={styles.commentAvatar} />
+            <Image source={{ uri: item.user?.photoUrl || undefined }} style={[styles.commentAvatar, { backgroundColor: '#f0f0f0' }]} cachePolicy="memory-disk" />
             <View style={styles.commentContent}>
               <View style={styles.commentUserRow}>
                 <View style={{ flex: 1 }}>
@@ -1250,6 +1278,7 @@ function SinglePostReader({
   onRequestNext,
   onSwipeEnableChange, // NEW
   onTopicClick,
+  onNavigateToAuth,
 }: {
   post: Post;
   onClose: () => void;
@@ -1257,7 +1286,9 @@ function SinglePostReader({
   onRequestNext?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
   onTopicClick?: (topic: string) => void;
+  onNavigateToAuth?: () => void;
 }) {
+  const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
   const { token, logout } = useAuth();
   const flatListRef = useRef<GHFlatList<any>>(null);
@@ -1269,7 +1300,6 @@ function SinglePostReader({
   // Floating indicator opacity
   const indicatorOpacity = useRef(new Animated.Value(0)).current;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isSuppressedRef = useRef(false);
 
   const showIndicator = useCallback(() => {
     // Cancel existing timer
@@ -1489,32 +1519,23 @@ function SinglePostReader({
     if (isLiking) return;
 
     if (!token) {
-      Alert.alert(
-        'Login Required',
-        'Please log in to like posts.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Login', onPress: () => {
-              onClose();
-              // We need a way to switch to 'me' tab. 
-              // In this monolithic App.tsx, we can't easily do it from here without passing props.
-              // But for now, just informing the user is better than a silent fail or rollback.
-            }
-          }
-        ]
-      );
+      showAlert({
+        title: 'Login Required',
+        message: 'Please log in to like posts.'
+      });
       return;
     }
 
-    setIsLiking(true);
-
-    // Call sendLike signal for recommendation
-    sendLike(post.uid);
-
-    // Optimistic Update
     const prevIsLiked = isLiked;
     const prevLikeCount = likeCount;
+
+    setIsLiking(true);
+    console.log(`[handleLike] ${prevIsLiked ? 'Unliking' : 'Liking'} post: ${post.uid}`);
+
+    // Call sendLike signal for recommendation
+    if (!prevIsLiked) {
+      sendLike(post.uid);
+    }
 
     setIsLiked(!prevIsLiked);
     setLikeCount(prev => prevIsLiked ? prev - 1 : prev + 1);
@@ -1536,23 +1557,30 @@ function SinglePostReader({
     try {
       if (prevIsLiked) {
         await unlikeItem(post.uid, 'post');
+        console.log(`[handleLike] Successfully unliked: ${post.uid}`);
       } else {
         await likeItem(post.uid, 'post');
-        // Send LIKE signal for recommendation (only on like, not unlike)
-        sendLike(post.uid);
+        console.log(`[handleLike] Successfully liked: ${post.uid}`);
       }
       // Update hook state so it persists during swipes
       onLikeUpdate?.(!prevIsLiked, prevIsLiked ? prevLikeCount - 1 : prevLikeCount + 1);
     } catch (error: any) {
+      console.error(`[handleLike] Failed to ${prevIsLiked ? 'unlike' : 'like'}:`, error);
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
 
       if (error?.status === 401) {
-        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        showAlert({
+          title: 'Session Expired',
+          message: 'Your session has expired. Please log in again.'
+        });
         logout();
       } else {
-        Alert.alert('Error', error?.message || 'Failed to update like status');
+        showAlert({
+          title: 'Error',
+          message: error?.message || 'Failed to update like status'
+        });
       }
     } finally {
       setIsLiking(false);
@@ -1566,7 +1594,10 @@ function SinglePostReader({
         title: post.title,
       });
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showAlert({
+        title: 'Error',
+        message: error.message
+      });
     }
   };
 
@@ -1574,11 +1605,10 @@ function SinglePostReader({
     if (isSaving) return;
 
     if (!token) {
-      Alert.alert(
-        'Login Required',
-        'Please log in to save posts.',
-        [{ text: 'OK' }]
-      );
+      showAlert({
+        title: 'Login Required',
+        message: 'Please log in to save posts.'
+      });
       return;
     }
 
@@ -1908,6 +1938,8 @@ function PostLoader({
   onRequestPrev,
   onSwipeEnableChange,
   onTopicClick,
+  onNavigateToAuth,
+  isVisible,
 }: {
   uid: string,
   onClose: () => void,
@@ -1917,7 +1949,10 @@ function PostLoader({
   onRequestPrev?: () => void;
   onSwipeEnableChange?: (canSwipe: boolean) => void;
   onTopicClick?: (topic: string) => void;
+  onNavigateToAuth?: () => void;
+  isVisible?: boolean;
 }) {
+  const { showAlert } = useAlert();
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
   const { sendClick } = useRecommendation();
   const { addToHistory } = usePostHistory();
@@ -1932,13 +1967,13 @@ function PostLoader({
 
   // 发送 CLICK 信号（帖子加载成功时）并记录历史
   useEffect(() => {
-    if (post && status === 'success') {
+    if (post && status === 'success' && isVisible) {
       sendClick(post.uid);
 
       // Always call addToHistory, the context will handle the token check internally
       addToHistory(post);
     }
-  }, [post?.uid, status, sendClick, addToHistory, token]);
+  }, [post?.uid, status, sendClick, addToHistory, token, isVisible]);
 
   if (status === 'loading') {
     return (
@@ -1985,6 +2020,7 @@ function PostLoader({
       onRequestNext={onRequestNext}
       onSwipeEnableChange={onSwipeEnableChange}
       onTopicClick={onTopicClick}
+      onNavigateToAuth={onNavigateToAuth}
     />
   );
 }
@@ -2002,6 +2038,7 @@ function PostSwiper({
   onLoadMore,
   onMissing,
   onTopicClick,
+  onNavigateToAuth,
 }: {
   items: FeedItem[];
   initialIndex: number;
@@ -2010,6 +2047,7 @@ function PostSwiper({
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
   onTopicClick?: (topic: string) => void;
+  onNavigateToAuth?: () => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef<FlatList>(null);
@@ -2021,8 +2059,14 @@ function PostSwiper({
         index: currentIndex + 1,
         animated: true
       });
+    } else {
+      // We are at the end. Try to load more explicitly.
+      // If items haven't loaded yet, this will trigger the fetch.
+      // The pendingConsumption logic in PostCacheContext will ensure
+      // items are added to 'items' prop as soon as they arrive.
+      onLoadMore?.();
     }
-  }, [currentIndex, items.length]);
+  }, [currentIndex, items.length, onLoadMore]);
 
   // Sync index externally (if needed, though usually initialIndex is enough)
   useEffect(() => {
@@ -2112,11 +2156,13 @@ function PostSwiper({
             onMissing={onMissing}
             onRequestNext={handleRequestNext}
             onTopicClick={onTopicClick}
+            onNavigateToAuth={onNavigateToAuth}
+            isVisible={currentIndex === index}
           />
         </Animated.View>
       </View>
     );
-  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX]);
+  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth]);
 
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
@@ -2161,6 +2207,7 @@ function HistoryScreen({
   onItemPress: (uid: string, items: FeedItem[]) => void;
   onBack: () => void;
 }) {
+  const { showAlert } = useAlert();
   const { user } = useAuth();
   const [historyData, setHistoryData] = useState<ProfileItem[]>([]);
 
@@ -2169,10 +2216,16 @@ function HistoryScreen({
     return historyData.map((item, index) => ({
       uid: item.itemId,
       title: item.title,
-      coverImage: item.imageUrl,
+      coverImage: item.imageUrl ? { uri: item.imageUrl } : { uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(item.title.slice(0, 10))}` },
       topic: item.topic || 'General',
       likes: 0,
       isLiked: false,
+      comments: 0,
+      user: {
+        id: 'history',
+        name: 'History',
+        avatar: 'https://via.placeholder.com/50',
+      },
       index
     }));
   }, [historyData]);
@@ -2207,7 +2260,7 @@ function HistoryScreen({
           return true;
         });
       });
-      setNextCursor(response.nextCursor);
+      setNextCursor(response.nextCursor || undefined);
       setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
       setError(true);
@@ -2229,23 +2282,30 @@ function HistoryScreen({
   };
 
   const handleClearHistory = () => {
-    Alert.alert('Clear History', 'Are you sure you want to clear your entire history?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: async () => {
-          const prevData = [...historyData];
-          setHistoryData([]);
-          try {
-            await clearHistory();
-          } catch (error) {
-            setHistoryData(prevData);
-            Alert.alert('Error', 'Failed to clear history');
+    showAlert({
+      title: 'Clear History',
+      message: 'Are you sure you want to clear your entire history?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            const prevData = [...historyData];
+            setHistoryData([]);
+            try {
+              await clearHistory();
+            } catch (error) {
+              setHistoryData(prevData);
+              showAlert({
+                title: 'Error',
+                message: 'Failed to clear history'
+              });
+            }
           }
         }
-      }
-    ]);
+      ]
+    });
   };
 
   const formatDate = (dateString?: string) => {
@@ -2258,11 +2318,11 @@ function HistoryScreen({
       <View style={styles.historyCard}>
         <Pressable
           style={styles.historyCardInner}
-          onPress={() => (historyItem.itemType === 'post' || historyItem.itemType === 'article') && onItemPress(historyItem.itemId, historyFeedItems)}
+          onPress={() => (historyItem.itemType === 'post' || historyItem.itemType === 'article') && onItemPress(historyItem.itemId, historyFeedItems as FeedItem[])}
         >
           <View style={styles.historyImageContainer}>
             {historyItem.thumbnail ? (
-              <Image source={{ uri: historyItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+              <Image source={{ uri: historyItem.thumbnail }} style={[styles.historyImage, { backgroundColor: '#f0f0f0' }]} contentFit="cover" cachePolicy="memory-disk" />
             ) : (
               <View style={[styles.historyImage, styles.historyPlaceholder]}>
                 <Text style={styles.historyPlaceholderText}>
@@ -2352,6 +2412,7 @@ function LikesScreen({
   onToggleLike?: () => void;
   onBack: () => void;
 }) {
+  const { showAlert } = useAlert();
   const { user } = useAuth();
   const [likesData, setLikesData] = useState<ProfileItem[]>([]);
 
@@ -2360,10 +2421,16 @@ function LikesScreen({
     return likesData.map((item, index) => ({
       uid: item.itemId,
       title: item.title,
-      coverImage: item.imageUrl,
+      coverImage: item.imageUrl ? { uri: item.imageUrl } : { uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(item.title.slice(0, 10))}` },
       topic: item.topic || 'General',
       likes: 0,
       isLiked: true,
+      comments: 0,
+      user: {
+        id: 'likes',
+        name: 'Likes',
+        avatar: 'https://via.placeholder.com/50',
+      },
       index
     }));
   }, [likesData]);
@@ -2395,7 +2462,7 @@ function LikesScreen({
           return true;
         });
       });
-      setNextCursor(response.nextCursor);
+      setNextCursor(response.nextCursor || undefined);
       setHasMore(!!response.nextCursor && newItems.length > 0);
     } catch (e) {
       setError(true);
@@ -2417,14 +2484,20 @@ function LikesScreen({
   };
 
   const handleUnlike = async (itemId: string, itemType: string) => {
+    console.log(`[LikesScreen handleUnlike] Unliking ${itemType}: ${itemId}`);
     const prevData = [...likesData];
     setLikesData(prev => prev.filter(item => item.itemId !== itemId));
     try {
       await unlikeItem(itemId, itemType);
+      console.log(`[LikesScreen handleUnlike] Successfully unliked: ${itemId}`);
       onToggleLike?.();
     } catch (error) {
+      console.error(`[LikesScreen handleUnlike] Failed to unlike:`, error);
       setLikesData(prevData);
-      Alert.alert('Error', 'Failed to unlike item');
+      showAlert({
+        title: 'Error',
+        message: 'Failed to unlike item'
+      });
     }
   };
 
@@ -2442,7 +2515,7 @@ function LikesScreen({
         >
           <View style={styles.historyImageContainer}>
             {likeItem.thumbnail ? (
-              <Image source={{ uri: likeItem.thumbnail }} style={styles.historyImage} contentFit="cover" />
+              <Image source={{ uri: likeItem.thumbnail }} style={[styles.historyImage, { backgroundColor: '#f0f0f0' }]} contentFit="cover" cachePolicy="memory-disk" />
             ) : (
               <View style={[styles.historyImage, styles.historyPlaceholder]}>
                 <Text style={styles.historyPlaceholderText}>
@@ -2727,6 +2800,7 @@ function SavedScreen({
   onItemPress: (uid: string, items: FeedItem[]) => void;
   onLoginPress?: () => void;
 }) {
+  const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
@@ -2736,20 +2810,26 @@ function SavedScreen({
     return savedPosts.map((sp, index) => ({
       uid: sp.uid,
       title: sp.title,
-      coverImage: sp.coverImage,
+      coverImage: sp.coverImageUri ? { uri: sp.coverImageUri } : { uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(sp.title.slice(0, 10))}` },
       topic: sp.topic || 'General',
       likes: 0, // Not available in SavedPost
       isLiked: false,
+      comments: 0,
+      user: {
+        id: 'saved',
+        name: 'Saved',
+        avatar: 'https://via.placeholder.com/50',
+      },
       index
     }));
   }, [savedPosts]);
 
   // 删除动画
   const handleUnsave = useCallback((uid: string, title: string) => {
-    Alert.alert(
-      'Remove from Saved',
-      `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
-      [
+    showAlert({
+      title: 'Remove from Saved',
+      message: `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
@@ -2757,15 +2837,15 @@ function SavedScreen({
           onPress: () => unsave(uid),
         },
       ]
-    );
-  }, [unsave]);
+    });
+  }, [unsave, showAlert]);
 
   // 清空所有
   const handleClearAll = useCallback(() => {
-    Alert.alert(
-      'Clear All Saved',
-      'Remove all saved posts? This cannot be undone.',
-      [
+    showAlert({
+      title: 'Clear All Saved',
+      message: 'Remove all saved posts? This cannot be undone.',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove All',
@@ -2773,8 +2853,8 @@ function SavedScreen({
           onPress: () => clearAll(),
         },
       ]
-    );
-  }, [clearAll]);
+    });
+  }, [clearAll, showAlert]);
 
   // 格式化保存时间
   const formatSavedTime = (isoString: string) => {
@@ -2826,9 +2906,10 @@ function SavedScreen({
           {/* 封面图 */}
           <Image
             source={localCover || (savedItem.coverImageUri ? { uri: savedItem.coverImageUri } : { uri: `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` })}
-            style={styles.savedCardImage}
+            style={[styles.savedCardImage, { backgroundColor: '#f0f0f0' }]}
             contentFit="cover"
             transition={300}
+            cachePolicy="memory-disk"
           />
 
           {/* 内容 */}
@@ -2964,6 +3045,7 @@ function SearchScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAlert();
 
   // 加载搜索历史
   useEffect(() => {
@@ -2996,10 +3078,23 @@ function SearchScreen({
   };
 
   const clearHistory = async () => {
-    setHistory([]);
-    try {
-      await AsyncStorage.removeItem('search_history');
-    } catch (e) { }
+    showAlert({
+      title: 'Clear Search History',
+      message: 'Remove all recent searches?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            setHistory([]);
+            try {
+              await AsyncStorage.removeItem('search_history');
+            } catch (e) { }
+          }
+        }
+      ]
+    });
   };
 
   return (
@@ -3185,9 +3280,10 @@ function CollectionScreen({
                 >
                   <Image
                     source={item.coverImage}
-                    style={[styles.collectionCardImage, { height: 112, marginTop: -1 }]}
+                    style={[styles.collectionCardImage, { height: 112, marginTop: -1, backgroundColor: '#f0f0f0' }]}
                     contentFit="cover"
                     transition={200}
+                    cachePolicy="memory-disk"
                   />
                   <View style={styles.collectionCardContent}>
                     <Text style={styles.collectionCardTitle} numberOfLines={6}>
@@ -3211,8 +3307,33 @@ function CollectionScreen({
 const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
 
 function AppContent() {
+  const { showAlert } = useAlert();
+
+  // 使用帖子缓存系统
+  const {
+    displayedPosts: feedItems,
+    isLoading: feedLoading,
+    error: feedError,
+    refetch: refetchFeed,
+    updateLocalLike: updateFeedLike,
+    removePost: removeFeedPost,
+    consumeMultiple,
+    fetchAllPosts,
+    hasMore,
+    cacheStatus
+  } = usePostCache();
+
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [swiperItems, setSwiperItems] = useState<FeedItem[]>([]);
+  const [isViewingFeed, setIsViewingFeed] = useState(false); // Track if we are viewing the main feed
+
+  // Sync swiperItems with feedItems if we are viewing the feed
+  useEffect(() => {
+    if (isViewingFeed) {
+      setSwiperItems(feedItems);
+    }
+  }, [feedItems, isViewingFeed]);
+
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
@@ -3230,21 +3351,6 @@ function AppContent() {
     syncBucketsFromBackend();
     syncTagsFromBackend();
   }, []);
-
-  // 使用帖子缓存系统
-  // 使用帖子缓存系统
-  const {
-    displayedPosts: feedItems,
-    isLoading: feedLoading,
-    error: feedError,
-    refetch: refetchFeed,
-    updateLocalLike: updateFeedLike,
-    removePost: removeFeedPost,
-    consumeMultiple,
-    fetchAllPosts,
-    hasMore,
-    cacheStatus
-  } = usePostCache();
 
   const [allPosts, setAllPosts] = useState<FeedItem[]>([]);
   const [isAllPostsLoading, setIsAllPostsLoading] = useState(false);
@@ -3272,9 +3378,35 @@ function AppContent() {
   // 收藏系统（用于刷新）
   const { refreshSavedPosts } = useSaved();
 
+  const handleLikeUpdate = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
+    console.log(`[handleLikeUpdate] Syncing UID: ${uid}, isLiked: ${isLiked}, count: ${likeCount}`);
+    
+    // 1. Update PostCacheContext (source of truth for feedItems)
+    updateFeedLike(uid, isLiked, likeCount);
+    
+    // 2. Update allPosts (Collections tab)
+    setAllPosts(prev => {
+      const exists = prev.some(item => item.uid === uid);
+      if (!exists) return prev;
+      return prev.map(item => 
+        item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
+      );
+    });
+    
+    // 3. Update swiperItems (Current Swiper context)
+    setSwiperItems(prev => {
+      const exists = prev.some(item => item.uid === uid);
+      if (!exists) return prev;
+      return prev.map(item => 
+        item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
+      );
+    });
+  }, [updateFeedLike]);
+
   const closePost = useCallback(() => {
     setSelectedPostUid(null);
     setSwiperItems([]);
+    setIsViewingFeed(false);
   }, []);
 
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
@@ -3283,7 +3415,10 @@ function AppContent() {
 
     setSwiperItems(items);
     setSelectedPostUid(uid);
-  }, []);
+    // Check if we are opening the main feed (using reference equality or some other heuristic)
+    // Here we rely on the caller passing the exact feedItems array object
+    setIsViewingFeed(items === feedItems);
+  }, [feedItems]);
 
   const currentPostIndex = useMemo(() => {
     if (!selectedPostUid || !swiperItems || swiperItems.length === 0) return 0;
@@ -3389,10 +3524,14 @@ function AppContent() {
             {isAllPostsLoading ? (
               <LoadingScreen />
             ) : (
-              <>
-                <MasonryFeed items={topicItems} onItemPress={(uid) => openPost(uid, topicItems)} />
-                <Text style={styles.endText}>— End of Topic —</Text>
-              </>
+                  <>
+                    <MasonryFeed 
+                      items={topicItems} 
+                      onItemPress={(uid) => openPost(uid, topicItems)} 
+                      onLikeUpdate={handleLikeUpdate}
+                    />
+                    <Text style={styles.endText}>— End of Topic —</Text>
+                  </>
             )}
           </ScrollView>
         </>
@@ -3457,6 +3596,7 @@ function AppContent() {
               <MasonryFeed
                 items={feedItems}
                 onItemPress={(uid) => openPost(uid, feedItems)}
+                onLikeUpdate={handleLikeUpdate}
               />
               {feedLoading ? (
                 <View style={styles.loadingMore}>
@@ -3556,14 +3696,15 @@ function AppContent() {
           onRequestClose={closePost}
         >
           {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
+            <>
             <PostSwiper
               items={swiperItems}
               initialIndex={Math.max(0, currentPostIndex)}
               onClose={closePost}
-              onFeedLikeUpdate={updateFeedLike}
+              onFeedLikeUpdate={handleLikeUpdate}
               onLoadMore={() => {
                 // Only load more if we are using the main feed
-                if (swiperItems === feedItems) {
+                if (isViewingFeed) {
                   consumeMultiple(1);
                 }
               }}
@@ -3575,11 +3716,21 @@ function AppContent() {
                 // If it's the current post, we must close
                 if (uid === selectedPostUid) {
                   closePost();
-                  Alert.alert('Post Unavailable', 'This post has been deleted or is no longer available.');
+                  showAlert({
+                    title: 'Post Unavailable',
+                    message: 'This post has been deleted or is no longer available.'
+                  });
                 }
               }}
               onTopicClick={handleTopicClick}
+              onNavigateToAuth={() => {
+                closePost();
+                setBottomTab('me');
+              }}
             />
+            {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
+            <AlertOverlay />
+          </>
           ) : (
             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
               <LoadingScreen />
@@ -3621,15 +3772,9 @@ function AppContent() {
           }}
         />
 
-        {/* Debug Toggle Button (开发模式可见) */}
-        {__DEV__ && (
-          <Pressable
-            style={styles.debugToggleButton}
-            onPress={() => setShowDebugPanel(!showDebugPanel)}
-          >
-            <Bug size={20} color={colors.text} />
-          </Pressable>
-        )}
+        {/* Alert Container - Only render if no post is selected to prevent double modals and gesture locking */}
+        {!selectedPostUid && <AlertContainer />}
+
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -3642,17 +3787,19 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <RecommendationProvider>
-          <PostCacheProvider>
-            <SavedProvider>
-              <HistoryProvider>
-                <NotesProvider>
-                  <AppContent />
-                </NotesProvider>
-              </HistoryProvider>
-            </SavedProvider>
-          </PostCacheProvider>
-        </RecommendationProvider>
+        <AlertProvider>
+          <RecommendationProvider>
+            <PostCacheProvider>
+              <SavedProvider>
+                <HistoryProvider>
+                  <NotesProvider>
+                    <AppContent />
+                  </NotesProvider>
+                </HistoryProvider>
+              </SavedProvider>
+            </PostCacheProvider>
+          </RecommendationProvider>
+        </AlertProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

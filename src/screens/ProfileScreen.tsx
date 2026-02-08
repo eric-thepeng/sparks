@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import {
   uploadImage,
   getMyHistory,
@@ -127,6 +128,7 @@ export const ProfileScreen = ({
   onHistoryPress?: () => void;
   onLikesPress?: () => void;
 }) => {
+  const { showAlert } = useAlert();
   const { user, updateProfile, logout } = useAuth();
 
   // Edit Mode State
@@ -192,17 +194,19 @@ export const ProfileScreen = ({
         setAvatar(manipResult.uri);
       }
     } catch (error) {
-      Alert.alert(
-        'Feature Unavailable',
-        'Image picker is not available in this environment. Please use a development build.',
-        [{ text: 'OK' }]
-      );
+      showAlert({
+        title: 'Feature Unavailable',
+        message: 'Image picker is not available in this environment. Please use a development build.'
+      });
     }
   };
 
   const handleSave = async () => {
     if (displayName.trim().length < 2) {
-      Alert.alert('Validation Error', 'Display Name must be at least 2 characters.');
+      showAlert({
+        title: 'Validation Error',
+        message: 'Display Name must be at least 2 characters.'
+      });
       return;
     }
 
@@ -217,7 +221,10 @@ export const ProfileScreen = ({
           if (fileInfo.exists) {
             const MAX_SIZE = 5 * 1024 * 1024; // 5MB
             if (fileInfo.size > MAX_SIZE) {
-              Alert.alert('File too large', 'Profile photo must be under 5MB.');
+              showAlert({
+                title: 'File too large',
+                message: 'Profile photo must be under 5MB.'
+              });
               setLoading(false);
               return;
             }
@@ -226,7 +233,10 @@ export const ProfileScreen = ({
             finalPhotoUrl = await uploadImage(avatar);
           }
         } catch (uploadError: any) {
-          Alert.alert('Upload Failed', 'Could not upload profile photo. Please try again.');
+          showAlert({
+            title: 'Upload Failed',
+            message: 'Could not upload profile photo. Please try again.'
+          });
           setLoading(false);
           return;
         }
@@ -240,9 +250,15 @@ export const ProfileScreen = ({
         // username: user?.username 
       });
       setIsEditing(false);
-      Alert.alert('Success', 'Profile updated');
+      showAlert({
+        title: 'Success',
+        message: 'Profile updated'
+      });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      showAlert({
+        title: 'Error',
+        message: error.message || 'Failed to update profile'
+      });
     } finally {
       setLoading(false);
     }
@@ -260,7 +276,10 @@ export const ProfileScreen = ({
 
   const handleOnboardingSubmit = async () => {
     if (onboardingName.trim().length < 2) {
-      Alert.alert('Invalid Name', 'Name must be at least 2 characters.');
+      showAlert({
+        title: 'Invalid Name',
+        message: 'Name must be at least 2 characters.'
+      });
       return;
     }
     
@@ -268,19 +287,26 @@ export const ProfileScreen = ({
     try {
       await updateProfile({ displayName: onboardingName.trim() });
       setShowOnboarding(false);
-      // Alert.alert('Welcome!', `Hello, ${onboardingName}`);
+      // showAlert({ title: 'Welcome!', message: `Hello, ${onboardingName}` });
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      showAlert({
+        title: 'Error',
+        message: error.message
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Log Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: logout }
-    ]);
+    showAlert({
+      title: 'Log Out',
+      message: 'Are you sure?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: logout }
+      ]
+    });
   };
 
   const renderProfileContent = () => (
@@ -421,7 +447,7 @@ export const ProfileScreen = ({
 
         <Pressable onPress={pickImage} style={styles.avatarContainer}>
           {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatar} contentFit="cover" />
+            <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: '#f0f0f0' }]} contentFit="cover" cachePolicy="memory-disk" />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <UserIcon size={40} color={colors.textMuted} />

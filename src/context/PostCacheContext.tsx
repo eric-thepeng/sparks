@@ -160,7 +160,15 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 消费一个缓存帖子
    */
   const consumePost = useCallback((): FeedItem | null => {
+    // 检查是否需要补充 (Check before consuming to ensure we don't get stuck)
+    if (cachedPosts.length <= REFILL_THRESHOLD) {
+      refillCache();
+    }
+
     if (cachedPosts.length === 0) {
+      // If empty, mark as pending so it gets consumed automatically when available
+      pendingConsumptionRef.current += 1;
+      refillCache();
       return null;
     }
 
@@ -174,20 +182,30 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       return [...prev, post];
     });
 
-
-    // 检查是否需要补充
-    if (remaining.length < REFILL_THRESHOLD) {
-      refillCache();
-    }
-
     return post;
   }, [cachedPosts, refillCache]);
+
+  // Pending consumption count (how many items we wanted but couldn't get because cache was empty)
+  const pendingConsumptionRef = useRef(0);
 
   /**
    * 消费多个缓存帖子
    */
   const consumeMultiple = useCallback((count: number): FeedItem[] => {
+    // 检查是否需要补充 (Check before consuming)
+    if (cachedPosts.length <= REFILL_THRESHOLD) {
+      refillCache();
+    }
+
     const toConsume = Math.min(count, cachedPosts.length);
+    const needed = count - toConsume;
+
+    // If we need more than we have, mark it as pending
+    if (needed > 0) {
+      pendingConsumptionRef.current += needed;
+      refillCache(); // Ensure refill is triggered
+    }
+
     if (toConsume === 0) {
       return [];
     }
@@ -203,13 +221,34 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
       return [...prev, ...uniqueConsumed];
     });
 
-
-    // 检查是否需要补充
-    if (remaining.length < REFILL_THRESHOLD) {
-      refillCache();
-    }
-
     return consumed;
+  }, [cachedPosts, refillCache]);
+
+  // Effect to handle pending consumption when cache updates
+  useEffect(() => {
+    if (pendingConsumptionRef.current > 0 && cachedPosts.length > 0) {
+      const count = pendingConsumptionRef.current;
+      const toConsume = Math.min(count, cachedPosts.length);
+      
+      if (toConsume > 0) {
+        const consumed = cachedPosts.slice(0, toConsume);
+        const remaining = cachedPosts.slice(toConsume);
+        
+        setCachedPosts(remaining);
+        setDisplayedPosts(prev => {
+          const existingUids = new Set(prev.map(p => p.uid));
+          const uniqueConsumed = consumed.filter(p => !existingUids.has(p.uid));
+          return [...prev, ...uniqueConsumed];
+        });
+        
+        pendingConsumptionRef.current -= toConsume;
+        
+        // If we still need more or cache is low, refill again
+        if (remaining.length < REFILL_THRESHOLD || pendingConsumptionRef.current > 0) {
+          refillCache();
+        }
+      }
+    }
   }, [cachedPosts, refillCache]);
 
   /**
@@ -227,7 +266,15 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     try {
       // 请求一个较大的数量以获取所有帖子
       const apiPosts = await fetchPosts(1000);
-      return apiPosts.map((post, index) => apiPostToFeedItem(post, index));
+      const items = apiPosts.map((post, index) => apiPostToFeedItem(post, index));
+      
+      // Deduplicate by UID
+      const seen = new Set<string>();
+      return items.filter(item => {
+        if (seen.has(item.uid)) return false;
+        seen.add(item.uid);
+        return true;
+      });
     } catch (err) {
       return [];
     }
@@ -248,6 +295,7 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 更新帖子的点赞状态
    */
   const updateLocalLike = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
+    console.log(`[PostCacheContext] updateLocalLike UID: ${uid}, isLiked: ${isLiked}, count: ${likeCount}`);
     setDisplayedPosts(prev => prev.map(item =>
       item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
     ));

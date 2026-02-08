@@ -121,6 +121,8 @@ export interface Comment {
   };
   content: string;
   created_at: string;
+  is_liked?: boolean;
+  like_count?: number;
 }
 
 export interface ProfileItem {
@@ -128,6 +130,8 @@ export interface ProfileItem {
   itemType: string;     // e.g., "post", "article"
   title: string;        // Display title
   thumbnail: string | null; // URL to image (optional, null if none)
+  imageUrl?: string;    // Alias for thumbnail
+  topic?: string;       // Topic tag
   createdAt: string;    // ISO 8601 Date string (e.g., "2024-01-20T10:00:00Z")
 }
 
