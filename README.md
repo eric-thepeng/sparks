@@ -35,7 +35,7 @@ You may create a new account, or use the test account below:
 ### Demo Short Video
 https://youtube.com/shorts/gbxEPUQzZEU?feature=share
 
-## Gallery
+## 🖼️ Gallery
 
 
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
