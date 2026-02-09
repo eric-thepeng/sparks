@@ -1,10 +1,12 @@
-## Sparks
+https://github.com/eric-thepeng/sparks/blob/main/thumbnail.png
+
+## ✨ Sparks
 
 **Sparks** is a feed-style leisure reading app built for curious minds who want to learn about the world instead of doom scrolling. It delivers hundreds of engaging, visually rich posts from the history of desserts to groundbreaking inventions. Through a personalized recommendation and discovery system, it surfaces content based on your interests while leaving room for surprise.
 
 We were tired of mindless scrolling and empty engagement, so we brough back leisure reading to make you _feel good about_ consuming content again.
 
-## Gemini 3.0
+## 🤖 Gemini 3.0
 
 _Google’s Gemini 3_ was central to both building Sparks and creating its content. Gemini powers an asynchronous generation pipeline that produces multi-page, Markdown-formatted articles with titles, tags, and ordered page structures. Its long-context understanding ensures coherence across extended pieces, while its multimodal capabilities help generate or match distinctive cover imagery.
 
