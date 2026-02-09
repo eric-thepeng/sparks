@@ -32,10 +32,10 @@ You may create a new account, or use the test account below:
 - Email: tester@test.com
 - Password: test1111
 
-Thank you for trying out Sparks.
-
 ### Demo Short Video
 https://youtube.com/shorts/gbxEPUQzZEU?feature=share
+
+## Gallery
 
 
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
