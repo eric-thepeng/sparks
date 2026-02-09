@@ -23,6 +23,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,12 +63,16 @@ import {
   getPostImage,
   getPostCoverImage,
   getBlockImage,
+  apiPostToFeedItem,
   FeedItem,
   Post,
   PostPage,
   ContentBlock,
   getBucketName,
   getBucketSubtitle,
+  getTopicDisplayName,
+  getTopicKey,
+  getTopicSubtitle,
   syncBucketsFromBackend,
   syncTagsFromBackend,
   BUCKETS,
@@ -77,6 +82,7 @@ import {
 import {
   fetchComments,
   createComment,
+  fetchPostById,
   likeItem,
   unlikeItem,
   getMyHistory,
@@ -345,7 +351,6 @@ function FeedCard({
 
   // Sync with item prop if it changes (e.g. pull to refresh or sync from reader)
   useEffect(() => {
-    console.log(`[FeedCard useEffect] Syncing item: ${item.uid}, isLiked: ${item.isLiked}, likes: ${item.likes}`);
     setIsLiked(item.isLiked);
     setLikeCount(item.likes);
   }, [item.isLiked, item.likes, item.uid]); // Added item.uid just in case of recycling
@@ -365,7 +370,6 @@ function FeedCard({
     const prevLikeCount = likeCount;
 
     setIsLiking(true);
-    console.log(`[FeedCard handleLike] ${prevIsLiked ? 'Unliking' : 'Liking'} post: ${item.uid}`);
 
     // Call sendLike signal for recommendation
     if (!prevIsLiked) {
@@ -392,15 +396,12 @@ function FeedCard({
     try {
       if (prevIsLiked) {
         await unlikeItem(item.uid, 'post');
-        console.log(`[FeedCard handleLike] Successfully unliked: ${item.uid}`);
       } else {
         await likeItem(item.uid, 'post');
-        console.log(`[FeedCard handleLike] Successfully liked: ${item.uid}`);
       }
       // Sync back to parent context
       onLikeUpdate?.(item.uid, !prevIsLiked, !prevIsLiked ? prevLikeCount + 1 : prevLikeCount - 1);
     } catch (error: any) {
-      console.error(`[FeedCard handleLike] Failed to ${prevIsLiked ? 'unlike' : 'like'}:`, error);
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
@@ -439,7 +440,7 @@ function FeedCard({
           <View style={styles.cardFooter}>
             <View style={styles.topicInfo}>
               <Text style={styles.topicName} numberOfLines={1}>
-                #{formatTopicName(item.topic)}
+                #{getTopicDisplayName(item.topic)}
               </Text>
             </View>
 
@@ -1241,7 +1242,7 @@ const PageItem = React.memo((props: {
                 style={styles.topicBadge}
                 onPress={() => onTopicClick?.(post.topic)}
               >
-                <Text style={styles.topicBadgeText}>#{formatTopicName(post.topic)}</Text>
+                <Text style={styles.topicBadgeText}>#{getTopicDisplayName(post.topic)}</Text>
               </Pressable>
             </View>
           </View>
@@ -1531,7 +1532,6 @@ function SinglePostReader({
     const prevLikeCount = likeCount;
 
     setIsLiking(true);
-    console.log(`[handleLike] ${prevIsLiked ? 'Unliking' : 'Liking'} post: ${post.uid}`);
 
     // Call sendLike signal for recommendation
     if (!prevIsLiked) {
@@ -1558,15 +1558,12 @@ function SinglePostReader({
     try {
       if (prevIsLiked) {
         await unlikeItem(post.uid, 'post');
-        console.log(`[handleLike] Successfully unliked: ${post.uid}`);
       } else {
         await likeItem(post.uid, 'post');
-        console.log(`[handleLike] Successfully liked: ${post.uid}`);
       }
       // Update hook state so it persists during swipes
       onLikeUpdate?.(!prevIsLiked, prevIsLiked ? prevLikeCount - 1 : prevLikeCount + 1);
     } catch (error: any) {
-      console.error(`[handleLike] Failed to ${prevIsLiked ? 'unlike' : 'like'}:`, error);
       // Rollback
       setIsLiked(prevIsLiked);
       setLikeCount(prevLikeCount);
@@ -1591,7 +1588,7 @@ function SinglePostReader({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out this post on Sparks: ${post.title}\n\nSent from Sparks App`,
+        message: `Check out this post on Spark: ${post.title}\n\nSent from Spark App`,
         title: post.title,
       });
     } catch (error: any) {
@@ -2485,15 +2482,12 @@ function LikesScreen({
   };
 
   const handleUnlike = async (itemId: string, itemType: string) => {
-    console.log(`[LikesScreen handleUnlike] Unliking ${itemType}: ${itemId}`);
     const prevData = [...likesData];
     setLikesData(prev => prev.filter(item => item.itemId !== itemId));
     try {
       await unlikeItem(itemId, itemType);
-      console.log(`[LikesScreen handleUnlike] Successfully unliked: ${itemId}`);
       onToggleLike?.();
-    } catch (error) {
-      console.error(`[LikesScreen handleUnlike] Failed to unlike:`, error);
+    } catch {
       setLikesData(prevData);
       showAlert({
         title: 'Error',
@@ -2917,7 +2911,7 @@ function SavedScreen({
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
               <View style={styles.savedTopicBadge}>
-                <Text style={styles.savedTopicText}>#{formatTopicName(savedItem.topic)}</Text>
+                <Text style={styles.savedTopicText}>#{getTopicDisplayName(savedItem.topic)}</Text>
               </View>
             </View>
 
@@ -3207,14 +3201,13 @@ function CollectionScreen({
 
   const visibleBuckets = expanded ? randomBuckets : randomBuckets.slice(0, 4);
 
-  // Group items by topic
+  // Group by canonical topic key so section title and tag pill always match same bucket
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: FeedItem[] } = {};
     items.forEach(item => {
-      if (!groups[item.topic]) {
-        groups[item.topic] = [];
-      }
-      groups[item.topic].push(item);
+      const key = getTopicKey(item.topic);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
     });
     return Object.entries(groups).map(([topic, items]) => ({ topic, items }));
   }, [items]);
@@ -3230,7 +3223,7 @@ function CollectionScreen({
           <View style={styles.tagsContainer}>
             {visibleBuckets.map(bucket => (
               <Pressable key={bucket.id} style={styles.tag} onPress={() => onTopicPress(bucket.id)}>
-                <Text style={styles.tagText}>#{bucket.name}</Text>
+                <Text style={styles.tagText}>#{getBucketName(bucket.id)}</Text>
               </Pressable>
             ))}
             {!expanded && randomBuckets.length > 4 && (
@@ -3257,9 +3250,9 @@ function CollectionScreen({
             {/* Section Header */}
             <View style={styles.collectionHeader}>
               <View style={styles.collectionHeaderLeft}>
-                <Text style={styles.collectionTitle}>{getBucketName(topic)}</Text>
+                <Text style={styles.collectionTitle}>{getTopicDisplayName(topic)}</Text>
                 <Text style={styles.collectionSubtitle}>
-                  {getBucketSubtitle(topic)}
+                  {getTopicSubtitle(topic)}
                 </Text>
               </View>
               <Pressable style={styles.seeAllButton} onPress={() => onTopicPress(topic)}>
@@ -3380,7 +3373,6 @@ function AppContent() {
   const { refreshSavedPosts } = useSaved();
 
   const handleLikeUpdate = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
-    console.log(`[handleLikeUpdate] Syncing UID: ${uid}, isLiked: ${isLiked}, count: ${likeCount}`);
 
     // 1. Update PostCacheContext (source of truth for feedItems)
     updateFeedLike(uid, isLiked, likeCount);
@@ -3420,6 +3412,37 @@ function AppContent() {
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
   }, [feedItems]);
+
+  // Open a single post by uid (e.g. from deep link); fetches from API then opens
+  const openPostByUid = useCallback(async (uid: string) => {
+    try {
+      const apiPost = await fetchPostById(uid);
+      const feedItem = apiPostToFeedItem(apiPost, 0);
+      setSwiperItems([feedItem]);
+      setSelectedPostUid(uid);
+      setIsViewingFeed(false);
+    } catch (err) {
+      showAlert({
+        title: 'Post not found',
+        message: 'This post may have been removed or the link is invalid.',
+      });
+    }
+  }, [showAlert]);
+
+  // Deep link: sparks://post/{uid} — open post when app is launched or resumed via link
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      const match = url.match(/sparks:\/\/post\/([^/?]+)/);
+      if (match && match[1]) {
+        openPostByUid(match[1]);
+      }
+    };
+
+    Linking.getInitialURL().then(handleUrl);
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, [openPostByUid]);
 
   const currentPostIndex = useMemo(() => {
     if (!selectedPostUid || !swiperItems || swiperItems.length === 0) return 0;
@@ -3509,11 +3532,11 @@ function AppContent() {
   const renderContent = () => {
     // Global Topic View Overlay: If a topic is selected, show it regardless of current tab
     if (selectedTopic) {
-      const topicItems = allPosts.filter(item => item.topic === selectedTopic);
+      const topicItems = allPosts.filter(item => getTopicKey(item.topic) === selectedTopic);
       return (
         <>
           <Header
-            title={formatTopicName(selectedTopic)}
+            title={getTopicDisplayName(selectedTopic)}
             onBack={() => setSelectedTopic(null)}
             onSearchPress={() => setShowSearchModal(true)}
           />
@@ -3541,12 +3564,16 @@ function AppContent() {
 
     switch (bottomTab) {
       case 'explore':
-        // 处理加载状态
+        // 处理加载状态：显示应用框架，仅在内容区显示 loading，避免全屏等待感
         if (feedStatus === 'loading' && feedItems.length === 0) {
           return (
             <>
               <Header onSearchPress={() => setShowSearchModal(true)} />
-              <LoadingScreen />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Sparkles size={32} color={colors.primary} />
+                <Text style={styles.loadingText}>Loading...</Text>
+              </View>
             </>
           );
         }
@@ -3564,14 +3591,26 @@ function AppContent() {
           );
         }
 
-        // 检测滚动到底部，加载更多帖子
+        // 提前预加载；缓存少时少消费，避免露空等 refill
         const handleFeedScroll = (event: any) => {
           const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-          const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 200;
+          const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+          const screenHeight = layoutMeasurement.height;
+          const preloadThreshold = screenHeight * 2.5;
+          const isNearBottom = distanceFromBottom <= preloadThreshold;
+          const veryNearBottom = distanceFromBottom <= screenHeight * 0.8;
+          const cached = cacheStatus.cachedCount;
 
-          if (isNearBottom && hasMore && !feedLoading) {
-            consumeMultiple(2);
-          }
+          if (!isNearBottom || !hasMore || feedLoading) return;
+
+          // 缓存少时每次只加少量，给 refill 时间，避免露空
+          let toConsume: number;
+          if (cached <= 15) toConsume = 3;
+          else if (cached <= 30) toConsume = 6;
+          else if (cached <= 45) toConsume = 10;
+          else toConsume = veryNearBottom ? 25 : 18;
+
+          consumeMultiple(toConsume);
         };
 
         return (
@@ -3585,7 +3624,7 @@ function AppContent() {
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               onScroll={handleFeedScroll}
-              scrollEventThrottle={400}
+              scrollEventThrottle={50}
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshing}
@@ -3599,13 +3638,21 @@ function AppContent() {
                 onItemPress={(uid) => openPost(uid, feedItems)}
                 onLikeUpdate={handleLikeUpdate}
               />
+              {/* 条数少且还有更多时，空白区显示加载提示，避免干等 */}
+              {feedItems.length > 0 && feedItems.length < 15 && hasMore ? (
+                <View style={styles.loadingMoreBlock}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingMoreBlockText}>Loading more posts...</Text>
+                </View>
+              ) : null}
               {feedLoading ? (
-                <View style={styles.loadingMore}>
+                <View style={[styles.loadingMore, styles.loadingMoreWithSpinner]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
                   <Text style={styles.loadingMoreText}>Loading...</Text>
                 </View>
               ) : hasMore ? (
                 <View style={styles.loadingMore}>
-                  <Text style={styles.loadingMoreText}>Scroll for more • Cache: {cacheStatus.cachedCount}</Text>
+                  <Text style={styles.loadingMoreText}>Scroll for more</Text>
                 </View>
               ) : (
                 <Text style={styles.endText}>— End of List —</Text>
@@ -4424,14 +4471,16 @@ const styles = StyleSheet.create({
   // Loading
   loadingContainer: {
     flex: 1,
+    minHeight: 280,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.bg,
     gap: 16,
   },
   loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
   },
   // Collection Screen Styles
   collectionContainer: {
@@ -4622,9 +4671,26 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     alignItems: 'center',
   },
+  loadingMoreWithSpinner: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  loadingMoreBlock: {
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  loadingMoreBlockText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
   loadingMoreText: {
-    fontSize: 14,
-    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
   },
 
   // Error

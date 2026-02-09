@@ -223,8 +223,6 @@ export function SavedProvider({ children }: SavedProviderProps) {
       syncedToServer: false,
     };
 
-    console.log('[SavedContext] Saving post:', JSON.stringify(newSavedPost, null, 2));
-
     const updatedPosts = [newSavedPost, ...savedPosts];
     setSavedPosts(updatedPosts);
     
@@ -329,7 +327,6 @@ export function SavedProvider({ children }: SavedProviderProps) {
   /** 同步所有本地保存到服务器 */
   const syncToServer = useCallback(async () => {
     if (!authToken) {
-      console.log('User not authenticated, skip sync');
       return;
     }
 
@@ -338,8 +335,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
     try {
       // 1. Fetch remote saved posts
       const remoteSavedPosts = await fetchSavedPostsApi();
-      console.log('[SavedContext] Remote saved posts:', JSON.stringify(remoteSavedPosts, null, 2));
-      
+
       // 2. Convert remote posts to SavedPost format
       // cover_image is a direct URL string (or "prompt:xxx" format)
       const convertedRemotePosts: SavedPost[] = remoteSavedPosts.map(p => {
@@ -416,13 +412,11 @@ export function SavedProvider({ children }: SavedProviderProps) {
   /** 同步单个帖子（内部方法） */
   const syncSinglePost = async (post: SavedPost) => {
     // TODO: 实现单个帖子同步
-    console.log('TODO: Sync single post to server:', post.uid);
   };
 
   /** 删除服务器上的保存（内部方法） */
   const deleteSyncedPost = async (uid: string) => {
     // TODO: 实现删除同步
-    console.log('TODO: Delete synced post from server:', uid);
   };
 
   // ============================================================

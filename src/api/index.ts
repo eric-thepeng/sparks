@@ -80,11 +80,7 @@ async function request<T>(
     }
 
     const url = `${API_BASE_URL}${API_PREFIX}${endpoint}`;
-    console.log(`[API Request] ${options.method || 'GET'} ${url}`);
-    if (options.body) {
-      console.log(`[API Body] ${options.body}`);
-    }
-    
+
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,

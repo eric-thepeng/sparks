@@ -4,17 +4,18 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
-import { fetchPosts } from '../api';
+import { fetchPosts, fetchPostsPaginated } from '../api';
 import { apiPostToFeedItem, FeedItem } from '../data';
 
 // ============================================================
 // 配置常量
 // ============================================================
 
-const INITIAL_DISPLAY_COUNT = 6;   // 初始显示数量
-const CACHE_SIZE = 5;              // 缓存队列目标大小
-const REFILL_THRESHOLD = 2;        // 缓存低于此值时触发补充
-const FETCH_BATCH_SIZE = 5;        // 每次请求的帖子数量
+const INITIAL_DISPLAY_COUNT = 20;  // 首屏显示 20 条
+const INITIAL_FETCH_SIZE = 20;    // 首请求只拉 20 条，响应更快，再后台补
+const CACHE_SIZE = 50;             // 大缓存，快速滚动不露空
+const REFILL_THRESHOLD = 45;       // 缓存≤45 就补，早补才不露空
+const FETCH_BATCH_SIZE = 40;       // 每次补 40 条
 
 // ============================================================
 // 类型定义
@@ -70,12 +71,14 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
 
   // 是否正在补充缓存（防止重复请求）
   const isRefilling = useRef(false);
+  // 分页：下次请求使用的 offset，避免重复拉同一批
+  const nextOffsetRef = useRef(0);
 
   /**
-   * 从 API 获取帖子并转换为 FeedItem
+   * 从 API 获取帖子并转换为 FeedItem（带 offset 分页）
    */
-  const fetchAndConvert = useCallback(async (limit: number): Promise<FeedItem[]> => {
-    const apiPosts = await fetchPosts(limit);
+  const fetchAndConvertPaginated = useCallback(async (limit: number, offset: number): Promise<FeedItem[]> => {
+    const apiPosts = await fetchPostsPaginated(limit, offset);
     return apiPosts.map((post, index) => apiPostToFeedItem(post, index));
   }, []);
 
@@ -93,25 +96,26 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * 初始化加载
+   * 初始化加载（offset=0 第一页）
    */
   const initialize = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    nextOffsetRef.current = 0;
 
     try {
-      const totalNeeded = INITIAL_DISPLAY_COUNT + CACHE_SIZE;
-      const posts = await fetchAndConvert(totalNeeded);
+      const firstFetchSize = INITIAL_FETCH_SIZE;
+      const posts = await fetchAndConvertPaginated(firstFetchSize, 0);
+      nextOffsetRef.current = posts.length;
       const newPosts = filterNewPosts(posts);
 
-
-      // 分配到显示和缓存
       const displayed = newPosts.slice(0, INITIAL_DISPLAY_COUNT);
       const cached = newPosts.slice(INITIAL_DISPLAY_COUNT);
 
       setDisplayedPosts(displayed);
       setCachedPosts(cached);
-      setHasMore(posts.length >= totalNeeded);
+      setHasMore(posts.length >= firstFetchSize || newPosts.length < INITIAL_DISPLAY_COUNT);
+      // effect 会因 cache 低立刻触发 refill，下一页并行拉
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载失败';
@@ -119,10 +123,10 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchAndConvert, filterNewPosts]);
+  }, [fetchAndConvertPaginated, filterNewPosts]);
 
   /**
-   * 补充缓存
+   * 补充缓存（用 offset 拉下一页，避免重复）
    */
   const refillCache = useCallback(async () => {
     if (isRefilling.current || isLoading || !hasMore) {
@@ -130,22 +134,21 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     }
 
     isRefilling.current = true;
+    const offset = nextOffsetRef.current;
 
     try {
-      const posts = await fetchAndConvert(FETCH_BATCH_SIZE);
+      const posts = await fetchAndConvertPaginated(FETCH_BATCH_SIZE, offset);
+      nextOffsetRef.current = offset + posts.length;
       const newPosts = filterNewPosts(posts);
-
 
       if (newPosts.length > 0) {
         setCachedPosts(prev => {
-          // Deduplicate: filter out posts that already exist in cachedPosts
           const existingUids = new Set(prev.map(p => p.uid));
           const uniqueNewPosts = newPosts.filter(p => !existingUids.has(p.uid));
           return [...prev, ...uniqueNewPosts];
         });
       }
 
-      // 如果返回的帖子都是已见过的或数量不足，可能没有更多了
       if (posts.length < FETCH_BATCH_SIZE) {
         setHasMore(false);
       }
@@ -154,7 +157,14 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
     } finally {
       isRefilling.current = false;
     }
-  }, [isLoading, hasMore, fetchAndConvert, filterNewPosts]);
+  }, [isLoading, hasMore, fetchAndConvertPaginated, filterNewPosts]);
+
+  // 缓存一低就主动补；首屏很少时也补（0 条缓存也算「低」）
+  useEffect(() => {
+    if (isLoading) return;
+    const cacheLow = cachedPosts.length <= REFILL_THRESHOLD;
+    if (hasMore && cacheLow) refillCache();
+  }, [cachedPosts.length, isLoading, hasMore, refillCache]);
 
   /**
    * 消费一个缓存帖子
@@ -192,12 +202,13 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 消费多个缓存帖子
    */
   const consumeMultiple = useCallback((count: number): FeedItem[] => {
-    // 检查是否需要补充 (Check before consuming)
     if (cachedPosts.length <= REFILL_THRESHOLD) {
       refillCache();
     }
 
-    const toConsume = Math.min(count, cachedPosts.length);
+    // 缓存很少时每次最多取 3 条，避免一次掏空、露空等 refill
+    const cap = cachedPosts.length <= 8 ? 3 : count;
+    const toConsume = Math.min(cap, cachedPosts.length);
     const needed = count - toConsume;
 
     // If we need more than we have, mark it as pending
@@ -295,7 +306,6 @@ export function PostCacheProvider({ children }: { children: ReactNode }) {
    * 更新帖子的点赞状态
    */
   const updateLocalLike = useCallback((uid: string, isLiked: boolean, likeCount: number) => {
-    console.log(`[PostCacheContext] updateLocalLike UID: ${uid}, isLiked: ${isLiked}, count: ${likeCount}`);
     setDisplayedPosts(prev => prev.map(item =>
       item.uid === uid ? { ...item, isLiked, likes: likeCount } : item
     ));

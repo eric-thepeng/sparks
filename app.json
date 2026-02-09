@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "spark",
+    "name": "Sparks",
     "slug": "spark",
     "scheme": [
       "sparks",
@@ -31,7 +31,16 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.gc.spark"
+      "package": "com.gc.spark",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            { "scheme": "sparks", "host": "post", "pathPrefix": "/" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -95,7 +95,6 @@ export function useRecommendation(): UseRecommendationResult {
 
     try {
       const response = await sendSignalApi(postId, signalType);
-      console.log(`[Recommendation] Signal sent: ${signalType} for post ${postId}`, response);
       
       // 更新状态
       if (response && response.bucket_count) {
@@ -109,9 +108,8 @@ export function useRecommendation(): UseRecommendationResult {
           },
         });
       }
-    } catch (error) {
-      // 静默失败，仅 log
-      console.log(`[Recommendation] Failed to send signal ${signalType}:`, error);
+    } catch {
+      // 静默失败
     }
   }, [token]);
 
@@ -200,15 +198,13 @@ export function useRecommendation(): UseRecommendationResult {
    */
   const resetRecommendation = useCallback(async () => {
     if (!token) {
-      console.log('[Recommendation] Cannot reset: not logged in');
       return;
     }
 
     setIsResetting(true);
     try {
       const response = await resetRecommendationApi();
-      console.log('[Recommendation] Reset successful:', response);
-      
+
       // 更新状态
       if (response && response.bucket_count) {
         setState({
@@ -222,7 +218,6 @@ export function useRecommendation(): UseRecommendationResult {
       sentClicks.current.clear();
       readProgress.current.clear();
     } catch (error) {
-      console.error('[Recommendation] Reset failed:', error);
       throw error;
     } finally {
       setIsResetting(false);

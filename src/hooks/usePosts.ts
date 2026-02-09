@@ -64,7 +64,6 @@ export function useFeedItems(): UseFeedItemsResult {
       const localItems = getFeedItems();
       setFeedItems(localItems);
       setStatus('success');
-      console.log('[useFeedItems] Using local data, count:', localItems.length);
       return;
     }
 
@@ -74,14 +73,11 @@ export function useFeedItems(): UseFeedItemsResult {
       const items = apiPosts.map((post, index) => apiPostToFeedItem(post, index));
       setFeedItems(items);
       setStatus('success');
-      console.log('[useFeedItems] API success, count:', items.length);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '获取数据失败';
-      console.error('[useFeedItems] API failed:', err);
-      
+
       // API 失败时回退到本地数据
       if (CURRENT_DATA_SOURCE === DataSource.API_WITH_FALLBACK) {
-        console.log('[useFeedItems] Falling back to local data');
         const localItems = getFeedItems();
         setFeedItems(localItems);
         setStatus('success');
@@ -151,7 +147,6 @@ export function usePaginatedFeed(pageSize: number = 20): UsePaginatedFeedResult 
       const errorMessage = err instanceof Error ? err.message : '获取数据失败';
       setError(errorMessage);
       setStatus('error');
-      console.error('Failed to fetch paginated feed:', err);
     }
   }, [offset, pageSize]);
 
@@ -218,7 +213,6 @@ export function usePost(postId: string | null): UsePostResult {
       if (localPost) {
         setPost(localPost);
         setStatus('success');
-        console.log('[usePost] Using local data for:', postId);
       } else {
         setError('帖子不存在');
         setStatus('error');
@@ -232,21 +226,16 @@ export function usePost(postId: string | null): UsePostResult {
       
       // Safety check: Ensure apiPost is valid before converting
       if (!apiPost || (!apiPost.uid && !apiPost.platform_post_id)) {
-        console.error('[usePost] API returned invalid post data:', apiPost);
         setError('POST_NOT_FOUND');
         setStatus('error');
         return;
       }
 
-      console.log('[usePost] API response for:', postId, 'has pages:', 'pages' in apiPost ? (apiPost as any).pages?.length : 'N/A');
       const convertedPost = apiPostToPost(apiPost);
-      console.log('[usePost] Converted post pages:', convertedPost.pages.length);
       setPost(convertedPost);
       setStatus('success');
-      console.log('[usePost] API success for:', postId);
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : '获取帖子失败';
-      console.error('[usePost] API failed:', err);
       
       // If post is not found (404), mark as error specifically
       if (err.status === 404) {
@@ -259,7 +248,6 @@ export function usePost(postId: string | null): UsePostResult {
       if (CURRENT_DATA_SOURCE === DataSource.API_WITH_FALLBACK) {
         const localPost = getPost(postId);
         if (localPost) {
-          console.log('[usePost] Falling back to local data for:', postId);
           setPost(localPost);
           setStatus('success');
           return;

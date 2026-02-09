@@ -290,7 +290,6 @@ export function NotesProvider({ children }: NotesProviderProps) {
   /** Sync all local notes to server */
   const syncToServer = useCallback(async () => {
     if (!userId || !authToken) {
-      console.log('User not authenticated, skip sync');
       return;
     }
 
@@ -331,13 +330,11 @@ export function NotesProvider({ children }: NotesProviderProps) {
   /** Sync single note (internal) */
   const syncSingleNote = async (note: Note) => {
     // TODO: Implement single note sync
-    console.log('TODO: Sync single note to server:', note.id);
   };
 
   /** Delete synced note (internal) */
   const deleteSyncedNote = async (noteId: string) => {
     // TODO: Implement delete sync
-    console.log('TODO: Delete synced note from server:', noteId);
   };
 
   // ============================================================

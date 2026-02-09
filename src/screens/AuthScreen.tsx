@@ -64,7 +64,6 @@ export const AuthScreen = () => {
 
   useEffect(() => {
     if (request) {
-      console.log('Generated Redirect URI:', request.redirectUri);
     }
   }, [request]);
 
