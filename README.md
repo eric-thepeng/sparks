@@ -17,7 +17,7 @@ By combining AI-assisted engineering with AI-generated content, Gemini defines b
 
 ## Testing Instructions
 
-Do this and this to test the app.
+😍 Do this and this to test the app.
 
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
 
