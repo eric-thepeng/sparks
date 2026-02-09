@@ -1,4 +1,4 @@
-![image](https://github.com/eric-thepeng/sparks/blob/main/thumbnail.png)
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Thumbnail.png)
 
 ## ✨ Sparks
 
@@ -13,3 +13,15 @@ _Google’s Gemini 3_ was central to both building Sparks and creating its conte
 During development, Gemini supported code generation, system architecture, and structured schema design across our React Native/Expo frontend and backend services. Its reasoning and instruction-following capabilities shaped Sparks’ topic bucket system, reader architecture, and metadata-driven content model. We also used Google AI Studio to quickly build and iterate on our prototype before transitioning to Mobile.
 
 By combining AI-assisted engineering with AI-generated content, Gemini defines both how Sparks is built and how it is experienced.
+
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
+
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Collection.png)
+
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Profile.png)
+
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Post1.png)
+
+![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Post2.png)
+
+
