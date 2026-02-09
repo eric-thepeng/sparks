@@ -17,7 +17,19 @@ By combining AI-assisted engineering with AI-generated content, Gemini defines b
 
 ## 😍 Testing Instructions
 
-Do this and this to test the app.
+This is an iOS app. Please install it via TestFlight on your iPhone or iPad.
+
+### INSTALL
+Open the link below on your iPhone or iPad (install the TestFlight app from the App Store if needed): https://testflight.apple.com/join/qAprwTJG
+
+Tap Accept, then Install to add Sparks to your device.
+
+### SIGN IN
+You may create a new account, or use the test account below:
+Email: tester@test.com
+Password: test1111
+Thank you for trying out Sparks.
+
 
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
 
