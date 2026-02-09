@@ -15,6 +15,10 @@ During development, Gemini supported code generation, system architecture, and s
 
 By combining AI-assisted engineering with AI-generated content, Gemini defines both how Sparks is built and how it is experienced.
 
+## Testing Instructions
+
+Do this and this to test the app.
+
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Discovery.png)
 
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Collection.png)
