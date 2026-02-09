@@ -1,6 +1,5 @@
 ![image](https://github.com/eric-thepeng/sparks/blob/main/pressAssets/Thumbnail.png)
 _Be Curious, Be Inspired._ 
-_Sparks is a feed-style leisure reading app for curious minds who want to read more about the world instead of doom scrolling._
 
 ## ✨ Sparks
 
