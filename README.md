@@ -1,4 +1,4 @@
-https://github.com/eric-thepeng/sparks/blob/main/thumbnail.png
+![image](https://github.com/eric-thepeng/sparks/blob/main/thumbnail.png)
 
 ## ✨ Sparks
 
