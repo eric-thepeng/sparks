@@ -95,21 +95,29 @@ export function useRecommendation(): UseRecommendationResult {
 
     try {
       const response = await sendSignalApi(postId, signalType);
-      
-      // 更新状态
-      if (response && response.bucket_count) {
-        setState({
-          bucketCount: response.bucket_count,
-          clickCount: response.click_count || 0,
-          lastSignal: {
-            postId,
-            signalType,
-            timestamp: Date.now(),
-          },
-        });
+
+      // 兼容 v1(bucket-based) / v2(interest-based)
+      const weights = response?.interest_count || response?.bucket_count || {};
+      const counter = response?.effective_interaction_count ?? response?.click_count ?? 0;
+
+      setState({
+        bucketCount: weights,
+        clickCount: counter,
+        lastSignal: {
+          postId,
+          signalType,
+          timestamp: Date.now(),
+        },
+      });
+
+      // Debug log (dev only)
+      if (__DEV__) {
+        console.log('[signals] ok', { postId, signalType, response });
       }
-    } catch {
-      // 静默失败
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[signals] failed', { postId, signalType, error });
+      }
     }
   }, [token]);
 
@@ -205,14 +213,15 @@ export function useRecommendation(): UseRecommendationResult {
     try {
       const response = await resetRecommendationApi();
 
-      // 更新状态
-      if (response && response.bucket_count) {
-        setState({
-          bucketCount: response.bucket_count,
-          clickCount: response.click_count || 0,
-          lastSignal: null,
-        });
-      }
+      // 兼容 v1(bucket-based) / v2(interest-based)
+      const weights = response?.interest_count || response?.bucket_count || {};
+      const counter = response?.effective_interaction_count ?? response?.click_count ?? 0;
+
+      setState({
+        bucketCount: weights,
+        clickCount: counter,
+        lastSignal: null,
+      });
 
       // 清空本地去重缓存
       sentClicks.current.clear();

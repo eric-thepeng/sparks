@@ -179,8 +179,12 @@ export type BucketCount = Record<string, number>;
  */
 export interface SignalResponse {
   ok: boolean;
-  bucket_count: BucketCount;
-  click_count: number;
+  // v1 (bucket-based)
+  bucket_count?: BucketCount;
+  click_count?: number;
+  // v2 (interest-based)
+  interest_count?: BucketCount;
+  effective_interaction_count?: number;
 }
 
 /**
@@ -189,6 +193,10 @@ export interface SignalResponse {
 export interface ResetRecommendationResponse {
   ok: boolean;
   message: string;
-  bucket_count: BucketCount;
-  click_count: number;
+  // v1 (bucket-based)
+  bucket_count?: BucketCount;
+  click_count?: number;
+  // v2 (interest-based)
+  interest_count?: BucketCount;
+  effective_interaction_count?: number;
 }
