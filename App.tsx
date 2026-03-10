@@ -2032,7 +2032,6 @@ function PostSwiper({
   items,
   initialIndex,
   onClose,
-  onSwipeBackClose,
   onFeedLikeUpdate,
   onLoadMore,
   onMissing,
@@ -2042,7 +2041,6 @@ function PostSwiper({
   items: FeedItem[];
   initialIndex: number;
   onClose: () => void;
-  onSwipeBackClose: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
@@ -2108,7 +2106,7 @@ function PostSwiper({
         index: currentIndexRef.current,
         animated: false,
       });
-      onSwipeBackClose();
+      onClose();
       return;
     }
 
@@ -2121,10 +2119,9 @@ function PostSwiper({
   }).current;
 
   const renderItem = useCallback(({ item, index }: { item: FeedItem, index: number }) => {
-    // Optimization: only render current and next.
-    // Previous card stays transparent so right-swipe reveals Discovery page beneath.
-    if (index < currentIndex || index > currentIndex + 1) {
-      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'transparent' }} />;
+    // Optimization: Only render current, prev, and next to save memory/cpu
+    if (Math.abs(currentIndex - index) > 1) {
+      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
     }
 
     // Parallax / Card Stack Effect
@@ -2183,7 +2180,7 @@ function PostSwiper({
   }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+    <View style={{ flex: 1, backgroundColor: 'black' }}>
       <Animated.FlatList
         ref={flatListRef}
         data={items}
@@ -3416,27 +3413,11 @@ function AppContent() {
     });
   }, [updateFeedLike]);
 
-  const postModalTranslateX = useRef(new Animated.Value(0)).current;
-
   const closePost = useCallback(() => {
     setSelectedPostUid(null);
     setSwiperItems([]);
     setIsViewingFeed(false);
-    postModalTranslateX.setValue(0);
-  }, [postModalTranslateX]);
-
-  const closePostByRightSwipe = useCallback(() => {
-    Animated.timing(postModalTranslateX, {
-      toValue: SCREEN_WIDTH,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => {
-      setSelectedPostUid(null);
-      setSwiperItems([]);
-      setIsViewingFeed(false);
-      postModalTranslateX.setValue(0);
-    });
-  }, [postModalTranslateX]);
+  }, []);
 
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
@@ -3775,18 +3756,16 @@ function AppContent() {
         {/* 帖子详情 Modal */}
         <Modal
           visible={selectedPostUid !== null}
-          animationType="none"
-          presentationStyle="overFullScreen"
-          transparent
+          animationType="slide"
+          presentationStyle="fullScreen"
           onRequestClose={closePost}
         >
           {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
-            <Animated.View style={{ flex: 1, transform: [{ translateX: postModalTranslateX }] }}>
+            <>
               <PostSwiper
                 items={swiperItems}
                 initialIndex={Math.max(0, currentPostIndex)}
                 onClose={closePost}
-                onSwipeBackClose={closePostByRightSwipe}
                 onFeedLikeUpdate={handleLikeUpdate}
                 onLoadMore={() => {
                   // Only load more if we are using the main feed
@@ -3816,7 +3795,7 @@ function AppContent() {
               />
               {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
               <AlertOverlay />
-            </Animated.View>
+            </>
           ) : (
             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
               <LoadingScreen />
