@@ -2050,6 +2050,7 @@ function PostSwiper({
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
+  const dragStartXRef = useRef(0);
 
   const handleRequestNext = useCallback(() => {
     if (currentIndex < items.length - 1) {
@@ -2182,6 +2183,20 @@ function PostSwiper({
         removeClippedSubviews={true}
         decelerationRate="fast"
         disableIntervalMomentum
+        onScrollBeginDrag={(e: any) => {
+          dragStartXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        onMomentumScrollEnd={(e: any) => {
+          const endX = e.nativeEvent.contentOffset.x;
+          const deltaX = endX - dragStartXRef.current;
+
+          // Product requirement:
+          // Swiping right in post reader should return to Discovery,
+          // not navigate to previous post.
+          if (deltaX < -SCREEN_WIDTH * 0.08) {
+            onClose();
+          }
+        }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { x: scrollX } } }],
           { useNativeDriver: true }
