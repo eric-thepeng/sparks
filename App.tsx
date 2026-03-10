@@ -2048,9 +2048,9 @@ function PostSwiper({
   onNavigateToAuth?: () => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const currentIndexRef = useRef(initialIndex);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
-  const dragStartXRef = useRef(0);
 
   const handleRequestNext = useCallback(() => {
     if (currentIndex < items.length - 1) {
@@ -2093,9 +2093,25 @@ function PostSwiper({
   });
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setCurrentIndex(viewableItems[0].index);
+    if (viewableItems.length === 0) return;
+
+    const nextIndex = viewableItems[0]?.index;
+    if (typeof nextIndex !== 'number') return;
+
+    // Product requirement:
+    // Right swipe should close reader (back to Discovery),
+    // instead of navigating to previous post.
+    if (nextIndex < currentIndexRef.current) {
+      flatListRef.current?.scrollToIndex({
+        index: currentIndexRef.current,
+        animated: false,
+      });
+      onClose();
+      return;
     }
+
+    currentIndexRef.current = nextIndex;
+    setCurrentIndex(nextIndex);
   }).current;
 
   const viewabilityConfig = useRef({
@@ -2183,20 +2199,6 @@ function PostSwiper({
         removeClippedSubviews={true}
         decelerationRate="fast"
         disableIntervalMomentum
-        onScrollBeginDrag={(e: any) => {
-          dragStartXRef.current = e.nativeEvent.contentOffset.x;
-        }}
-        onMomentumScrollEnd={(e: any) => {
-          const endX = e.nativeEvent.contentOffset.x;
-          const deltaX = endX - dragStartXRef.current;
-
-          // Product requirement:
-          // Swiping right in post reader should return to Discovery,
-          // not navigate to previous post.
-          if (deltaX < -SCREEN_WIDTH * 0.08) {
-            onClose();
-          }
-        }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { x: scrollX } } }],
           { useNativeDriver: true }
