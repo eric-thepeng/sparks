@@ -22,7 +22,6 @@ import {
   Share,
   LayoutAnimation,
   UIManager,
-  PanResponder,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -2034,8 +2033,6 @@ function PostSwiper({
   initialIndex,
   onClose,
   onSwipeBackClose,
-  onSwipeProgress,
-  onSwipeCancel,
   onFeedLikeUpdate,
   onLoadMore,
   onMissing,
@@ -2046,8 +2043,6 @@ function PostSwiper({
   initialIndex: number;
   onClose: () => void;
   onSwipeBackClose: () => void;
-  onSwipeProgress: (dx: number) => void;
-  onSwipeCancel: () => void;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
@@ -2055,6 +2050,7 @@ function PostSwiper({
   onNavigateToAuth?: () => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const currentIndexRef = useRef(initialIndex);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
 
@@ -2099,42 +2095,36 @@ function PostSwiper({
   });
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setCurrentIndex(viewableItems[0].index);
+    if (viewableItems.length === 0) return;
+
+    const nextIndex = viewableItems[0]?.index;
+    if (typeof nextIndex !== 'number') return;
+
+    // Product requirement:
+    // Right swipe should close reader (back to Discovery),
+    // instead of navigating to previous post.
+    if (nextIndex < currentIndexRef.current) {
+      flatListRef.current?.scrollToIndex({
+        index: currentIndexRef.current,
+        animated: false,
+      });
+      onSwipeBackClose();
+      return;
     }
+
+    currentIndexRef.current = nextIndex;
+    setCurrentIndex(nextIndex);
   }).current;
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_evt, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
-    onMoveShouldSetPanResponderCapture: (_evt, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
-    onPanResponderMove: (_evt, g) => {
-      if (g.dx > 0) onSwipeProgress(g.dx);
-      else onSwipeProgress(0);
-    },
-    onPanResponderRelease: (_evt, g) => {
-      if (g.dx > SCREEN_WIDTH * 0.25 || g.vx > 0.8) {
-        onSwipeBackClose();
-        return;
-      }
-      if (g.dx < -SCREEN_WIDTH * 0.18 && currentIndex < items.length - 1) {
-        flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
-      }
-      onSwipeCancel();
-    },
-    onPanResponderTerminate: () => {
-      onSwipeCancel();
-    },
-  }), [currentIndex, items.length, onSwipeBackClose, onSwipeCancel, onSwipeProgress]);
-
   const renderItem = useCallback(({ item, index }: { item: FeedItem, index: number }) => {
-    // Optimization: Only render current, prev, and next to save memory/cpu
-    if (Math.abs(currentIndex - index) > 1) {
-      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
+    // Optimization: only render current and next.
+    // Previous card stays transparent so right-swipe reveals Discovery page beneath.
+    if (index < currentIndex || index > currentIndex + 1) {
+      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'transparent' }} />;
     }
 
     // Parallax / Card Stack Effect
@@ -2193,13 +2183,12 @@ function PostSwiper({
   }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'black' }} {...panResponder.panHandlers}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Animated.FlatList
         ref={flatListRef}
         data={items}
         renderItem={renderItem}
         horizontal
-        scrollEnabled={false}
         pagingEnabled
         keyExtractor={(item) => item.uid}
         initialScrollIndex={initialIndex}
@@ -3449,20 +3438,6 @@ function AppContent() {
     });
   }, [postModalTranslateX]);
 
-  const handleSwipeProgress = useCallback((dx: number) => {
-    const x = Math.max(0, Math.min(SCREEN_WIDTH, dx));
-    postModalTranslateX.setValue(x);
-  }, [postModalTranslateX]);
-
-  const handleSwipeCancel = useCallback(() => {
-    Animated.spring(postModalTranslateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 0,
-      speed: 24,
-    }).start();
-  }, [postModalTranslateX]);
-
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
     if (!items || items.length === 0) return;
@@ -3812,8 +3787,6 @@ function AppContent() {
                 initialIndex={Math.max(0, currentPostIndex)}
                 onClose={closePost}
                 onSwipeBackClose={closePostByRightSwipe}
-                onSwipeProgress={handleSwipeProgress}
-                onSwipeCancel={handleSwipeCancel}
                 onFeedLikeUpdate={handleLikeUpdate}
                 onLoadMore={() => {
                   // Only load more if we are using the main feed
