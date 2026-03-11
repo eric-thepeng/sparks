@@ -1905,6 +1905,12 @@ function SinglePostReader({
       </View>
 
       {/* Floating Comment Sheet */}
+      {showComments && (
+        <Pressable
+          style={styles.commentSheetBackdrop}
+          onPress={() => setShowComments(false)}
+        />
+      )}
       <Animated.View style={[
         styles.commentSheet,
         {
@@ -4946,6 +4952,11 @@ const styles = StyleSheet.create({
   },
 
   // Comment Sheet
+  commentSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    zIndex: 99,
+  },
   commentSheet: {
     position: 'absolute',
     left: 0,
