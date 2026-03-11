@@ -22,6 +22,8 @@ import {
   Share,
   LayoutAnimation,
   UIManager,
+  PanResponder,
+  InteractionManager,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -2032,6 +2034,10 @@ function PostSwiper({
   items,
   initialIndex,
   onClose,
+  onSwipeBackClose,
+  onSwipeProgress,
+  onSwipeCancel,
+  swipeBackActive,
   onFeedLikeUpdate,
   onLoadMore,
   onMissing,
@@ -2041,6 +2047,10 @@ function PostSwiper({
   items: FeedItem[];
   initialIndex: number;
   onClose: () => void;
+  onSwipeBackClose: () => void;
+  onSwipeProgress: (dx: number) => void;
+  onSwipeCancel: () => void;
+  swipeBackActive: boolean;
   onFeedLikeUpdate?: (uid: string, isLiked: boolean, likeCount: number) => void;
   onLoadMore?: () => void;
   onMissing?: (uid: string) => void;
@@ -2048,11 +2058,15 @@ function PostSwiper({
   onNavigateToAuth?: () => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [localItems, setLocalItems] = useState<FeedItem[]>(items);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current; // Track scroll position
+  const dragStartXRef = useRef(0);
+  const minOffsetXRef = useRef(0);
+  const rebasingRef = useRef(false);
 
   const handleRequestNext = useCallback(() => {
-    if (currentIndex < items.length - 1) {
+    if (currentIndex < localItems.length - 1) {
       flatListRef.current?.scrollToIndex({
         index: currentIndex + 1,
         animated: true
@@ -2064,7 +2078,7 @@ function PostSwiper({
       // items are added to 'items' prop as soon as they arrive.
       onLoadMore?.();
     }
-  }, [currentIndex, items.length, onLoadMore]);
+  }, [currentIndex, localItems.length, onLoadMore]);
 
   // Sync index externally (if needed, though usually initialIndex is enough)
   useEffect(() => {
@@ -2077,13 +2091,18 @@ function PostSwiper({
     }
   }, [initialIndex]);
 
+  useEffect(() => {
+    setLocalItems(items);
+    setCurrentIndex(Math.max(0, Math.min(initialIndex, Math.max(0, items.length - 1))));
+  }, [items, initialIndex]);
+
   // Load more trigger
   useEffect(() => {
-    const remaining = items.length - currentIndex - 1;
+    const remaining = localItems.length - currentIndex - 1;
     if (remaining <= 2 && onLoadMore) {
       onLoadMore();
     }
-  }, [currentIndex, items.length, onLoadMore]);
+  }, [currentIndex, localItems.length, onLoadMore]);
 
   const getItemLayout = (_: any, index: number) => ({
     length: SCREEN_WIDTH,
@@ -2092,9 +2111,11 @@ function PostSwiper({
   });
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setCurrentIndex(viewableItems[0].index);
-    }
+    if (rebasingRef.current) return;
+    if (viewableItems.length === 0) return;
+    const idx = viewableItems[0]?.index;
+    if (typeof idx !== 'number') return;
+    setCurrentIndex(idx);
   }).current;
 
   const viewabilityConfig = useRef({
@@ -2102,9 +2123,14 @@ function PostSwiper({
   }).current;
 
   const renderItem = useCallback(({ item, index }: { item: FeedItem, index: number }) => {
+    // During swipe-back reveal, only render current page to avoid ghost previous/next pages.
+    if (swipeBackActive && index !== currentIndex) {
+      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'transparent' }} />;
+    }
+
     // Optimization: Only render current, prev, and next to save memory/cpu
     if (Math.abs(currentIndex - index) > 1) {
-      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'black' }} />;
+      return <View style={{ width: SCREEN_WIDTH, flex: 1, backgroundColor: 'transparent' }} />;
     }
 
     // Parallax / Card Stack Effect
@@ -2160,13 +2186,13 @@ function PostSwiper({
         </Animated.View>
       </View>
     );
-  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth]);
+  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth, swipeBackActive]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'black' }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Animated.FlatList
         ref={flatListRef}
-        data={items}
+        data={localItems}
         renderItem={renderItem}
         horizontal
         pagingEnabled
@@ -2182,10 +2208,46 @@ function PostSwiper({
         removeClippedSubviews={true}
         decelerationRate="fast"
         disableIntervalMomentum
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: true }
-        )}
+        onScrollBeginDrag={(e: any) => {
+          dragStartXRef.current = e.nativeEvent.contentOffset.x;
+          minOffsetXRef.current = e.nativeEvent.contentOffset.x;
+        }}
+        onScrollEndDrag={(e: any) => {
+          const vx = e.nativeEvent?.velocity?.x ?? 0;
+          const startX = dragStartXRef.current;
+          const endX = e.nativeEvent.contentOffset.x;
+          const overdrag = Math.max(0, -minOffsetXRef.current);
+          const isRightAttemptAtHead = currentIndex === 0 && startX <= 1 && endX <= 1;
+          if (isRightAttemptAtHead && (overdrag > SCREEN_WIDTH * 0.18 || vx > 0.45)) {
+            onSwipeBackClose();
+            return;
+          }
+          onSwipeCancel();
+        }}
+        onMomentumScrollEnd={(e: any) => {
+          const settledIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          if (settledIndex > 0) {
+            rebasingRef.current = true;
+            InteractionManager.runAfterInteractions(() => {
+              setLocalItems(prev => prev.slice(settledIndex));
+              setCurrentIndex(0);
+              requestAnimationFrame(() => {
+                flatListRef.current?.scrollToIndex({ index: 0, animated: false });
+                rebasingRef.current = false;
+              });
+            });
+          }
+        }}
+        onScroll={(e: any) => {
+          const x = e.nativeEvent.contentOffset.x;
+          scrollX.setValue(x);
+          minOffsetXRef.current = Math.min(minOffsetXRef.current, x);
+          if (currentIndex === 0 && x < 0) {
+            onSwipeProgress(-x);
+          } else {
+            onSwipeProgress(0);
+          }
+        }}
         scrollEventThrottle={16}
       />
     </View>
@@ -3396,11 +3458,55 @@ function AppContent() {
     });
   }, [updateFeedLike]);
 
+  const postModalTranslateX = useRef(new Animated.Value(0)).current;
+  const [swipeBackActive, setSwipeBackActive] = useState(false);
+  const swipeBackActiveRef = useRef(false);
+
   const closePost = useCallback(() => {
     setSelectedPostUid(null);
     setSwiperItems([]);
     setIsViewingFeed(false);
-  }, []);
+    swipeBackActiveRef.current = false;
+    setSwipeBackActive(false);
+    postModalTranslateX.setValue(0);
+  }, [postModalTranslateX]);
+
+  const closePostByRightSwipe = useCallback(() => {
+    Animated.timing(postModalTranslateX, {
+      toValue: SCREEN_WIDTH,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      setSelectedPostUid(null);
+      setSwiperItems([]);
+      setIsViewingFeed(false);
+      swipeBackActiveRef.current = false;
+      setSwipeBackActive(false);
+      postModalTranslateX.setValue(0);
+    });
+  }, [postModalTranslateX]);
+
+  const handleSwipeProgress = useCallback((dx: number) => {
+    const x = Math.max(0, Math.min(SCREEN_WIDTH, dx));
+    const active = x > 0;
+    if (swipeBackActiveRef.current !== active) {
+      swipeBackActiveRef.current = active;
+      setSwipeBackActive(active);
+    }
+    postModalTranslateX.setValue(x);
+  }, [postModalTranslateX]);
+
+  const handleSwipeCancel = useCallback(() => {
+    Animated.spring(postModalTranslateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 24,
+    }).start(() => {
+      swipeBackActiveRef.current = false;
+      setSwipeBackActive(false);
+    });
+  }, [postModalTranslateX]);
 
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
@@ -3408,10 +3514,13 @@ function AppContent() {
 
     setSwiperItems(items);
     setSelectedPostUid(uid);
+    swipeBackActiveRef.current = false;
+    setSwipeBackActive(false);
+    postModalTranslateX.setValue(0);
     // Check if we are opening the main feed (using reference equality or some other heuristic)
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
-  }, [feedItems]);
+  }, [feedItems, postModalTranslateX]);
 
   // Open a single post by uid (e.g. from deep link); fetches from API then opens
   const openPostByUid = useCallback(async (uid: string) => {
@@ -3421,13 +3530,16 @@ function AppContent() {
       setSwiperItems([feedItem]);
       setSelectedPostUid(uid);
       setIsViewingFeed(false);
+      swipeBackActiveRef.current = false;
+      setSwipeBackActive(false);
+      postModalTranslateX.setValue(0);
     } catch (err) {
       showAlert({
         title: 'Post not found',
         message: 'This post may have been removed or the link is invalid.',
       });
     }
-  }, [showAlert]);
+  }, [showAlert, postModalTranslateX]);
 
   // Deep link: sparks://post/{uid} — open post when app is launched or resumed via link
   useEffect(() => {
@@ -3739,16 +3851,21 @@ function AppContent() {
         {/* 帖子详情 Modal */}
         <Modal
           visible={selectedPostUid !== null}
-          animationType="slide"
-          presentationStyle="fullScreen"
+          animationType="none"
+          presentationStyle="overFullScreen"
+          transparent
           onRequestClose={closePost}
         >
           {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
-            <>
+            <Animated.View style={{ flex: 1, transform: [{ translateX: postModalTranslateX }] }}>
               <PostSwiper
                 items={swiperItems}
                 initialIndex={Math.max(0, currentPostIndex)}
                 onClose={closePost}
+                onSwipeBackClose={closePostByRightSwipe}
+                onSwipeProgress={handleSwipeProgress}
+                onSwipeCancel={handleSwipeCancel}
+                swipeBackActive={swipeBackActive}
                 onFeedLikeUpdate={handleLikeUpdate}
                 onLoadMore={() => {
                   // Only load more if we are using the main feed
@@ -3778,7 +3895,7 @@ function AppContent() {
               />
               {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
               <AlertOverlay />
-            </>
+            </Animated.View>
           ) : (
             <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
               <LoadingScreen />
