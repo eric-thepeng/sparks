@@ -530,7 +530,7 @@ function MasonryFeed({
 // ============================================================
 // 评论区组件
 // ============================================================
-function CommentSection({ postId }: { postId: string }) {
+function CommentSection({ postId, onLoginPress }: { postId: string; onLoginPress?: () => void }) {
   const { showAlert } = useAlert();
   const { user, token, logout } = useAuth();
   const { sendComment } = useRecommendation();
@@ -677,7 +677,9 @@ function CommentSection({ postId }: { postId: string }) {
         </View>
       ) : (
         <View style={styles.commentLoginPrompt}>
-          <Text style={{ color: colors.textSecondary }}>Log in to comment</Text>
+          <Pressable style={styles.commentLoginButton} onPress={onLoginPress}>
+            <Text style={styles.commentLoginButtonText}>Log in to comment</Text>
+          </Pressable>
         </View>
       )}
 
@@ -1917,7 +1919,7 @@ function SinglePostReader({
           </Pressable>
         </View>
         <ScrollView style={{ flex: 1 }}>
-          <CommentSection postId={post.uid} />
+          <CommentSection postId={post.uid} onLoginPress={onNavigateToAuth} />
         </ScrollView>
       </Animated.View>
     </KeyboardAvoidingView>
@@ -5062,11 +5064,20 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   commentLoginPrompt: {
-    padding: 16,
+    paddingVertical: 8,
     alignItems: 'center',
-    backgroundColor: colors.bg,
-    borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  commentLoginButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  commentLoginButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   commentsLoading: {
     padding: 20,
