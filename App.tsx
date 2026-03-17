@@ -22,6 +22,7 @@ import {
   Share,
   LayoutAnimation,
   UIManager,
+  PanResponder,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHandlerRootView, FlatList as GHFlatList, ScrollView as GHScrollView } from 'react-native-gesture-handler';
@@ -801,6 +802,7 @@ const PageItem = React.memo((props: {
   onScrollProgress?: (progress: number) => void;
   onPageTypeReport?: (index: number, type: 'dot' | 'line') => void;
   onTopicClick?: (topic: string) => void;
+  disableVerticalScroll?: boolean;
 }) => {
   const {
     item,
@@ -818,6 +820,7 @@ const PageItem = React.memo((props: {
     onScrollProgress,
     onPageTypeReport,
     onTopicClick,
+    disableVerticalScroll,
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -1088,7 +1091,7 @@ const PageItem = React.memo((props: {
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        scrollEnabled={true}
+        scrollEnabled={!disableVerticalScroll}
         bounces={true}
         overScrollMode="always"
         scrollEventThrottle={16}
@@ -1283,6 +1286,7 @@ function SinglePostReader({
   onSwipeEnableChange, // NEW
   onTopicClick,
   onNavigateToAuth,
+  disableVerticalScroll = false,
 }: {
   post: Post;
   onClose: () => void;
@@ -1291,6 +1295,7 @@ function SinglePostReader({
   onSwipeEnableChange?: (canSwipe: boolean) => void;
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
+  disableVerticalScroll?: boolean;
 }) {
   const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
@@ -1750,6 +1755,7 @@ function SinglePostReader({
                   // Continuous tracking disabled: dot only moves when page index actually changes
                 }}
                 onTopicClick={onTopicClick}
+                disableVerticalScroll={disableVerticalScroll}
               />
             </View>
           )}
@@ -1946,6 +1952,7 @@ function PostLoader({
   onTopicClick,
   onNavigateToAuth,
   isVisible,
+  disableVerticalScroll,
 }: {
   uid: string,
   onClose: () => void,
@@ -1957,6 +1964,7 @@ function PostLoader({
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
   isVisible?: boolean;
+  disableVerticalScroll?: boolean;
 }) {
   const { showAlert } = useAlert();
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
@@ -2027,6 +2035,7 @@ function PostLoader({
       onSwipeEnableChange={onSwipeEnableChange}
       onTopicClick={onTopicClick}
       onNavigateToAuth={onNavigateToAuth}
+      disableVerticalScroll={disableVerticalScroll}
     />
   );
 }
@@ -2045,6 +2054,7 @@ function PostSwiper({
   onMissing,
   onTopicClick,
   onNavigateToAuth,
+  disableVerticalScroll,
 }: {
   items: FeedItem[];
   initialIndex: number;
@@ -2054,6 +2064,7 @@ function PostSwiper({
   onMissing?: (uid: string) => void;
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
+  disableVerticalScroll?: boolean;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef<FlatList>(null);
@@ -2164,11 +2175,12 @@ function PostSwiper({
             onTopicClick={onTopicClick}
             onNavigateToAuth={onNavigateToAuth}
             isVisible={currentIndex === index}
+            disableVerticalScroll={disableVerticalScroll}
           />
         </Animated.View>
       </View>
     );
-  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth]);
+  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth, disableVerticalScroll]);
 
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
@@ -2177,6 +2189,7 @@ function PostSwiper({
         data={items}
         renderItem={renderItem}
         horizontal
+        scrollEnabled={false}
         pagingEnabled
         keyExtractor={(item) => item.uid}
         initialScrollIndex={initialIndex}
@@ -3328,6 +3341,8 @@ function AppContent() {
   const [selectedPostUid, setSelectedPostUid] = useState<string | null>(null);
   const [swiperItems, setSwiperItems] = useState<FeedItem[]>([]);
   const [isViewingFeed, setIsViewingFeed] = useState(false); // Track if we are viewing the main feed
+  const [readerVisible, setReaderVisible] = useState(false);
+  const [isBackSwiping, setIsBackSwiping] = useState(false);
 
   // Sync swiperItems with feedItems if we are viewing the feed
   useEffect(() => {
@@ -3404,11 +3419,64 @@ function AppContent() {
     });
   }, [updateFeedLike]);
 
+  const readerTranslateX = useRef(new Animated.Value(0)).current;
+
+  const finalizeClosePost = useCallback(() => {
+    // keep one frame between hide and unmount to reduce flash
+    setReaderVisible(false);
+    setIsBackSwiping(false);
+    requestAnimationFrame(() => {
+      setSelectedPostUid(null);
+      setSwiperItems([]);
+      setIsViewingFeed(false);
+      readerTranslateX.setValue(0);
+    });
+  }, [readerTranslateX]);
+
   const closePost = useCallback(() => {
-    setSelectedPostUid(null);
-    setSwiperItems([]);
-    setIsViewingFeed(false);
-  }, []);
+    finalizeClosePost();
+  }, [finalizeClosePost]);
+
+  const closePostBySwipe = useCallback(() => {
+    Animated.timing(readerTranslateX, {
+      toValue: SCREEN_WIDTH,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      finalizeClosePost();
+    });
+  }, [readerTranslateX, finalizeClosePost]);
+
+  const readerPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
+    onMoveShouldSetPanResponderCapture: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
+    onPanResponderMove: (_evt, g) => {
+      const x = Math.max(0, Math.min(SCREEN_WIDTH, g.dx));
+      if (x > 0 && !isBackSwiping) setIsBackSwiping(true);
+      readerTranslateX.setValue(x);
+    },
+    onPanResponderRelease: (_evt, g) => {
+      if (g.dx > SCREEN_WIDTH * 0.18 || (g.dx > 0 && g.vx > 0.35)) {
+        closePostBySwipe();
+        return;
+      }
+      Animated.spring(readerTranslateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 0,
+        speed: 24,
+      }).start(() => setIsBackSwiping(false));
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(readerTranslateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 0,
+        speed: 24,
+      }).start(() => setIsBackSwiping(false));
+    },
+  }), [closePostBySwipe, readerTranslateX, isBackSwiping]);
 
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
@@ -3416,10 +3484,13 @@ function AppContent() {
 
     setSwiperItems(items);
     setSelectedPostUid(uid);
+    setReaderVisible(true);
+    setIsBackSwiping(false);
+    readerTranslateX.setValue(0);
     // Check if we are opening the main feed (using reference equality or some other heuristic)
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
-  }, [feedItems]);
+  }, [feedItems, readerTranslateX]);
 
   // Open a single post by uid (e.g. from deep link); fetches from API then opens
   const openPostByUid = useCallback(async (uid: string) => {
@@ -3429,13 +3500,16 @@ function AppContent() {
       setSwiperItems([feedItem]);
       setSelectedPostUid(uid);
       setIsViewingFeed(false);
+      setReaderVisible(true);
+      setIsBackSwiping(false);
+      readerTranslateX.setValue(0);
     } catch (err) {
       showAlert({
         title: 'Post not found',
         message: 'This post may have been removed or the link is invalid.',
       });
     }
-  }, [showAlert]);
+  }, [showAlert, readerTranslateX]);
 
   // Deep link: sparks://post/{uid} — open post when app is launched or resumed via link
   useEffect(() => {
@@ -3537,6 +3611,8 @@ function AppContent() {
   }, [closePost]);
 
   // 渲染当前页面内容
+  const useOverlayReaderV2 = true;
+
   const renderContent = () => {
     // Global Topic View Overlay: If a topic is selected, show it regardless of current tab
     if (selectedTopic) {
@@ -3722,6 +3798,52 @@ function AppContent() {
     }
   };
 
+  const renderReaderContent = () => {
+    if (!(swiperItems && swiperItems.length > 0 && selectedPostUid)) {
+      return (
+        <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+          <LoadingScreen />
+          <Pressable style={styles.modalCloseButton} onPress={closePost}>
+            <X size={24} color={colors.text} />
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        <PostSwiper
+          items={swiperItems}
+          initialIndex={Math.max(0, currentPostIndex)}
+          onClose={closePost}
+          onFeedLikeUpdate={handleLikeUpdate}
+          onLoadMore={() => {
+            if (isViewingFeed) consumeMultiple(1);
+          }}
+          onMissing={(uid) => {
+            removeFeedPost(uid);
+            removeFromHistory(uid);
+            unsavePost(uid);
+            if (uid === selectedPostUid) {
+              closePost();
+              showAlert({
+                title: 'Post Unavailable',
+                message: 'This post has been deleted or is no longer available.'
+              });
+            }
+          }}
+          onTopicClick={handleTopicClick}
+          onNavigateToAuth={() => {
+            closePost();
+            setBottomTab('me');
+          }}
+          disableVerticalScroll={isBackSwiping}
+        />
+        <AlertOverlay />
+      </>
+    );
+  };
+
   return (
     <SafeAreaProvider>
       {/* 兴趣 Onboarding Modal */}
@@ -3744,61 +3866,34 @@ function AppContent() {
         {/* 底部导航 */}
         <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
 
-        {/* 帖子详情 Modal */}
-        <Modal
-          visible={selectedPostUid !== null}
-          animationType="slide"
-          presentationStyle="fullScreen"
-          onRequestClose={closePost}
-        >
-          {swiperItems && swiperItems.length > 0 && selectedPostUid ? (
-            <>
-              <PostSwiper
-                items={swiperItems}
-                initialIndex={Math.max(0, currentPostIndex)}
-                onClose={closePost}
-                onFeedLikeUpdate={handleLikeUpdate}
-                onLoadMore={() => {
-                  // Only load more if we are using the main feed
-                  if (isViewingFeed) {
-                    consumeMultiple(1);
-                  }
-                }}
-                onMissing={(uid) => {
-                  removeFeedPost(uid);
-                  removeFromHistory(uid);
-                  unsavePost(uid);
-
-                  // If it's the current post, we must close
-                  if (uid === selectedPostUid) {
-                    closePost();
-                    showAlert({
-                      title: 'Post Unavailable',
-                      message: 'This post has been deleted or is no longer available.'
-                    });
-                  }
-                }}
-                onTopicClick={handleTopicClick}
-                onNavigateToAuth={() => {
-                  closePost();
-                  setBottomTab('me');
-                }}
-              />
-              {/* Render AlertOverlay inside the Modal to ensure it appears on top */}
-              <AlertOverlay />
-            </>
-          ) : (
-            <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-              <LoadingScreen />
-              <Pressable
-                style={styles.modalCloseButton}
-                onPress={closePost}
-              >
-                <X size={24} color={colors.text} />
-              </Pressable>
-            </View>
-          )}
-        </Modal>
+        {/* 帖子详情 Reader (V2 overlay first, fallback to legacy modal) */}
+        {useOverlayReaderV2 ? (
+          selectedPostUid !== null ? (
+            <Animated.View
+              {...readerPanResponder.panHandlers}
+              pointerEvents={readerVisible ? 'auto' : 'none'}
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                zIndex: 50,
+                elevation: 50,
+                backgroundColor: colors.bg,
+                opacity: readerVisible ? 1 : 0,
+                transform: [{ translateX: readerTranslateX }],
+              }}
+            >
+              {renderReaderContent()}
+            </Animated.View>
+          ) : null
+        ) : (
+          <Modal
+            visible={selectedPostUid !== null}
+            animationType="slide"
+            presentationStyle="fullScreen"
+            onRequestClose={closePost}
+          >
+            {renderReaderContent()}
+          </Modal>
+        )}
 
         {/* 搜索 Modal */}
         <Modal
@@ -3828,8 +3923,8 @@ function AppContent() {
           }}
         />
 
-        {/* Alert Container - Only render if no post is selected to prevent double modals and gesture locking */}
-        {!selectedPostUid && <AlertContainer />}
+        {/* Alert Container - hide while reader overlay is visible to avoid frame-jump flash */}
+        {!readerVisible && <AlertContainer />}
 
       </SafeAreaView>
     </SafeAreaProvider>
