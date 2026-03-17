@@ -342,7 +342,7 @@ export function SavedProvider({ children }: SavedProviderProps) {
         const post = p as ApiRichPost;
         const uid = post.uid || (post as any).platform_post_id;
         const title = post.title;
-        const topic = post.topic || post.bucket_key || 'General';
+        const topic = post.bucket_key || post.topic || 'General';
         
         // cover_image is a direct URL string, skip prompt: prefix
         const coverUri = post.cover_image && !post.cover_image.startsWith('prompt:') 

@@ -125,11 +125,10 @@ export function apiPostToFeedItem(apiPost: ApiPost, index: number): FeedItem {
   }
 
   const author = post.author || 'AI 创作者';
-  const tags = post.tags || [];
   return {
     uid: postUid,
     title,
-    topic: post.topic || post.bucket_key || tags[0] || 'General',
+    topic: post.bucket_key || post.topic || 'General',
     coverImage,
     likes: post.like_count || 0,
     isLiked: !!post.is_liked,
@@ -149,7 +148,6 @@ export function apiPostToPost(apiPost: ApiPost): Post {
   const post = apiPost as any;
   const postUid = post.uid || post.platform_post_id || 'unknown';
   const title = post.title || post.headline || 'Untitled';
-  const tags = post.tags || [];
   
   // 获取封面图 URL
   const coverUrl = getCoverImageUrl(post);
@@ -216,7 +214,7 @@ export function apiPostToPost(apiPost: ApiPost): Post {
   return {
     uid: postUid,
     title,
-    topic: post.topic || post.bucket_key || tags[0] || 'General',
+    topic: post.bucket_key || post.topic || 'General',
     pages,
     coverImageUrl: coverUrl || undefined,
     author: post.author,
