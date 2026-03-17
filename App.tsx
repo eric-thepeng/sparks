@@ -802,7 +802,7 @@ const PageItem = React.memo((props: {
   onScrollProgress?: (progress: number) => void;
   onPageTypeReport?: (index: number, type: 'dot' | 'line') => void;
   onTopicClick?: (topic: string) => void;
-  disableVerticalScroll?: boolean;
+  backSwipeLockSignal?: Animated.Value;
 }) => {
   const {
     item,
@@ -820,7 +820,7 @@ const PageItem = React.memo((props: {
     onScrollProgress,
     onPageTypeReport,
     onTopicClick,
-    disableVerticalScroll,
+    backSwipeLockSignal,
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
@@ -1076,6 +1076,15 @@ const PageItem = React.memo((props: {
   };
 
   const isDragging = useRef(false);
+  const pageScrollRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!backSwipeLockSignal) return;
+    const id = backSwipeLockSignal.addListener(({ value }) => {
+      pageScrollRef.current?.setNativeProps?.({ scrollEnabled: value < 0.5 });
+    });
+    return () => backSwipeLockSignal.removeListener(id);
+  }, [backSwipeLockSignal]);
 
   // Regular Page - Improved layout to prevent "stuck" pages and ensure smooth snapping
   return (
@@ -1087,11 +1096,12 @@ const PageItem = React.memo((props: {
       overflow: 'visible', // Ensure no clipping
     }}>
       <GHScrollView
+        ref={pageScrollRef}
         directionalLockEnabled={true}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
-        scrollEnabled={!disableVerticalScroll}
+        scrollEnabled={true}
         bounces={true}
         overScrollMode="always"
         scrollEventThrottle={16}
@@ -1286,7 +1296,7 @@ function SinglePostReader({
   onSwipeEnableChange, // NEW
   onTopicClick,
   onNavigateToAuth,
-  disableVerticalScroll = false,
+  backSwipeLockSignal,
 }: {
   post: Post;
   onClose: () => void;
@@ -1295,7 +1305,7 @@ function SinglePostReader({
   onSwipeEnableChange?: (canSwipe: boolean) => void;
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
-  disableVerticalScroll?: boolean;
+  backSwipeLockSignal?: Animated.Value;
 }) {
   const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
@@ -1755,7 +1765,7 @@ function SinglePostReader({
                   // Continuous tracking disabled: dot only moves when page index actually changes
                 }}
                 onTopicClick={onTopicClick}
-                disableVerticalScroll={disableVerticalScroll}
+                backSwipeLockSignal={backSwipeLockSignal}
               />
             </View>
           )}
@@ -1952,7 +1962,7 @@ function PostLoader({
   onTopicClick,
   onNavigateToAuth,
   isVisible,
-  disableVerticalScroll,
+  backSwipeLockSignal,
 }: {
   uid: string,
   onClose: () => void,
@@ -1964,7 +1974,7 @@ function PostLoader({
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
   isVisible?: boolean;
-  disableVerticalScroll?: boolean;
+  backSwipeLockSignal?: Animated.Value;
 }) {
   const { showAlert } = useAlert();
   const { post, status, error, refetch, updateLocalLike } = usePost(uid);
@@ -2035,7 +2045,7 @@ function PostLoader({
       onSwipeEnableChange={onSwipeEnableChange}
       onTopicClick={onTopicClick}
       onNavigateToAuth={onNavigateToAuth}
-      disableVerticalScroll={disableVerticalScroll}
+      backSwipeLockSignal={backSwipeLockSignal}
     />
   );
 }
@@ -2054,7 +2064,7 @@ function PostSwiper({
   onMissing,
   onTopicClick,
   onNavigateToAuth,
-  disableVerticalScroll,
+  backSwipeLockSignal,
 }: {
   items: FeedItem[];
   initialIndex: number;
@@ -2064,7 +2074,7 @@ function PostSwiper({
   onMissing?: (uid: string) => void;
   onTopicClick?: (topic: string) => void;
   onNavigateToAuth?: () => void;
-  disableVerticalScroll?: boolean;
+  backSwipeLockSignal?: Animated.Value;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const flatListRef = useRef<FlatList>(null);
@@ -2175,12 +2185,12 @@ function PostSwiper({
             onTopicClick={onTopicClick}
             onNavigateToAuth={onNavigateToAuth}
             isVisible={currentIndex === index}
-            disableVerticalScroll={disableVerticalScroll}
+            backSwipeLockSignal={backSwipeLockSignal}
           />
         </Animated.View>
       </View>
     );
-  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth, disableVerticalScroll]);
+  }, [currentIndex, onClose, onFeedLikeUpdate, onMissing, scrollX, onNavigateToAuth, backSwipeLockSignal]);
 
   return (
     <View style={{ flex: 1, backgroundColor: 'black' }}>
@@ -3342,7 +3352,6 @@ function AppContent() {
   const [swiperItems, setSwiperItems] = useState<FeedItem[]>([]);
   const [isViewingFeed, setIsViewingFeed] = useState(false); // Track if we are viewing the main feed
   const [readerVisible, setReaderVisible] = useState(false);
-  const [isBackSwiping, setIsBackSwiping] = useState(false);
 
   // Sync swiperItems with feedItems if we are viewing the feed
   useEffect(() => {
@@ -3420,18 +3429,22 @@ function AppContent() {
   }, [updateFeedLike]);
 
   const readerTranslateX = useRef(new Animated.Value(0)).current;
+  const backSwipeLockSignal = useRef(new Animated.Value(0)).current;
+  const isBackSwipingRef = useRef(false);
+  const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
     // keep one frame between hide and unmount to reduce flash
     setReaderVisible(false);
-    setIsBackSwiping(false);
+    isBackSwipingRef.current = false;
+    backSwipeLockSignal.setValue(0);
     requestAnimationFrame(() => {
       setSelectedPostUid(null);
       setSwiperItems([]);
       setIsViewingFeed(false);
       readerTranslateX.setValue(0);
     });
-  }, [readerTranslateX]);
+  }, [readerTranslateX, backSwipeLockSignal]);
 
   const closePost = useCallback(() => {
     finalizeClosePost();
@@ -3453,7 +3466,10 @@ function AppContent() {
     onMoveShouldSetPanResponderCapture: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
     onPanResponderMove: (_evt, g) => {
       const x = Math.max(0, Math.min(SCREEN_WIDTH, g.dx));
-      if (x > 0 && !isBackSwiping) setIsBackSwiping(true);
+      if (x > BACK_SWIPE_LOCK_DX && !isBackSwipingRef.current) {
+        isBackSwipingRef.current = true;
+        backSwipeLockSignal.setValue(1);
+      }
       readerTranslateX.setValue(x);
     },
     onPanResponderRelease: (_evt, g) => {
@@ -3466,7 +3482,10 @@ function AppContent() {
         useNativeDriver: true,
         bounciness: 0,
         speed: 24,
-      }).start(() => setIsBackSwiping(false));
+      }).start(() => {
+        isBackSwipingRef.current = false;
+        backSwipeLockSignal.setValue(0);
+      });
     },
     onPanResponderTerminate: () => {
       Animated.spring(readerTranslateX, {
@@ -3474,9 +3493,12 @@ function AppContent() {
         useNativeDriver: true,
         bounciness: 0,
         speed: 24,
-      }).start(() => setIsBackSwiping(false));
+      }).start(() => {
+        isBackSwipingRef.current = false;
+        backSwipeLockSignal.setValue(0);
+      });
     },
-  }), [closePostBySwipe, readerTranslateX, isBackSwiping]);
+  }), [closePostBySwipe, readerTranslateX, backSwipeLockSignal]);
 
   const openPost = useCallback((uid: string, items: FeedItem[]) => {
     // Ensure we have a valid list of items and the UID exists in it
@@ -3485,12 +3507,13 @@ function AppContent() {
     setSwiperItems(items);
     setSelectedPostUid(uid);
     setReaderVisible(true);
-    setIsBackSwiping(false);
+    isBackSwipingRef.current = false;
+    backSwipeLockSignal.setValue(0);
     readerTranslateX.setValue(0);
     // Check if we are opening the main feed (using reference equality or some other heuristic)
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
-  }, [feedItems, readerTranslateX]);
+  }, [feedItems, readerTranslateX, backSwipeLockSignal]);
 
   // Open a single post by uid (e.g. from deep link); fetches from API then opens
   const openPostByUid = useCallback(async (uid: string) => {
@@ -3501,7 +3524,8 @@ function AppContent() {
       setSelectedPostUid(uid);
       setIsViewingFeed(false);
       setReaderVisible(true);
-      setIsBackSwiping(false);
+      isBackSwipingRef.current = false;
+      backSwipeLockSignal.setValue(0);
       readerTranslateX.setValue(0);
     } catch (err) {
       showAlert({
@@ -3509,7 +3533,7 @@ function AppContent() {
         message: 'This post may have been removed or the link is invalid.',
       });
     }
-  }, [showAlert, readerTranslateX]);
+  }, [showAlert, readerTranslateX, backSwipeLockSignal]);
 
   // Deep link: sparks://post/{uid} — open post when app is launched or resumed via link
   useEffect(() => {
@@ -3837,7 +3861,7 @@ function AppContent() {
             closePost();
             setBottomTab('me');
           }}
-          disableVerticalScroll={isBackSwiping}
+          backSwipeLockSignal={backSwipeLockSignal}
         />
         <AlertOverlay />
       </>
