@@ -71,6 +71,7 @@ import {
   ContentBlock,
   getBucketName,
   getBucketSubtitle,
+  getBucketDisplayName,
   getTopicDisplayName,
   getTopicKey,
   getTopicSubtitle,
@@ -441,7 +442,7 @@ function FeedCard({
           <View style={styles.cardFooter}>
             <View style={styles.topicInfo}>
               <Text style={styles.topicName} numberOfLines={1}>
-                #{getTopicDisplayName(item.topic)}
+                {getBucketDisplayName(item.topic)}
               </Text>
             </View>
 
@@ -1261,7 +1262,7 @@ const PageItem = React.memo((props: {
                   onTopicClick?.(bucketKey);
                 }}
               >
-                <Text style={styles.topicBadgeText}>{getTopicDisplayName((post as any).bucket_key || post.topic)}</Text>
+                <Text style={styles.topicBadgeText}>{getBucketDisplayName((post as any).bucket_key || post.topic)}</Text>
               </Pressable>
             </View>
           </View>

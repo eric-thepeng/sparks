@@ -153,6 +153,14 @@ export function getTopicDisplayName(topic: string): string {
 }
 
 /**
+ * Preferred naming moving forward: use bucket terminology in UI/domain.
+ * Backward compatible wrapper over existing topic display resolver.
+ */
+export function getBucketDisplayName(bucketKey: string): string {
+  return getTopicDisplayName(bucketKey);
+}
+
+/**
  * 获取 bucket 的 emoji
  */
 export function getBucketEmoji(bucketId: string): string {
