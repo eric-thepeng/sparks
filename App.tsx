@@ -3255,7 +3255,7 @@ function CollectionScreen({
           <View style={styles.tagsContainer}>
             {visibleBuckets.map(bucket => (
               <Pressable key={bucket.id} style={styles.tag} onPress={() => onTopicPress(bucket.id)}>
-                <Text style={styles.tagText}>#{getBucketName(bucket.id)}</Text>
+                <Text style={styles.tagText}>{getBucketName(bucket.id)}</Text>
               </Pressable>
             ))}
             {!expanded && randomBuckets.length > 4 && (
