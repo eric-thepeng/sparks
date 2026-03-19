@@ -1255,9 +1255,13 @@ const PageItem = React.memo((props: {
               <Text style={styles.postTitle}>{post.title}</Text>
               <Pressable
                 style={styles.topicBadge}
-                onPress={() => onTopicClick?.(post.topic)}
+                onPress={() => {
+                  const bucketKey = (post as any).bucket_key || post.topic;
+                  if (!bucketKey) return;
+                  onTopicClick?.(bucketKey);
+                }}
               >
-                <Text style={styles.topicBadgeText}>#{getTopicDisplayName(post.topic)}</Text>
+                <Text style={styles.topicBadgeText}>{getTopicDisplayName((post as any).bucket_key || post.topic)}</Text>
               </Pressable>
             </View>
           </View>
@@ -1696,9 +1700,6 @@ function SinglePostReader({
       setTimeout(() => {
         isNavigatingRef.current = false;
       }, 800); // Increased to 800ms to be absolutely sure the list has settled
-    } else {
-      // Last page reached, go to next post
-      onRequestNext?.();
     }
   };
 
