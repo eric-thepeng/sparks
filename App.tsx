@@ -179,6 +179,7 @@ function AdaptiveImage({
   width,
   style,
   defaultAspectRatio = 1,
+  fixedHeight,
   onLoadEnd,
   ...props
 }: {
@@ -186,20 +187,27 @@ function AdaptiveImage({
   width: number | string;
   style?: any;
   defaultAspectRatio?: number;
+  fixedHeight?: number;
   onLoadEnd?: () => void;
 } & Omit<React.ComponentProps<typeof Image>, 'source' | 'style' | 'onLoadEnd'>) {
   const [aspectRatio, setAspectRatio] = useState(defaultAspectRatio);
 
+  const containerStyle = fixedHeight
+    ? [style, { width, height: fixedHeight, backgroundColor: '#f0f0f0' }]
+    : [style, { width, aspectRatio, backgroundColor: '#f0f0f0' }];
+
   return (
     <Image
       source={source}
-      style={[style, { width, aspectRatio, backgroundColor: '#f0f0f0' }]}
+      style={containerStyle}
       contentFit="cover"
       cachePolicy="memory-disk"
       onLoad={(e) => {
-        const { width: w, height: h } = e.source;
-        if (w && h && h > 0) {
-          setAspectRatio(w / h);
+        if (!fixedHeight) {
+          const { width: w, height: h } = e.source;
+          if (w && h && h > 0) {
+            setAspectRatio(w / h);
+          }
         }
         onLoadEnd?.();
       }}
@@ -431,7 +439,7 @@ function FeedCard({
           source={item.coverImage}
           width="100%"
           style={styles.cardImage}
-          defaultAspectRatio={COVER_ASPECT_RATIO}
+          fixedHeight={160}
           transition={200}
         />
 
@@ -1242,7 +1250,7 @@ const PageItem = React.memo((props: {
               source={getPostCoverImage(post)}
               width={SCREEN_WIDTH}
               style={{ backgroundColor: colors.border }}
-              defaultAspectRatio={COVER_ASPECT_RATIO}
+              fixedHeight={300}
               transition={300}
             />
             <View style={styles.titleContainer}>
