@@ -4249,12 +4249,6 @@ const styles = StyleSheet.create({
 
   // Bottom Nav
   bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 70,
-    elevation: 70,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -4262,6 +4256,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: colors.border,
+    zIndex: 10,
+    elevation: 10,
   },
   navItem: {
     alignItems: 'center',
