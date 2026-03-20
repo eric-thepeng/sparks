@@ -4036,7 +4036,7 @@ function AppContent() {
             style={[
               styles.collectionDetailOverlay,
               {
-                bottom: bottomTabHeight,
+                bottom: 0,
                 transform: [{ translateX: bucketDetailTranslateX }],
               }
             ]}
