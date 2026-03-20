@@ -113,6 +113,7 @@ const CARD_WIDTH = (SCREEN_WIDTH - 24 - COLUMN_GAP) / 2;
 const COVER_ASPECT_RATIO = 928 / 1152; // ≈ 0.806
 
 const HEADER_HEIGHT = 60;
+const TAB_BAR_BASE_HEIGHT = 60;
 
 // 启用 LayoutAnimation
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -213,14 +214,16 @@ function AdaptiveImage({
 function Header({
   onSearchPress,
   onBack,
-  title = "Discover"
+  title = "Discover",
+  topInset = 0,
 }: {
   onSearchPress?: () => void;
   onBack?: () => void;
   title?: string;
+  topInset?: number;
 }) {
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: 8 + topInset }]}>
       <View style={{ width: 40 }}>
         {onBack ? (
           <Pressable style={styles.headerIcon} onPress={onBack}>
@@ -3216,13 +3219,14 @@ function SearchScreen({
 function CollectionScreen({
   items,
   onItemPress,
-  onTopicPress
+  onTopicPress,
+  bottomTabHeight,
 }: {
   items: FeedItem[];
   onItemPress: (uid: string, items: FeedItem[]) => void;
   onTopicPress: (topic: string) => void;
+  bottomTabHeight: number;
 }) {
-  const insets = useSafeAreaInsets();
   const [expanded, setExpanded] = useState(false);
 
   // Shuffle buckets once on mount to get "randomly exposed"
@@ -3247,10 +3251,9 @@ function CollectionScreen({
 
   return (
     <View style={styles.collectionContainer}>
-      <View style={{ height: insets.top }} />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: bottomTabHeight + 16 }}
       >
         {/* Topic Index (Randomly exposed) */}
         <View style={styles.tagsHeader}>
@@ -3337,6 +3340,7 @@ const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
 function AppContent() {
   const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
+  const bottomTabHeight = TAB_BAR_BASE_HEIGHT + insets.bottom;
 
   // 使用帖子缓存系统
   const {
@@ -3898,7 +3902,7 @@ function AppContent() {
       case 'collection':
         return (
           <>
-            <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} />
+            <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} topInset={insets.top} />
             {isAllPostsLoading ? (
               <LoadingScreen />
             ) : (
@@ -3906,6 +3910,7 @@ function AppContent() {
                 items={allPosts}
                 onItemPress={(uid, items) => openPost(uid, items)}
                 onTopicPress={(topic) => openBucketDetail(topic)}
+                bottomTabHeight={bottomTabHeight}
               />
             )}
           </>
@@ -4031,7 +4036,7 @@ function AppContent() {
             style={[
               styles.collectionDetailOverlay,
               {
-                bottom: 0,
+                bottom: bottomTabHeight,
                 transform: [{ translateX: bucketDetailTranslateX }],
               }
             ]}
