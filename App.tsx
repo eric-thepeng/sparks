@@ -113,7 +113,6 @@ const CARD_WIDTH = (SCREEN_WIDTH - 24 - COLUMN_GAP) / 2;
 const COVER_ASPECT_RATIO = 928 / 1152; // ≈ 0.806
 
 const HEADER_HEIGHT = 60;
-const BOTTOM_BAR_HEIGHT = 64;
 
 // 启用 LayoutAnimation
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -3248,6 +3247,7 @@ function CollectionScreen({
 
   return (
     <View style={styles.collectionContainer}>
+      <View style={{ height: insets.top }} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -4031,13 +4031,13 @@ function AppContent() {
             style={[
               styles.collectionDetailOverlay,
               {
-                bottom: BOTTOM_BAR_HEIGHT + insets.bottom,
+                bottom: 0,
                 transform: [{ translateX: bucketDetailTranslateX }],
               }
             ]}
           >
             <View style={styles.collectionDetailContainer}>
-              <View style={styles.collectionDetailHeader}>
+              <View style={[styles.collectionDetailHeader, { paddingTop: insets.top + 14 }]}>
                 <Pressable style={styles.collectionDetailBackButton} onPress={finalizeCloseBucketDetail}>
                   <ChevronLeft size={24} color={colors.text} />
                 </Pressable>
@@ -4924,15 +4924,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    zIndex: 30,
-    elevation: 30,
+    bottom: 0,
+    zIndex: 60,
+    elevation: 60,
     backgroundColor: colors.bg,
   },
   collectionDetailHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 10,
-    paddingTop: 14,
     paddingBottom: 12,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
