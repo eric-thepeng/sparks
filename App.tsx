@@ -3337,7 +3337,6 @@ function AppContent() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
-  const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
   const [isSavedCollectionsLoading, setIsSavedCollectionsLoading] = useState(false);
   const [isCollectionBookmarkLoading, setIsCollectionBookmarkLoading] = useState(false);
 

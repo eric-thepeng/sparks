@@ -355,9 +355,14 @@ export async function clearHistory(): Promise<void> {
 
 export async function toggleSaveCollection(bucketKey: string): Promise<{ saved: boolean }> {
   const encodedBucketKey = encodeURIComponent(bucketKey);
-  return request<{ saved: boolean }>(`/api/me/saved-collections/${encodedBucketKey}`, {
-    method: 'POST',
-  });
+  try {
+    return await request<{ saved: boolean }>(`/api/me/saved-collections/${encodedBucketKey}`, {
+      method: 'POST',
+    });
+  } catch (e: any) {
+    // Return a safe false on error so callers don't crash
+    return { saved: false };
+  }
 }
 
 export async function getSavedCollections(): Promise<SavedCollection[]> {
