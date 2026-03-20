@@ -29,6 +29,7 @@ import { PanGestureHandler, State, PanGestureHandlerStateChangeEvent, GestureHan
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image, ImageSource } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Heart,
@@ -90,12 +91,15 @@ import {
   unlikeItem,
   getMyHistory,
   getMyLikes,
-  clearHistory
+  clearHistory,
+  toggleSaveCollection,
+  getSavedCollections,
+  markCollectionAccessed
 } from './src/api';
-import { ApiBucketDetail, Comment, ProfileItem } from './src/api/types';
+import { ApiBucketDetail, Comment, ProfileItem, SavedCollection } from './src/api/types';
 
 // Hooks
-import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
+import { usePost } from './src/hooks';
 
 // Context
 import { SavedProvider, useSaved, NotesProvider, useNotes, AuthProvider, useAuth, RecommendationProvider, useRecommendation, PostCacheProvider, usePostCache, HistoryProvider, usePostHistory, AlertProvider, useAlert, AlertContainer, AlertOverlay } from './src/context';
@@ -2816,72 +2820,36 @@ function DebugPanel({
 // 保存页面 - Saved Screen
 // ============================================================
 function SavedScreen({
-  onItemPress,
-  onLoginPress
+  savedCollections,
+  isLoading,
+  onRefresh,
+  onOpenCollection,
+  onLoginPress,
 }: {
-  onItemPress: (uid: string, items: FeedItem[]) => void;
+  savedCollections: SavedCollection[];
+  isLoading: boolean;
+  onRefresh: () => Promise<void>;
+  onOpenCollection: (bucketKey: string) => void;
   onLoginPress?: () => void;
 }) {
-  const { showAlert } = useAlert();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { savedPosts, isEmpty, isLoading, unsave, clearAll, savedCount } = useSavedPosts();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Convert SavedPost to FeedItem for the swiper
-  const savedFeedItems = useMemo(() => {
-    return savedPosts.map((sp, index) => ({
-      uid: sp.uid,
-      title: sp.title,
-      coverImage: sp.coverImageUri ? { uri: sp.coverImageUri } : { uri: `https://via.placeholder.com/400x500/4f46e5/ffffff?text=${encodeURIComponent(sp.title.slice(0, 10))}` },
-      topic: sp.topic || 'General',
-      likes: 0, // Not available in SavedPost
-      isLiked: false,
-      comments: 0,
-      user: {
-        id: 'saved',
-        name: 'Saved',
-        avatar: 'https://via.placeholder.com/50',
-      },
-      index
-    }));
-  }, [savedPosts]);
+  const sortedCollections = useMemo(() => {
+    return [...savedCollections].sort(
+      (a, b) => new Date(b.last_accessed_at).getTime() - new Date(a.last_accessed_at).getTime()
+    );
+  }, [savedCollections]);
 
-  // 删除动画
-  const handleUnsave = useCallback((uid: string, title: string) => {
-    showAlert({
-      title: 'Remove from Saved',
-      message: `Remove "${title.slice(0, 20)}${title.length > 20 ? '...' : ''}" from saved?`,
-      buttons: [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => unsave(uid),
-        },
-      ]
-    });
-  }, [unsave, showAlert]);
-
-  // 清空所有
-  const handleClearAll = useCallback(() => {
-    showAlert({
-      title: 'Clear All Saved',
-      message: 'Remove all saved posts? This cannot be undone.',
-      buttons: [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove All',
-          style: 'destructive',
-          onPress: () => clearAll(),
-        },
-      ]
-    });
-  }, [clearAll, showAlert]);
-
-  // 格式化保存时间
-  const formatSavedTime = (isoString: string) => {
-    return formatRelativeTime(isoString);
-  };
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [onRefresh]);
 
   // 渲染空状态（未登录显示提示登录；已登录无收藏显示「无保存」）
   const renderEmptyState = () => (
@@ -2893,26 +2861,26 @@ function SavedScreen({
         <BookmarkPlus size={48} color="#B45309" strokeWidth={1.5} />
       </Pressable>
       <Text style={styles.savedEmptyTitle}>
-        {token ? 'No Saved Posts' : 'Please Join Us to Save'}
+        {token ? 'No Saved Collections' : 'Please Join Us to Save'}
       </Text>
       {token ? (
         <>
           <Text style={styles.savedEmptySubtitle}>
-            Tap Save while reading posts{'\n'}to revisit them anytime
+            Tap bookmark in Collection{'\n'}to save and revisit anytime
           </Text>
           <View style={styles.savedEmptyHint}>
             <Bookmark size={16} color={colors.textMuted} />
-            <Text style={styles.savedEmptyHintText}>Tap Save to start collecting</Text>
+            <Text style={styles.savedEmptyHintText}>Save collections to track your progress</Text>
           </View>
         </>
       ) : null}
     </View>
   );
 
-  // 渲染保存项
+  // 渲染保存的合集项
   const renderSavedItem = ({ item, index }: { item: unknown; index: number }) => {
-    const savedItem = item as typeof savedPosts[0];
-    const localCover = getPostCover(savedItem.uid);
+    const savedCollection = item as SavedCollection;
+    const totalPosts = savedCollection.total_posts || savedCollection.article_count || 0;
 
     return (
       <Animated.View
@@ -2923,11 +2891,11 @@ function SavedScreen({
       >
         <Pressable
           style={styles.savedCardInner}
-          onPress={() => onItemPress(savedItem.uid, savedFeedItems)}
+          onPress={() => onOpenCollection(savedCollection.bucket_key)}
         >
-          {/* 封面图 */}
+          {/* 封面图占位 */}
           <Image
-            source={localCover || (savedItem.coverImageUri ? { uri: savedItem.coverImageUri } : { uri: `https://via.placeholder.com/120x150/4f46e5/ffffff?text=${encodeURIComponent(savedItem.title.slice(0, 5))}` })}
+            source={savedCollection.cover_image ? { uri: savedCollection.cover_image } : { uri: `https://via.placeholder.com/240x300/F4F1E6/451a03?text=${encodeURIComponent(savedCollection.display_name.slice(0, 10))}` }}
             style={[styles.savedCardImage, { backgroundColor: '#f0f0f0' }]}
             contentFit="cover"
             transition={300}
@@ -2938,32 +2906,26 @@ function SavedScreen({
           <View style={styles.savedCardContent}>
             <View style={styles.savedCardHeader}>
               <View style={styles.savedTopicBadge}>
-                <Text style={styles.savedTopicText}>#{getTopicDisplayName(savedItem.topic)}</Text>
+                <Text style={styles.savedTopicText}>Collection</Text>
               </View>
             </View>
 
             <Text style={styles.savedCardTitle} numberOfLines={2}>
-              {savedItem.title}
+              {savedCollection.display_name}
+            </Text>
+
+            <Text style={styles.savedCardDescription} numberOfLines={2}>
+              {savedCollection.display_description || 'No description'}
             </Text>
 
             <View style={styles.savedCardFooter}>
               <View style={styles.savedTimeRow}>
-                <Clock size={12} color={colors.textMuted} />
                 <Text style={styles.savedTimeText}>
-                  {formatSavedTime(savedItem.savedAt)}
+                  {savedCollection.read_posts} / {totalPosts} read
                 </Text>
               </View>
             </View>
           </View>
-
-          {/* 删除按钮 */}
-          <Pressable
-            style={styles.savedDeleteButton}
-            onPress={() => handleUnsave(savedItem.uid, savedItem.title)}
-            hitSlop={8}
-          >
-            <Trash2 size={18} color={colors.textMuted} />
-          </Pressable>
         </Pressable>
       </Animated.View>
     );
@@ -2975,23 +2937,21 @@ function SavedScreen({
       <View style={styles.savedHeader}>
         <View style={styles.savedHeaderLeft}>
           <Bookmark size={24} color={colors.primary} fill={colors.primary} />
-          <Text style={styles.savedHeaderTitle}>My Saved</Text>
-          {savedCount > 0 && (
+          <Text style={styles.savedHeaderTitle}>Saved Collections</Text>
+          {sortedCollections.length > 0 && (
             <View style={styles.savedCountBadge}>
-              <Text style={styles.savedCountText}>{savedCount}</Text>
+              <Text style={styles.savedCountText}>{sortedCollections.length}</Text>
             </View>
           )}
         </View>
-
-        {savedCount > 0 && (
-          <Pressable
-            style={styles.savedClearButton}
-            onPress={handleClearAll}
-          >
-            <Trash2 size={18} color={colors.textMuted} />
-          </Pressable>
-        )}
       </View>
+
+      {/* Legacy capsule/interest picker removed from Saved tab per new requirements */}
+      {/*
+      <View style={styles.savedCapsuleSection}>
+        ...existing capsule picker UI...
+      </View>
+      */}
 
       {/* 内容列表 */}
       {isLoading ? (
@@ -2999,19 +2959,26 @@ function SavedScreen({
           <Sparkles size={32} color={colors.primary} />
           <Text style={styles.savedLoadingText}>Loading...</Text>
         </View>
-      ) : isEmpty ? (
+      ) : sortedCollections.length === 0 ? (
         renderEmptyState()
       ) : (
         <FlatList
-          data={savedPosts}
+          data={sortedCollections}
           renderItem={renderSavedItem}
-          keyExtractor={(item) => item.uid}
+          keyExtractor={(item) => item.bucket_key}
           contentContainerStyle={[
             styles.savedListContent,
             { paddingBottom: insets.bottom + 80 }
           ]}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={styles.savedItemSeparator} />}
+          refreshControl={(
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          )}
         />
       )}
     </View>
@@ -3360,6 +3327,8 @@ function AppContent() {
   }, [feedItems, isViewingFeed]);
 
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
+  const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
+  const savedBucketKeys = useMemo(() => new Set(savedCollections.map(c => c.bucket_key)), [savedCollections]);
   const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
   const [isBucketDetailLoading, setIsBucketDetailLoading] = useState(false);
   const bucketDetailRequestRef = useRef(0);
@@ -3368,6 +3337,9 @@ function AppContent() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [bottomTab, setBottomTab] = useState('explore');
+  const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
+  const [isSavedCollectionsLoading, setIsSavedCollectionsLoading] = useState(false);
+  const [isCollectionBookmarkLoading, setIsCollectionBookmarkLoading] = useState(false);
 
   // 兴趣 Onboarding 状态
   const [showInterestsOnboarding, setShowInterestsOnboarding] = useState(false);
@@ -3565,6 +3537,30 @@ function AppContent() {
 
   const { token, user } = useAuth();
 
+  const loadSavedCollections = useCallback(async () => {
+    if (!token) {
+      setSavedCollections([]);
+      return;
+    }
+
+    setIsSavedCollectionsLoading(true);
+    try {
+      const collections = await getSavedCollections();
+      const sorted = [...collections].sort(
+        (a, b) => new Date(b.last_accessed_at).getTime() - new Date(a.last_accessed_at).getTime()
+      );
+      setSavedCollections(sorted);
+    } catch (error) {
+      setSavedCollections([]);
+    } finally {
+      setIsSavedCollectionsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadSavedCollections();
+  }, [loadSavedCollections]);
+
   // Auto redirect to profile if logged in and on Auth screen (handled by conditional rendering)
   // But if we just logged in, we might want to switch tab to 'me' if not already?
   // The requirement says "After login/signup, redirect to /profile."
@@ -3705,6 +3701,13 @@ function AppContent() {
     setSelectedBucketDetail(null);
     setIsBucketDetailLoading(true);
 
+    // Mark as accessed for saved-collection recency sorting (fire-and-forget).
+    if (token) {
+      markCollectionAccessed(normalizedBucketKey)
+        .then(() => loadSavedCollections())
+        .catch(() => {});
+    }
+
     try {
       const detail = await fetchBucketDetail(normalizedBucketKey);
       if (bucketDetailRequestRef.current === requestId) {
@@ -3719,7 +3722,7 @@ function AppContent() {
         setIsBucketDetailLoading(false);
       }
     }
-  }, [bucketDetailTranslateX]);
+  }, [bucketDetailTranslateX, loadSavedCollections, token]);
 
   const readPostUids = useMemo(() => {
     return new Set(history.map(item => item.uid));
@@ -3782,6 +3785,91 @@ function AppContent() {
     }
     return bucketDetailItems.length;
   }, [selectedBucketDetail, bucketPostOrder, bucketDetailItems.length]);
+
+  const currentSavedCollection = useMemo(() => {
+    if (!selectedBucketKey) return null;
+    return savedCollections.find((collection) => collection.bucket_key === selectedBucketKey) || null;
+  }, [savedCollections, selectedBucketKey]);
+
+  const isCollectionSaved = !!currentSavedCollection;
+
+  const bucketReadProgress = useMemo(() => {
+    if (currentSavedCollection) {
+      const total = currentSavedCollection.total_posts || currentSavedCollection.article_count || bucketArticleCount;
+      return {
+        read: currentSavedCollection.read_posts || 0,
+        total,
+      };
+    }
+
+    const fallbackRead = bucketDetailItems.reduce((count, item) => {
+      return readPostUids.has(item.uid) ? count + 1 : count;
+    }, 0);
+    return {
+      read: fallbackRead,
+      total: bucketArticleCount,
+    };
+  }, [bucketArticleCount, bucketDetailItems, currentSavedCollection, readPostUids]);
+
+  const handleToggleCollectionSave = useCallback(async () => {
+    if (!selectedBucketKey) return;
+
+    if (!token) {
+      showAlert({
+        title: 'Login Required',
+        message: 'Please log in to save collections.',
+      });
+      setBottomTab('me');
+      return;
+    }
+
+    setIsCollectionBookmarkLoading(true);
+    try {
+      const result = await toggleSaveCollection(selectedBucketKey);
+      setSavedCollections((prev) => {
+        if (result.saved) {
+          const exists = prev.some((item) => item.bucket_key === selectedBucketKey);
+          if (exists) return prev;
+          const createdAt = new Date().toISOString();
+          const totalPosts = bucketArticleCount || bucketPostOrder.length || bucketDetailItems.length;
+          return [
+            {
+              bucket_key: selectedBucketKey,
+              display_name: bucketHeaderName,
+              display_description: bucketHeaderDescription,
+              cover_image: '',
+              article_count: totalPosts,
+              total_posts: totalPosts,
+              read_posts: bucketReadProgress.read,
+              last_accessed_at: createdAt,
+              created_at: createdAt,
+            },
+            ...prev,
+          ];
+        }
+        return prev.filter((item) => item.bucket_key !== selectedBucketKey);
+      });
+      loadSavedCollections();
+    } catch (error: any) {
+      showAlert({
+        title: 'Save Failed',
+        message: error?.message || 'Failed to update collection save status.',
+      });
+    } finally {
+      setIsCollectionBookmarkLoading(false);
+    }
+  }, [
+    bucketArticleCount,
+    bucketDetailItems.length,
+    bucketHeaderDescription,
+    bucketHeaderName,
+    bucketPostOrder.length,
+    bucketReadProgress.read,
+    loadSavedCollections,
+    selectedBucketKey,
+    showAlert,
+    token,
+  ]);
 
   const handleTopicClick = useCallback((topic: string) => {
     closePost();
@@ -3909,7 +3997,10 @@ function AppContent() {
       case 'saved':
         return (
           <SavedScreen
-            onItemPress={(uid, savedItems) => openPost(uid, savedItems)}
+            savedCollections={savedCollections}
+            isLoading={isSavedCollectionsLoading}
+            onRefresh={loadSavedCollections}
+            onOpenCollection={(bucketKey) => openBucketDetail(bucketKey)}
             onLoginPress={() => setBottomTab('me')}
           />
         );
@@ -4040,9 +4131,27 @@ function AppContent() {
                 <View style={styles.collectionDetailHeaderTextWrap}>
                   <Text style={styles.collectionDetailTitle}>{bucketHeaderName}</Text>
                   <Text style={styles.collectionDetailSubtitle}>{bucketHeaderDescription}</Text>
-                  <Text style={styles.collectionDetailCount}>{bucketArticleCount} articles</Text>
+                  <View style={styles.collectionDetailMetaRow}>
+                    <Text style={styles.collectionDetailCount}>
+                      {bucketReadProgress.read} / {bucketReadProgress.total} read
+                    </Text>
+                    <Pressable
+                      style={[
+                        styles.collectionDetailBookmarkButton,
+                        isCollectionBookmarkLoading && styles.collectionDetailBookmarkButtonDisabled,
+                      ]}
+                      onPress={handleToggleCollectionSave}
+                      disabled={isCollectionBookmarkLoading}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name={isCollectionSaved ? 'bookmark' : 'bookmark-outline'}
+                        size={20}
+                        color={isCollectionSaved ? '#B45309' : colors.textMuted}
+                      />
+                    </Pressable>
+                  </View>
                 </View>
-                <View style={styles.collectionDetailHeaderSpacer} />
               </View>
 
               {(isAllPostsLoading || isBucketDetailLoading) ? (
@@ -4951,10 +5060,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   collectionDetailCount: {
-    marginTop: 10,
     fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+  collectionDetailMetaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  collectionDetailBookmarkButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 17,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  collectionDetailBookmarkButtonDisabled: {
+    opacity: 0.6,
   },
   collectionDetailBackButton: {
     padding: 6,
@@ -5336,6 +5463,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
     marginTop: 6,
+  },
+  savedCardDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   savedCardFooter: {
     flexDirection: 'row',

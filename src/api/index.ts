@@ -19,6 +19,7 @@ import {
   ProfileListResponse,
   ProfileItem,
   ApiBucketDetail,
+  SavedCollection,
   SignalType,
   SignalResponse,
   ResetRecommendationResponse
@@ -44,7 +45,8 @@ const getToken = async (): Promise<string | null> => {
   if (memoryToken) return memoryToken;
   try {
     const jsonValue = await AsyncStorage.getItem(config.authStorageKey);
-    const token = jsonValue != null ? JSON.parse(jsonValue).token : null;
+    const parsed = jsonValue != null ? JSON.parse(jsonValue) : null;
+    const token = parsed?.token || parsed?.access_token || null;
     if (token) memoryToken = token;
     return token;
   } catch (e) {
@@ -344,6 +346,28 @@ export async function recordHistory(itemId: string, itemType: string = 'post'): 
 export async function clearHistory(): Promise<void> {
   return request<void>('/me/history/clear', {
     method: 'DELETE'
+  });
+}
+
+// ============================================================
+// Saved Collections API
+// ============================================================
+
+export async function toggleSaveCollection(bucketKey: string): Promise<{ saved: boolean }> {
+  const encodedBucketKey = encodeURIComponent(bucketKey);
+  return request<{ saved: boolean }>(`/api/me/saved-collections/${encodedBucketKey}`, {
+    method: 'POST',
+  });
+}
+
+export async function getSavedCollections(): Promise<SavedCollection[]> {
+  return request<SavedCollection[]>('/api/me/saved-collections');
+}
+
+export async function markCollectionAccessed(bucketKey: string): Promise<void> {
+  const encodedBucketKey = encodeURIComponent(bucketKey);
+  await request<void>(`/api/me/saved-collections/${encodedBucketKey}/accessed`, {
+    method: 'PUT',
   });
 }
 

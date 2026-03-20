@@ -166,6 +166,18 @@ export interface ApiBucketDetail {
   posts?: string[];
 }
 
+export interface SavedCollection {
+  bucket_key: string;
+  display_name: string;
+  display_description: string;
+  cover_image: string;
+  article_count: number;
+  total_posts: number;
+  read_posts: number;
+  last_accessed_at: string;
+  created_at: string;
+}
+
 // ============================================================
 // Recommendation Signal Types
 // ============================================================
