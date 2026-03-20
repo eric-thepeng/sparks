@@ -143,6 +143,30 @@ export interface PaginatedResponse {
 export interface ProfileListResponse extends PaginatedResponse {}
 
 // ============================================================
+// Bucket Detail Types
+// ============================================================
+
+export interface ApiBucketDetailData {
+  key?: string;
+  id?: string;
+  display_name?: string;
+  display_description?: string;
+  article_count?: number;
+  posts?: string[];
+}
+
+export interface ApiBucketDetail {
+  bucket?: ApiBucketDetailData;
+  buckets?: ApiBucketDetailData;
+  key?: string;
+  id?: string;
+  display_name?: string;
+  display_description?: string;
+  article_count?: number;
+  posts?: string[];
+}
+
+// ============================================================
 // Recommendation Signal Types
 // ============================================================
 

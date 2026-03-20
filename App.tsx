@@ -85,13 +85,14 @@ import {
   fetchComments,
   createComment,
   fetchPostById,
+  fetchBucketDetail,
   likeItem,
   unlikeItem,
   getMyHistory,
   getMyLikes,
   clearHistory
 } from './src/api';
-import { Comment, ProfileItem } from './src/api/types';
+import { ApiBucketDetail, Comment, ProfileItem } from './src/api/types';
 
 // Hooks
 import { useFeedItems, usePost, useSavedPosts } from './src/hooks';
@@ -3362,7 +3363,10 @@ function AppContent() {
     }
   }, [feedItems, isViewingFeed]);
 
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
+  const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
+  const [isBucketDetailLoading, setIsBucketDetailLoading] = useState(false);
+  const bucketDetailRequestRef = useRef(0);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLikesModal, setShowLikesModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -3400,7 +3404,7 @@ function AppContent() {
     }
   }, [bottomTab, fetchAllPosts, showSearchModal]);
 
-  const { removeFromHistory } = usePostHistory();
+  const { history, removeFromHistory } = usePostHistory();
   const { unsavePost } = useSaved();
 
   // 收藏系统（用于刷新）
@@ -3630,45 +3634,181 @@ function AppContent() {
     }
   }, [refetchFeed]);
 
+  const closeBucketDetail = useCallback(() => {
+    bucketDetailRequestRef.current += 1;
+    setSelectedBucketKey(null);
+    setSelectedBucketDetail(null);
+    setIsBucketDetailLoading(false);
+  }, []);
+
+  const openBucketDetail = useCallback(async (bucketKey: string) => {
+    const normalizedBucketKey = getTopicKey(bucketKey);
+    const requestId = bucketDetailRequestRef.current + 1;
+    bucketDetailRequestRef.current = requestId;
+
+    setSelectedBucketKey(normalizedBucketKey);
+    setSelectedBucketDetail(null);
+    setIsBucketDetailLoading(true);
+
+    try {
+      const detail = await fetchBucketDetail(normalizedBucketKey);
+      if (bucketDetailRequestRef.current === requestId) {
+        setSelectedBucketDetail(detail);
+      }
+    } catch (error) {
+      if (bucketDetailRequestRef.current === requestId) {
+        setSelectedBucketDetail(null);
+      }
+    } finally {
+      if (bucketDetailRequestRef.current === requestId) {
+        setIsBucketDetailLoading(false);
+      }
+    }
+  }, []);
+
+  const readPostUids = useMemo(() => {
+    return new Set(history.map(item => item.uid));
+  }, [history]);
+
+  const bucketPostOrder = useMemo(() => {
+    const orderedPosts =
+      selectedBucketDetail?.buckets?.posts ||
+      selectedBucketDetail?.bucket?.posts ||
+      selectedBucketDetail?.posts ||
+      [];
+
+    return Array.isArray(orderedPosts) ? orderedPosts : [];
+  }, [selectedBucketDetail]);
+
+  const bucketDetailItems = useMemo(() => {
+    if (!selectedBucketKey) return [];
+
+    if (bucketPostOrder.length > 0) {
+      const postMap = new Map(allPosts.map(item => [item.uid, item]));
+      return bucketPostOrder
+        .map(uid => postMap.get(uid))
+        .filter((item): item is FeedItem => !!item);
+    }
+
+    return allPosts.filter(item => getTopicKey(item.topic) === selectedBucketKey);
+  }, [allPosts, bucketPostOrder, selectedBucketKey]);
+
+  const bucketHeaderName = useMemo(() => {
+    if (!selectedBucketKey) return '';
+    return (
+      selectedBucketDetail?.buckets?.display_name ||
+      selectedBucketDetail?.bucket?.display_name ||
+      selectedBucketDetail?.display_name ||
+      getBucketDisplayName(selectedBucketKey)
+    );
+  }, [selectedBucketDetail, selectedBucketKey]);
+
+  const bucketHeaderDescription = useMemo(() => {
+    if (!selectedBucketKey) return '';
+    return (
+      selectedBucketDetail?.buckets?.display_description ||
+      selectedBucketDetail?.bucket?.display_description ||
+      selectedBucketDetail?.display_description ||
+      getBucketSubtitle(selectedBucketKey)
+    );
+  }, [selectedBucketDetail, selectedBucketKey]);
+
+  const bucketArticleCount = useMemo(() => {
+    const count =
+      selectedBucketDetail?.buckets?.article_count ??
+      selectedBucketDetail?.bucket?.article_count ??
+      selectedBucketDetail?.article_count;
+
+    if (typeof count === 'number') {
+      return count;
+    }
+    if (bucketPostOrder.length > 0) {
+      return bucketPostOrder.length;
+    }
+    return bucketDetailItems.length;
+  }, [selectedBucketDetail, bucketPostOrder, bucketDetailItems.length]);
+
   const handleTopicClick = useCallback((topic: string) => {
     closePost();
-    setSelectedTopic(topic);
-    // Don't switch tab: setBottomTab('collection');
-  }, [closePost]);
+    openBucketDetail(topic);
+  }, [closePost, openBucketDetail]);
 
   // 渲染当前页面内容
   const useOverlayReaderV2 = true;
 
   const renderContent = () => {
-    // Global Topic View Overlay: If a topic is selected, show it regardless of current tab
-    if (selectedTopic) {
-      const topicItems = allPosts.filter(item => getTopicKey(item.topic) === selectedTopic);
+    // Global Bucket Detail Overlay: If a bucket is selected, show it regardless of current tab
+    if (selectedBucketKey) {
       return (
-        <>
-          <Header
-            title={getTopicDisplayName(selectedTopic)}
-            onBack={() => setSelectedTopic(null)}
-            onSearchPress={() => setShowSearchModal(true)}
-          />
-          <ScrollView
-            style={styles.collectionContainer}
-            contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {isAllPostsLoading ? (
-              <LoadingScreen />
-            ) : (
-              <>
-                <MasonryFeed
-                  items={topicItems}
-                  onItemPress={(uid) => openPost(uid, topicItems)}
-                  onLikeUpdate={handleLikeUpdate}
-                />
-                <Text style={styles.endText}>— End of Topic —</Text>
-              </>
-            )}
-          </ScrollView>
-        </>
+        <View style={styles.collectionDetailContainer}>
+          <View style={styles.collectionDetailHeader}>
+            <View style={styles.collectionDetailHeaderTextWrap}>
+              <Text style={styles.collectionDetailTitle}>{bucketHeaderName}</Text>
+              <Text style={styles.collectionDetailSubtitle}>{bucketHeaderDescription}</Text>
+              <Text style={styles.collectionDetailCount}>{bucketArticleCount} articles</Text>
+            </View>
+            <Pressable style={styles.collectionDetailCloseButton} onPress={closeBucketDetail}>
+              <X size={22} color={colors.text} />
+            </Pressable>
+          </View>
+
+          {(isAllPostsLoading || isBucketDetailLoading) ? (
+            <LoadingScreen />
+          ) : (
+            <FlatList
+              data={bucketDetailItems}
+              keyExtractor={(item) => `bucket-detail-${item.uid}`}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.collectionDetailList}
+              renderItem={({ item }) => {
+                const isRead = readPostUids.has(item.uid);
+                return (
+                  <Pressable
+                    style={styles.collectionDetailCard}
+                    onPress={() => openPost(item.uid, bucketDetailItems)}
+                  >
+                    <Image
+                      source={item.coverImage}
+                      style={styles.collectionDetailCardImage}
+                      contentFit="cover"
+                      transition={200}
+                      cachePolicy="memory-disk"
+                    />
+                    <View style={styles.collectionDetailCardBody}>
+                      <Text style={styles.collectionDetailCardTitle} numberOfLines={3}>
+                        {item.title}
+                      </Text>
+                      <View style={[
+                        styles.collectionDetailReadBadge,
+                        isRead ? styles.collectionDetailReadBadgeDone : styles.collectionDetailReadBadgeTodo,
+                      ]}>
+                        <View
+                          style={[
+                            styles.collectionDetailReadDot,
+                            isRead ? styles.collectionDetailReadDotDone : styles.collectionDetailReadDotTodo,
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.collectionDetailReadText,
+                            isRead ? styles.collectionDetailReadTextDone : styles.collectionDetailReadTextTodo,
+                          ]}
+                        >
+                          {isRead ? 'Read' : 'Unread'}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              }}
+              ListEmptyComponent={(
+                <View style={styles.collectionDetailEmpty}>
+                  <Text style={styles.collectionDetailEmptyText}>No posts available in this collection.</Text>
+                </View>
+              )}
+            />
+          )}
+        </View>
       );
     }
 
@@ -3780,7 +3920,7 @@ function AppContent() {
               <CollectionScreen
                 items={allPosts}
                 onItemPress={(uid, items) => openPost(uid, items)}
-                onTopicPress={(topic) => setSelectedTopic(topic)}
+                onTopicPress={(topic) => openBucketDetail(topic)}
               />
             )}
           </>
@@ -4693,6 +4833,138 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     lineHeight: 16,
+  },
+  collectionDetailContainer: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  collectionDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+    gap: 12,
+  },
+  collectionDetailHeaderTextWrap: {
+    flex: 1,
+  },
+  collectionDetailTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
+    lineHeight: 34,
+  },
+  collectionDetailSubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
+  collectionDetailCount: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  collectionDetailCloseButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  collectionDetailList: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 110,
+    gap: 10,
+  },
+  collectionDetailCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.card,
+    borderWidth: 1.5,
+    borderColor: '#B45309',
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  collectionDetailCardImage: {
+    width: 116,
+    height: 116,
+    backgroundColor: colors.border,
+  },
+  collectionDetailCardBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  collectionDetailCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 20,
+  },
+  collectionDetailReadBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    gap: 6,
+    borderWidth: 1,
+  },
+  collectionDetailReadBadgeDone: {
+    backgroundColor: '#EEF9F0',
+    borderColor: '#8FCC9B',
+  },
+  collectionDetailReadBadgeTodo: {
+    backgroundColor: '#FFF4DB',
+    borderColor: '#E8C06B',
+  },
+  collectionDetailReadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  collectionDetailReadDotDone: {
+    backgroundColor: '#2E7D32',
+  },
+  collectionDetailReadDotTodo: {
+    backgroundColor: '#B45309',
+  },
+  collectionDetailReadText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  collectionDetailReadTextDone: {
+    color: '#2E7D32',
+  },
+  collectionDetailReadTextTodo: {
+    color: '#92400e',
+  },
+  collectionDetailEmpty: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collectionDetailEmptyText: {
+    fontSize: 14,
+    color: colors.textMuted,
   },
 
   // Search Screen Styles

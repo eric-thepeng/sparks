@@ -18,6 +18,7 @@ import {
   CreateCommentRequest,
   ProfileListResponse,
   ProfileItem,
+  ApiBucketDetail,
   SignalType,
   SignalResponse,
   ResetRecommendationResponse
@@ -399,6 +400,23 @@ export async function resetRecommendation(): Promise<ResetRecommendationResponse
  */
 export async function fetchBuckets(): Promise<any[]> {
   return request<any[]>('/api/buckets');
+}
+
+/**
+ * 获取单个 Bucket 的详情
+ * GET /api/buckets/{bucketKey}
+ */
+export async function fetchBucketDetail(bucketKey: string): Promise<ApiBucketDetail> {
+  const encodedKey = encodeURIComponent(bucketKey);
+
+  try {
+    return await request<ApiBucketDetail>(`/api/buckets/${encodedKey}`);
+  } catch (error: any) {
+    if (error?.status === 404) {
+      return request<ApiBucketDetail>(`/api/buckets/${encodedKey}/detail`);
+    }
+    throw error;
+  }
 }
 
 /**
