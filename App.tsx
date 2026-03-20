@@ -4003,7 +4003,7 @@ function AppContent() {
   };
 
   return (
-    <SafeAreaProvider>
+    <>
       {/* 兴趣 Onboarding Modal */}
       <Modal
         visible={showInterestsOnboarding}
@@ -4170,7 +4170,7 @@ function AppContent() {
         {!readerVisible && <AlertContainer />}
 
       </SafeAreaView>
-    </SafeAreaProvider>
+    </>
   );
 }
 
@@ -4180,21 +4180,23 @@ function AppContent() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <AlertProvider>
-          <RecommendationProvider>
-            <PostCacheProvider>
-              <SavedProvider>
-                <HistoryProvider>
-                  <NotesProvider>
-                    <AppContent />
-                  </NotesProvider>
-                </HistoryProvider>
-              </SavedProvider>
-            </PostCacheProvider>
-          </RecommendationProvider>
-        </AlertProvider>
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <AlertProvider>
+            <RecommendationProvider>
+              <PostCacheProvider>
+                <SavedProvider>
+                  <HistoryProvider>
+                    <NotesProvider>
+                      <AppContent />
+                    </NotesProvider>
+                  </HistoryProvider>
+                </SavedProvider>
+              </PostCacheProvider>
+            </RecommendationProvider>
+          </AlertProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
