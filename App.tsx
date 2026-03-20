@@ -4116,7 +4116,6 @@ function AppContent() {
                 backgroundColor: colors.bg,
                 opacity: readerVisible ? 1 : 0,
                 transform: [{ translateX: readerTranslateX }],
-                bottom: bottomTabHeight,
               }}
             >
               {renderReaderContent()}
