@@ -3825,6 +3825,9 @@ function AppContent() {
     setIsCollectionBookmarkLoading(true);
     try {
       const result = await toggleSaveCollection(selectedBucketKey);
+      if (!result || result.saved === undefined) {
+        throw new Error('Invalid response from server');
+      }
       setSavedCollections((prev) => {
         if (result.saved) {
           const exists = prev.some((item) => item.bucket_key === selectedBucketKey);
