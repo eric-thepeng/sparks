@@ -3336,6 +3336,7 @@ const ONBOARDING_COMPLETED_KEY = '@sparks/onboarding_completed';
 
 function AppContent() {
   const { showAlert } = useAlert();
+  const insets = useSafeAreaInsets();
 
   // 使用帖子缓存系统
   const {
@@ -3437,6 +3438,8 @@ function AppContent() {
   const readerTranslateX = useRef(new Animated.Value(0)).current;
   const backSwipeLockSignal = useRef(new Animated.Value(0)).current;
   const isBackSwipingRef = useRef(false);
+  const bucketDetailTranslateX = useRef(new Animated.Value(0)).current;
+  const isBucketDetailBackSwipingRef = useRef(false);
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
@@ -3641,10 +3644,67 @@ function AppContent() {
     setIsBucketDetailLoading(false);
   }, []);
 
+  const finalizeCloseBucketDetail = useCallback(() => {
+    closeBucketDetail();
+    isBucketDetailBackSwipingRef.current = false;
+    requestAnimationFrame(() => {
+      bucketDetailTranslateX.setValue(0);
+    });
+  }, [closeBucketDetail, bucketDetailTranslateX]);
+
+  const closeBucketDetailBySwipe = useCallback(() => {
+    Animated.timing(bucketDetailTranslateX, {
+      toValue: SCREEN_WIDTH,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      finalizeCloseBucketDetail();
+    });
+  }, [bucketDetailTranslateX, finalizeCloseBucketDetail]);
+
+  const bucketDetailPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
+    onMoveShouldSetPanResponderCapture: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
+    onPanResponderMove: (_evt, g) => {
+      const x = Math.max(0, Math.min(SCREEN_WIDTH, g.dx));
+      if (x > BACK_SWIPE_LOCK_DX && !isBucketDetailBackSwipingRef.current) {
+        isBucketDetailBackSwipingRef.current = true;
+      }
+      bucketDetailTranslateX.setValue(x);
+    },
+    onPanResponderRelease: (_evt, g) => {
+      if (g.dx > SCREEN_WIDTH * 0.18 || (g.dx > 0 && g.vx > 0.35)) {
+        closeBucketDetailBySwipe();
+        return;
+      }
+      Animated.spring(bucketDetailTranslateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 0,
+        speed: 24,
+      }).start(() => {
+        isBucketDetailBackSwipingRef.current = false;
+      });
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(bucketDetailTranslateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 0,
+        speed: 24,
+      }).start(() => {
+        isBucketDetailBackSwipingRef.current = false;
+      });
+    },
+  }), [closeBucketDetailBySwipe, bucketDetailTranslateX]);
+
   const openBucketDetail = useCallback(async (bucketKey: string) => {
     const normalizedBucketKey = getTopicKey(bucketKey);
     const requestId = bucketDetailRequestRef.current + 1;
     bucketDetailRequestRef.current = requestId;
+    isBucketDetailBackSwipingRef.current = false;
+    bucketDetailTranslateX.setValue(0);
 
     setSelectedBucketKey(normalizedBucketKey);
     setSelectedBucketDetail(null);
@@ -3664,7 +3724,7 @@ function AppContent() {
         setIsBucketDetailLoading(false);
       }
     }
-  }, []);
+  }, [bucketDetailTranslateX]);
 
   const readPostUids = useMemo(() => {
     return new Set(history.map(item => item.uid));
@@ -3737,81 +3797,6 @@ function AppContent() {
   const useOverlayReaderV2 = true;
 
   const renderContent = () => {
-    // Global Bucket Detail Overlay: If a bucket is selected, show it regardless of current tab
-    if (selectedBucketKey) {
-      return (
-        <View style={styles.collectionDetailContainer}>
-          <View style={styles.collectionDetailHeader}>
-            <View style={styles.collectionDetailHeaderTextWrap}>
-              <Text style={styles.collectionDetailTitle}>{bucketHeaderName}</Text>
-              <Text style={styles.collectionDetailSubtitle}>{bucketHeaderDescription}</Text>
-              <Text style={styles.collectionDetailCount}>{bucketArticleCount} articles</Text>
-            </View>
-            <Pressable style={styles.collectionDetailCloseButton} onPress={closeBucketDetail}>
-              <X size={22} color={colors.text} />
-            </Pressable>
-          </View>
-
-          {(isAllPostsLoading || isBucketDetailLoading) ? (
-            <LoadingScreen />
-          ) : (
-            <FlatList
-              data={bucketDetailItems}
-              keyExtractor={(item) => `bucket-detail-${item.uid}`}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.collectionDetailList}
-              renderItem={({ item }) => {
-                const isRead = readPostUids.has(item.uid);
-                return (
-                  <Pressable
-                    style={styles.collectionDetailCard}
-                    onPress={() => openPost(item.uid, bucketDetailItems)}
-                  >
-                    <Image
-                      source={item.coverImage}
-                      style={styles.collectionDetailCardImage}
-                      contentFit="cover"
-                      transition={200}
-                      cachePolicy="memory-disk"
-                    />
-                    <View style={styles.collectionDetailCardBody}>
-                      <Text style={styles.collectionDetailCardTitle} numberOfLines={3}>
-                        {item.title}
-                      </Text>
-                      <View style={[
-                        styles.collectionDetailReadBadge,
-                        isRead ? styles.collectionDetailReadBadgeDone : styles.collectionDetailReadBadgeTodo,
-                      ]}>
-                        <View
-                          style={[
-                            styles.collectionDetailReadDot,
-                            isRead ? styles.collectionDetailReadDotDone : styles.collectionDetailReadDotTodo,
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.collectionDetailReadText,
-                            isRead ? styles.collectionDetailReadTextDone : styles.collectionDetailReadTextTodo,
-                          ]}
-                        >
-                          {isRead ? 'Read' : 'Unread'}
-                        </Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              }}
-              ListEmptyComponent={(
-                <View style={styles.collectionDetailEmpty}>
-                  <Text style={styles.collectionDetailEmptyText}>No posts available in this collection.</Text>
-                </View>
-              )}
-            />
-          )}
-        </View>
-      );
-    }
-
     switch (bottomTab) {
       case 'explore':
         // 处理加载状态：显示应用框架，仅在内容区显示 loading，避免全屏等待感
@@ -3964,6 +3949,13 @@ function AppContent() {
     }
   };
 
+  const handleBottomTabChange = useCallback((tab: string) => {
+    if (selectedBucketKey) {
+      finalizeCloseBucketDetail();
+    }
+    setBottomTab(tab);
+  }, [selectedBucketKey, finalizeCloseBucketDetail]);
+
   const renderReaderContent = () => {
     if (!(swiperItems && swiperItems.length > 0 && selectedPostUid)) {
       return (
@@ -4030,7 +4022,92 @@ function AppContent() {
         {renderContent()}
 
         {/* 底部导航 */}
-        <BottomNav activeTab={bottomTab} onTabChange={setBottomTab} />
+        <BottomNav activeTab={bottomTab} onTabChange={handleBottomTabChange} />
+
+        {/* Collection detail overlay */}
+        {selectedBucketKey ? (
+          <Animated.View
+            {...bucketDetailPanResponder.panHandlers}
+            style={[
+              styles.collectionDetailOverlay,
+              {
+                bottom: BOTTOM_BAR_HEIGHT + insets.bottom,
+                transform: [{ translateX: bucketDetailTranslateX }],
+              }
+            ]}
+          >
+            <View style={styles.collectionDetailContainer}>
+              <View style={styles.collectionDetailHeader}>
+                <Pressable style={styles.collectionDetailBackButton} onPress={finalizeCloseBucketDetail}>
+                  <ChevronLeft size={24} color={colors.text} />
+                </Pressable>
+                <View style={styles.collectionDetailHeaderTextWrap}>
+                  <Text style={styles.collectionDetailTitle}>{bucketHeaderName}</Text>
+                  <Text style={styles.collectionDetailSubtitle}>{bucketHeaderDescription}</Text>
+                  <Text style={styles.collectionDetailCount}>{bucketArticleCount} articles</Text>
+                </View>
+                <View style={styles.collectionDetailHeaderSpacer} />
+              </View>
+
+              {(isAllPostsLoading || isBucketDetailLoading) ? (
+                <LoadingScreen />
+              ) : (
+                <FlatList
+                  data={bucketDetailItems}
+                  keyExtractor={(item) => `bucket-detail-${item.uid}`}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.collectionDetailList}
+                  renderItem={({ item }) => {
+                    const isRead = readPostUids.has(item.uid);
+                    return (
+                      <Pressable
+                        style={styles.collectionDetailCard}
+                        onPress={() => openPost(item.uid, bucketDetailItems)}
+                      >
+                        <Image
+                          source={item.coverImage}
+                          style={styles.collectionDetailCardImage}
+                          contentFit="cover"
+                          transition={200}
+                          cachePolicy="memory-disk"
+                        />
+                        <View style={styles.collectionDetailCardBody}>
+                          <Text style={styles.collectionDetailCardTitle} numberOfLines={3}>
+                            {item.title}
+                          </Text>
+                          <View style={[
+                            styles.collectionDetailReadBadge,
+                            isRead ? styles.collectionDetailReadBadgeDone : styles.collectionDetailReadBadgeTodo,
+                          ]}>
+                            <View
+                              style={[
+                                styles.collectionDetailReadDot,
+                                isRead ? styles.collectionDetailReadDotDone : styles.collectionDetailReadDotTodo,
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.collectionDetailReadText,
+                                isRead ? styles.collectionDetailReadTextDone : styles.collectionDetailReadTextTodo,
+                              ]}
+                            >
+                              {isRead ? 'Read' : 'Unread'}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  }}
+                  ListEmptyComponent={(
+                    <View style={styles.collectionDetailEmpty}>
+                      <Text style={styles.collectionDetailEmptyText}>No posts available in this collection.</Text>
+                    </View>
+                  )}
+                />
+              )}
+            </View>
+          </Animated.View>
+        ) : null}
 
         {/* 帖子详情 Reader (V2 overlay first, fallback to legacy modal) */}
         {useOverlayReaderV2 ? (
@@ -4183,6 +4260,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: colors.border,
+    zIndex: 40,
+    elevation: 40,
   },
   navItem: {
     alignItems: 'center',
@@ -4838,11 +4917,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  collectionDetailOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 30,
+    elevation: 30,
+    backgroundColor: colors.bg,
+  },
   collectionDetailHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingTop: 14,
     paddingBottom: 12,
     borderBottomWidth: 0.5,
@@ -4870,7 +4957,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
   },
-  collectionDetailCloseButton: {
+  collectionDetailBackButton: {
     width: 34,
     height: 34,
     alignItems: 'center',
@@ -4879,6 +4966,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
+  },
+  collectionDetailHeaderSpacer: {
+    width: 34,
+    height: 34,
   },
   collectionDetailList: {
     paddingHorizontal: 12,
