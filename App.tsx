@@ -828,7 +828,6 @@ const PageItem = React.memo((props: {
   } = props;
   const isFirstPage = item.index === 0;
   const opacity = useRef(new Animated.Value(isFirstPage ? 1 : 0)).current;
-  const translateY = useRef(new Animated.Value(isFirstPage ? 0 : 50)).current;
   const [revealed, setRevealed] = useState(isFirstPage);
 
   const insets = useSafeAreaInsets();
@@ -897,19 +896,11 @@ const PageItem = React.memo((props: {
     if (isVisible && !revealed && contentReady) {
       setRevealed(true);
       imageRectsRef.current.clear(); // Clear rects on reveal/reset
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          friction: 8,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
     }
   }, [isVisible, revealed, contentReady]);
 
@@ -1094,7 +1085,6 @@ const PageItem = React.memo((props: {
   return (
     <Animated.View style={{
       opacity,
-      transform: [{ translateY }],
       height: containerHeight,
       alignSelf: 'stretch',
       overflow: 'visible', // Ensure no clipping
@@ -1995,7 +1985,7 @@ function PostLoader({
 
   if (status === 'loading') {
     return (
-      <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+      <View style={[styles.readerContainer, { backgroundColor: colors.bg }]}>
         <LoadingScreen />
         <Pressable style={styles.modalCloseButton} onPress={onClose}>
           <X size={24} color={colors.text} />
@@ -2008,14 +1998,14 @@ function PostLoader({
     // If it's a 404, we don't show the error screen because parent will skip it
     if (error === 'POST_NOT_FOUND') {
       return (
-        <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+        <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }]}>
           <ActivityIndicator color={colors.primary} />
         </View>
       );
     }
 
     return (
-      <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH }]}>
+      <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }]}>
         <ErrorScreen
           message={error || 'Failed to load post'}
           onRetry={refetch}
@@ -3953,7 +3943,7 @@ function AppContent() {
   const renderReaderContent = () => {
     if (!(swiperItems && swiperItems.length > 0 && selectedPostUid)) {
       return (
-        <View style={[styles.readerContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+        <View style={[styles.readerContainer, { backgroundColor: colors.bg }]}>
           <LoadingScreen />
           <Pressable style={styles.modalCloseButton} onPress={closePost}>
             <X size={24} color={colors.text} />
@@ -4815,7 +4805,8 @@ const styles = StyleSheet.create({
   // Loading
   loadingContainer: {
     flex: 1,
-    minHeight: 280,
+    alignSelf: 'stretch',
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.bg,
