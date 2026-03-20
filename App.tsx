@@ -4067,7 +4067,7 @@ function AppContent() {
                     return (
                       <Pressable
                         style={styles.collectionDetailCard}
-                        onPress={() => openPost(item.uid, bucketDetailItems)}
+                        onPress={() => { closeBucketDetail(); openPost(item.uid, bucketDetailItems); }}
                       >
                         <Image
                           source={item.coverImage}
