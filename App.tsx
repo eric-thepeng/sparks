@@ -1729,17 +1729,6 @@ function SinglePostReader({
             <ArrowDown size={12} color={colors.textSecondary} strokeWidth={3} />
             <Text style={styles.instructionText}>Page</Text>
           </Pressable>
-          <View style={styles.instructionDivider} />
-          <Pressable
-            style={({ pressed }) => [
-              styles.instructionItem,
-              pressed && { opacity: 0.6 }
-            ]}
-            onPress={onRequestNext}
-          >
-            <ArrowRight size={12} color={colors.textSecondary} strokeWidth={3} />
-            <Text style={styles.instructionText}>Next</Text>
-          </Pressable>
         </View>
       </View>
 
