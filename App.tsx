@@ -4260,6 +4260,12 @@ const styles = StyleSheet.create({
 
   // Bottom Nav
   bottomNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 70,
+    elevation: 70,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -4267,8 +4273,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: colors.border,
-    zIndex: 40,
-    elevation: 40,
   },
   navItem: {
     alignItems: 'center',
@@ -4965,14 +4969,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   collectionDetailBackButton: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    padding: 6,
   },
   collectionDetailHeaderSpacer: {
     width: 34,
