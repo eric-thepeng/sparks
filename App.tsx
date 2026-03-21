@@ -4140,6 +4140,7 @@ function AppContent() {
                     <Pressable
                       style={[
                         styles.collectionDetailBookmarkButton,
+                        isCollectionSaved && styles.collectionDetailBookmarkButtonSaved,
                         isCollectionBookmarkLoading && styles.collectionDetailBookmarkButtonDisabled,
                       ]}
                       onPress={handleToggleCollectionSave}
@@ -4148,8 +4149,8 @@ function AppContent() {
                     >
                       <Ionicons
                         name={isCollectionSaved ? 'bookmark' : 'bookmark-outline'}
-                        size={20}
-                        color={isCollectionSaved ? '#B45309' : colors.textMuted}
+                        size={22}
+                        color={isCollectionSaved ? '#F59E0B' : colors.text}
                       />
                     </Pressable>
                   </View>
@@ -5081,6 +5082,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  collectionDetailBookmarkButtonSaved: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
   },
   collectionDetailBookmarkButtonDisabled: {
     opacity: 0.6,
