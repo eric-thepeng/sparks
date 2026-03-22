@@ -356,7 +356,7 @@ export async function clearHistory(): Promise<void> {
 export async function toggleSaveCollection(bucketKey: string): Promise<{ saved: boolean }> {
   const encodedBucketKey = encodeURIComponent(bucketKey);
   try {
-    return await request<{ saved: boolean }>(`/api/me/saved-collections/${encodedBucketKey}`, {
+    return await request<{ saved: boolean }>(`/me/saved-collections/${encodedBucketKey}`, {
       method: 'POST',
     });
   } catch (e: any) {
@@ -366,12 +366,12 @@ export async function toggleSaveCollection(bucketKey: string): Promise<{ saved: 
 }
 
 export async function getSavedCollections(): Promise<SavedCollection[]> {
-  return request<SavedCollection[]>('/api/me/saved-collections');
+  return request<SavedCollection[]>('/me/saved-collections');
 }
 
 export async function markCollectionAccessed(bucketKey: string): Promise<void> {
   const encodedBucketKey = encodeURIComponent(bucketKey);
-  await request<void>(`/api/me/saved-collections/${encodedBucketKey}/accessed`, {
+  await request<void>(`/me/saved-collections/${encodedBucketKey}/accessed`, {
     method: 'PUT',
   });
 }
@@ -446,6 +446,15 @@ export async function fetchBucketDetail(bucketKey: string): Promise<ApiBucketDet
     }
     throw error;
   }
+}
+
+/**
+ * 获取 Bucket 下的所有 Posts
+ * GET /api/buckets/{bucketKey}/posts
+ */
+export async function fetchBucketPosts(bucketKey: string): Promise<ApiPost[]> {
+  const encodedKey = encodeURIComponent(bucketKey);
+  return request<ApiPost[]>(`/api/buckets/${encodedKey}/posts`);
 }
 
 /**

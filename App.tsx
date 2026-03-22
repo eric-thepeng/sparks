@@ -87,6 +87,7 @@ import {
   createComment,
   fetchPostById,
   fetchBucketDetail,
+  fetchBucketPosts,
   likeItem,
   unlikeItem,
   getMyHistory,
@@ -279,7 +280,6 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: string; onTabChange:
   const items = [
     { key: 'explore', icon: Sparkles, label: '', isMain: true },
     { key: 'collection', icon: LayoutGrid, label: 'Collection' },
-    { key: 'saved', icon: Bookmark, label: 'Saved' },
     { key: 'me', icon: User, label: 'Me' },
   ];
 
@@ -3330,6 +3330,7 @@ function AppContent() {
   const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
   const savedBucketKeys = useMemo(() => new Set(savedCollections.map(c => c.bucket_key)), [savedCollections]);
   const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
+  const [bucketPosts, setBucketPosts] = useState<FeedItem[]>([]);
   const [isBucketDetailLoading, setIsBucketDetailLoading] = useState(false);
   const bucketDetailRequestRef = useRef(0);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -3479,6 +3480,9 @@ function AppContent() {
     // Ensure we have a valid list of items and the UID exists in it
     if (!items || items.length === 0) return;
 
+    // Immediately mark as read so UI reflects immediately without waiting for async addToHistory
+    setSessionReadUids(prev => new Set(prev).add(uid));
+
     setSwiperItems(items);
     setSelectedPostUid(uid);
     setReaderVisible(true);
@@ -3495,6 +3499,7 @@ function AppContent() {
     try {
       const apiPost = await fetchPostById(uid);
       const feedItem = apiPostToFeedItem(apiPost, 0);
+      setSessionReadUids(prev => new Set(prev).add(uid));
       setSwiperItems([feedItem]);
       setSelectedPostUid(uid);
       setIsViewingFeed(false);
@@ -3631,6 +3636,7 @@ function AppContent() {
     bucketDetailRequestRef.current += 1;
     setSelectedBucketKey(null);
     setSelectedBucketDetail(null);
+    setBucketPosts([]);
     setIsBucketDetailLoading(false);
   }, []);
 
@@ -3712,9 +3718,17 @@ function AppContent() {
       if (bucketDetailRequestRef.current === requestId) {
         setSelectedBucketDetail(detail);
       }
+      // Fetch actual posts for this bucket directly from the bucket posts API
+      // (bucketPostOrder UIDs from detail.posts don't always exist in allPosts)
+      const posts = await fetchBucketPosts(normalizedBucketKey);
+      if (bucketDetailRequestRef.current === requestId) {
+        const feedItems = posts.map((p, i) => apiPostToFeedItem(p, i));
+        setBucketPosts(feedItems);
+      }
     } catch (error) {
       if (bucketDetailRequestRef.current === requestId) {
         setSelectedBucketDetail(null);
+        setBucketPosts([]);
       }
     } finally {
       if (bucketDetailRequestRef.current === requestId) {
@@ -3723,9 +3737,15 @@ function AppContent() {
     }
   }, [bucketDetailTranslateX, loadSavedCollections, token]);
 
+  // Track read posts in-memory for immediate UI feedback (history from AsyncStorage is often empty)
+  const [sessionReadUids, setSessionReadUids] = useState<Set<string>>(new Set());
+
   const readPostUids = useMemo(() => {
-    return new Set(history.map(item => item.uid));
-  }, [history]);
+    // Merge history (persisted read UIDs) with session reads (this session)
+    const historyUids = new Set(history.map(item => item.uid));
+    const merged = new Set<string>([...historyUids, ...sessionReadUids]);
+    return merged;
+  }, [history, sessionReadUids]);
 
   const bucketPostOrder = useMemo(() => {
     const orderedPosts =
@@ -3739,16 +3759,13 @@ function AppContent() {
 
   const bucketDetailItems = useMemo(() => {
     if (!selectedBucketKey) return [];
-
-    if (bucketPostOrder.length > 0) {
-      const postMap = new Map(allPosts.map(item => [item.uid, item]));
-      return bucketPostOrder
-        .map(uid => postMap.get(uid))
-        .filter((item): item is FeedItem => !!item);
+    // Use bucketPosts fetched directly from the bucket posts API (authoritative source)
+    // Fall back to topic-filtered allPosts only if bucketPosts not yet loaded
+    if (bucketPosts.length > 0) {
+      return bucketPosts;
     }
-
     return allPosts.filter(item => getTopicKey(item.topic) === selectedBucketKey);
-  }, [allPosts, bucketPostOrder, selectedBucketKey]);
+  }, [bucketPosts, allPosts, selectedBucketKey]);
 
   const bucketHeaderName = useMemo(() => {
     if (!selectedBucketKey) return '';
@@ -3825,6 +3842,7 @@ function AppContent() {
     setIsCollectionBookmarkLoading(true);
     try {
       const result = await toggleSaveCollection(selectedBucketKey);
+      console.log('[Bookmark] toggle result:', JSON.stringify(result));
       if (!result || result.saved === undefined) {
         throw new Error('Invalid response from server');
       }
@@ -3853,6 +3871,7 @@ function AppContent() {
       });
       loadSavedCollections();
     } catch (error: any) {
+      console.log('[Bookmark] toggle error:', error?.message);
       showAlert({
         title: 'Save Failed',
         message: error?.message || 'Failed to update collection save status.',
@@ -3982,22 +4001,6 @@ function AppContent() {
         );
       case 'collection':
         return (
-          <>
-            <Header title="Collection" onSearchPress={() => setShowSearchModal(true)} topInset={insets.top} />
-            {isAllPostsLoading ? (
-              <LoadingScreen />
-            ) : (
-              <CollectionScreen
-                items={allPosts}
-                onItemPress={(uid, items) => openPost(uid, items)}
-                onTopicPress={(topic) => openBucketDetail(topic)}
-                bottomTabHeight={bottomTabHeight}
-              />
-            )}
-          </>
-        );
-      case 'saved':
-        return (
           <SavedScreen
             savedCollections={savedCollections}
             isLoading={isSavedCollectionsLoading}
@@ -4043,7 +4046,10 @@ function AppContent() {
       finalizeCloseBucketDetail();
     }
     setBottomTab(tab);
-  }, [selectedBucketKey, finalizeCloseBucketDetail]);
+    if (tab === 'collection' && token) {
+      loadSavedCollections();
+    }
+  }, [selectedBucketKey, finalizeCloseBucketDetail, token, loadSavedCollections]);
 
   const renderReaderContent = () => {
     if (!(swiperItems && swiperItems.length > 0 && selectedPostUid)) {
