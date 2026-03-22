@@ -3708,9 +3708,7 @@ function AppContent() {
 
     // Mark as accessed for saved-collection recency sorting (fire-and-forget).
     if (token) {
-      markCollectionAccessed(normalizedBucketKey)
-        .then(() => loadSavedCollections())
-        .catch(() => {});
+      markCollectionAccessed(normalizedBucketKey).catch(() => {});
     }
 
     try {
