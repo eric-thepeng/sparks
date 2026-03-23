@@ -3513,7 +3513,7 @@ function AppContent() {
 
     // If Collection is open (nested navigation), save the current reader state
     // so we can restore it when Post B is swiped closed
-    if (selectedBucketKeyRef.current && readerVisible) {
+    if (selectedBucketKey && readerVisible) {
       setNestedPrevSwiperItems(swiperItems);
       setNestedPrevSelectedUid(selectedPostUid);
       setNestedPrevSelectedIndex(swiperItems.findIndex(item => item.uid === selectedPostUid));
@@ -3672,7 +3672,6 @@ function AppContent() {
   const closeBucketDetail = useCallback(() => {
     bucketDetailRequestRef.current += 1;
     setSelectedBucketKey(null);
-    selectedBucketKeyRef.current = null;
     setSelectedBucketDetail(null);
     setBucketPosts([]);
     setIsBucketDetailLoading(false);
@@ -3757,7 +3756,7 @@ function AppContent() {
 
     // Save current reader state before opening Collection overlay
     // (only on first open, not on refresh/update when already open)
-    if (!selectedBucketKeyRef.current && readerVisible) {
+    if (!selectedBucketKey && readerVisible) {
       setReaderVisibleBeforeCollection(true);
       setReaderItemsBeforeCollection(swiperItems);
       setReaderUidBeforeCollection(selectedPostUid);
@@ -3765,7 +3764,6 @@ function AppContent() {
     }
 
     setSelectedBucketKey(normalizedBucketKey);
-    selectedBucketKeyRef.current = normalizedBucketKey;
     setSelectedBucketDetail(null);
     setIsBucketDetailLoading(true);
     // Reset nested reader state when entering a new collection
