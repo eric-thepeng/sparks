@@ -3319,6 +3319,20 @@ function AppContent() {
   const [isViewingFeed, setIsViewingFeed] = useState(false); // Track if we are viewing the main feed
   const [readerVisible, setReaderVisible] = useState(false);
 
+  // Navigation stack for nested modal overlay management
+  // Tracks what was showing BEFORE an overlay opened, so we can restore on close
+  // Reader-before-collection: what the reader was showing when Collection opened
+  const [readerVisibleBeforeCollection, setReaderVisibleBeforeCollection] = useState(false);
+  const [readerItemsBeforeCollection, setReaderItemsBeforeCollection] = useState<FeedItem[]>([]);
+  const [readerUidBeforeCollection, setReaderUidBeforeCollection] = useState<string | null>(null);
+  const [readerIndexBeforeCollection, setReaderIndexBeforeCollection] = useState(0);
+  // Nested reader: was the current post opened from within the Collection (Post B from Collection)
+  const [isReaderNestedInCollection, setIsReaderNestedInCollection] = useState(false);
+  // Saved reader state when a nested post (from Collection) is showing — for Post B → Post A restore
+  const [nestedPrevSwiperItems, setNestedPrevSwiperItems] = useState<FeedItem[]>([]);
+  const [nestedPrevSelectedUid, setNestedPrevSelectedUid] = useState<string | null>(null);
+  const [nestedPrevSelectedIndex, setNestedPrevSelectedIndex] = useState(0);
+
   // Sync swiperItems with feedItems if we are viewing the feed
   useEffect(() => {
     if (isViewingFeed) {
@@ -3410,6 +3424,20 @@ function AppContent() {
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
+    // If we have a post nested inside Collection (Post B from Collection), restore Post A
+    if (isReaderNestedInCollection && nestedPrevSwiperItems.length > 0) {
+      // Restore previous reader state but KEEP Collection open
+      setSwiperItems(nestedPrevSwiperItems);
+      setSelectedPostUid(nestedPrevSelectedUid);
+      setReaderVisible(true);
+      setIsReaderNestedInCollection(false);
+      setNestedPrevSwiperItems([]);
+      setNestedPrevSelectedUid(null);
+      isBackSwipingRef.current = false;
+      backSwipeLockSignal.setValue(0);
+      readerTranslateX.setValue(0);
+      return;
+    }
     // keep one frame between hide and unmount to reduce flash
     setReaderVisible(false);
     isBackSwipingRef.current = false;
@@ -3420,7 +3448,7 @@ function AppContent() {
       setIsViewingFeed(false);
       readerTranslateX.setValue(0);
     });
-  }, [readerTranslateX, backSwipeLockSignal]);
+  }, [readerTranslateX, backSwipeLockSignal, isReaderNestedInCollection, nestedPrevSwiperItems, nestedPrevSelectedUid, nestedPrevSelectedIndex]);
 
   const closePost = useCallback(() => {
     finalizeClosePost();
@@ -3483,6 +3511,15 @@ function AppContent() {
     // Immediately mark as read so UI reflects immediately without waiting for async addToHistory
     setSessionReadUids(prev => new Set(prev).add(uid));
 
+    // If Collection is open (nested navigation), save the current reader state
+    // so we can restore it when Post B is swiped closed
+    if (selectedBucketKey && readerVisible) {
+      setNestedPrevSwiperItems(swiperItems);
+      setNestedPrevSelectedUid(selectedPostUid);
+      setNestedPrevSelectedIndex(swiperItems.findIndex(item => item.uid === selectedPostUid));
+      setIsReaderNestedInCollection(true);
+    }
+
     setSwiperItems(items);
     setSelectedPostUid(uid);
     setReaderVisible(true);
@@ -3492,7 +3529,7 @@ function AppContent() {
     // Check if we are opening the main feed (using reference equality or some other heuristic)
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
-  }, [feedItems, readerTranslateX, backSwipeLockSignal]);
+  }, [feedItems, readerTranslateX, backSwipeLockSignal, selectedBucketKey, readerVisible, swiperItems, selectedPostUid]);
 
   // Open a single post by uid (e.g. from deep link); fetches from API then opens
   const openPostByUid = useCallback(async (uid: string) => {
@@ -3638,7 +3675,22 @@ function AppContent() {
     setSelectedBucketDetail(null);
     setBucketPosts([]);
     setIsBucketDetailLoading(false);
-  }, []);
+
+    // If a reader was visible before Collection opened, restore it
+    if (readerVisibleBeforeCollection) {
+      setSwiperItems(readerItemsBeforeCollection);
+      setSelectedPostUid(readerUidBeforeCollection);
+      setReaderVisible(true);
+      // Also clear the nested state since Collection is now closed
+      setReaderVisibleBeforeCollection(false);
+      setReaderItemsBeforeCollection([]);
+      setReaderUidBeforeCollection(null);
+      setReaderIndexBeforeCollection(0);
+      setIsReaderNestedInCollection(false);
+      setNestedPrevSwiperItems([]);
+      setNestedPrevSelectedUid(null);
+    }
+  }, [readerVisibleBeforeCollection, readerItemsBeforeCollection, readerUidBeforeCollection]);
 
   const finalizeCloseBucketDetail = useCallback(() => {
     closeBucketDetail();
@@ -3702,9 +3754,22 @@ function AppContent() {
     isBucketDetailBackSwipingRef.current = false;
     bucketDetailTranslateX.setValue(0);
 
+    // Save current reader state before opening Collection overlay
+    // (only on first open, not on refresh/update when already open)
+    if (!selectedBucketKey && readerVisible) {
+      setReaderVisibleBeforeCollection(true);
+      setReaderItemsBeforeCollection(swiperItems);
+      setReaderUidBeforeCollection(selectedPostUid);
+      setReaderIndexBeforeCollection(swiperItems.findIndex(item => item.uid === selectedPostUid));
+    }
+
     setSelectedBucketKey(normalizedBucketKey);
     setSelectedBucketDetail(null);
     setIsBucketDetailLoading(true);
+    // Reset nested reader state when entering a new collection
+    setIsReaderNestedInCollection(false);
+    setNestedPrevSwiperItems([]);
+    setNestedPrevSelectedUid(null);
 
     // Mark as accessed for saved-collection recency sorting (fire-and-forget).
     if (token) {
@@ -3733,7 +3798,7 @@ function AppContent() {
         setIsBucketDetailLoading(false);
       }
     }
-  }, [bucketDetailTranslateX, loadSavedCollections, token]);
+  }, [token, readerVisible, swiperItems, selectedPostUid, selectedBucketKey]);
 
   // Track read posts in-memory for immediate UI feedback (history from AsyncStorage is often empty)
   const [sessionReadUids, setSessionReadUids] = useState<Set<string>>(new Set());
