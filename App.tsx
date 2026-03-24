@@ -3341,6 +3341,9 @@ function AppContent() {
   }, [feedItems, isViewingFeed]);
 
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
+
+  // When Collection is open, pointerEvents controls whether Reader receives touch events
+  const [readerPointerEvents, setReaderPointerEvents] = useState<'box-none' | 'none' | undefined>(undefined);
   const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
   const savedBucketKeys = useMemo(() => new Set(savedCollections.map(c => c.bucket_key)), [savedCollections]);
   const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
@@ -3424,6 +3427,14 @@ function AppContent() {
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
+    // If Collection is open and Reader has NO nested history, keep Reader visible
+    if (selectedBucketKey && nestedPrevSwiperItems.length === 0) {
+      // Collection is open - don't close the Reader, just reset the animation
+      isBackSwipingRef.current = false;
+      backSwipeLockSignal.setValue(0);
+      readerTranslateX.setValue(0);
+      return;
+    }
     // If we have a post nested inside Collection (Post B from Collection), restore Post A
     if (nestedPrevSwiperItems.length > 0) {
       // Restore previous reader state but KEEP Collection open
@@ -3675,6 +3686,11 @@ function AppContent() {
     setSelectedBucketDetail(null);
     setBucketPosts([]);
     setIsBucketDetailLoading(false);
+    // Disable Reader touch during close animation to prevent interference
+    setReaderPointerEvents('none');
+    requestAnimationFrame(() => {
+      setReaderPointerEvents(undefined);
+    });
 
     // If a reader was visible before Collection opened, restore it
     if (readerVisibleBeforeCollection) {
@@ -3736,6 +3752,7 @@ function AppContent() {
       });
     },
     onPanResponderTerminate: () => {
+      // Only animate back if this was a real swipe - ignore taps that bubbled
       Animated.spring(bucketDetailTranslateX, {
         toValue: 0,
         useNativeDriver: true,
@@ -3766,6 +3783,8 @@ function AppContent() {
     setSelectedBucketKey(normalizedBucketKey);
     setSelectedBucketDetail(null);
     setIsBucketDetailLoading(true);
+    // Disable Reader touch events while Collection is open
+    setReaderPointerEvents('box-none');
     // Reset nested reader state when entering a new collection
     setIsReaderNestedInCollection(false);
     setNestedPrevSwiperItems([]);
@@ -4291,7 +4310,7 @@ function AppContent() {
           selectedPostUid !== null ? (
             <Animated.View
               {...readerPanResponder.panHandlers}
-              pointerEvents={readerVisible ? 'auto' : 'none'}
+              pointerEvents={readerPointerEvents}
               style={{
                 ...StyleSheet.absoluteFillObject,
                 zIndex: 50,
