@@ -3342,8 +3342,6 @@ function AppContent() {
 
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
 
-  // When Collection is open, pointerEvents controls whether Reader receives touch events
-  const [readerPointerEvents, setReaderPointerEvents] = useState<'box-none' | 'none' | undefined>(undefined);
   const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
   const savedBucketKeys = useMemo(() => new Set(savedCollections.map(c => c.bucket_key)), [savedCollections]);
   const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
@@ -3424,11 +3422,13 @@ function AppContent() {
   const isBackSwipingRef = useRef(false);
   const bucketDetailTranslateX = useRef(new Animated.Value(0)).current;
   const isBucketDetailBackSwipingRef = useRef(false);
+  // Ref to track current readerVisible for PanResponder callbacks (reads current value, not stale closure)
+  const readerVisibleRef = useRef(readerVisible);
+  // Sync ref whenever readerVisible changes
+  useEffect(() => { readerVisibleRef.current = readerVisible; }, [readerVisible]);
   // Refs to track current state for PanResponder callbacks (refs update immediately, not on next render)
   const bucketKeyRef = useRef(selectedBucketKey);
-  const readerVisibleRef = useRef(readerVisible);
   useEffect(() => { bucketKeyRef.current = selectedBucketKey; }, [selectedBucketKey]);
-  useEffect(() => { readerVisibleRef.current = readerVisible; }, [readerVisible]);
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
@@ -3691,12 +3691,6 @@ function AppContent() {
     setSelectedBucketDetail(null);
     setBucketPosts([]);
     setIsBucketDetailLoading(false);
-    // Disable Reader touch during close animation to prevent interference
-    setReaderPointerEvents('none');
-    requestAnimationFrame(() => {
-      setReaderPointerEvents(undefined);
-    });
-
     // If a reader was visible before Collection opened, restore it
     if (readerVisibleBeforeCollection) {
       setSwiperItems(readerItemsBeforeCollection);
@@ -3800,7 +3794,6 @@ function AppContent() {
     // Disable Reader touch events while Collection is open
     // When Reader is visible, make Collection fully transparent to touch
     // so right swipes pass through to Reader's PanResponder
-    setReaderPointerEvents(readerVisible ? 'none' : undefined);
     // Reset nested reader state when entering a new collection
     setIsReaderNestedInCollection(false);
     setNestedPrevSwiperItems([]);
@@ -4220,10 +4213,12 @@ function AppContent() {
         {selectedBucketKey ? (
           <Animated.View
             {...bucketDetailPanResponder.panHandlers}
+            pointerEvents="box-none"
             style={[
               styles.collectionDetailOverlay,
               {
                 bottom: 0,
+                zIndex: 49,
                 transform: [{ translateX: bucketDetailTranslateX }],
               }
             ]}
@@ -4325,11 +4320,11 @@ function AppContent() {
           selectedPostUid !== null ? (
             <Animated.View
               {...readerPanResponder.panHandlers}
-              pointerEvents={readerPointerEvents}
+              pointerEvents="auto"
               style={{
                 ...StyleSheet.absoluteFillObject,
-                zIndex: 50,
-                elevation: 50,
+                zIndex: readerVisible ? 51 : 1,
+                elevation: readerVisible ? 51 : 1,
                 backgroundColor: colors.bg,
                 opacity: readerVisible ? 1 : 0,
                 transform: [{ translateX: readerTranslateX }],
