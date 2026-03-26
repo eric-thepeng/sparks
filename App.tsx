@@ -3424,6 +3424,11 @@ function AppContent() {
   const isBackSwipingRef = useRef(false);
   const bucketDetailTranslateX = useRef(new Animated.Value(0)).current;
   const isBucketDetailBackSwipingRef = useRef(false);
+  // Refs to track current state for PanResponder callbacks (refs update immediately, not on next render)
+  const bucketKeyRef = useRef(selectedBucketKey);
+  const readerVisibleRef = useRef(readerVisible);
+  useEffect(() => { bucketKeyRef.current = selectedBucketKey; }, [selectedBucketKey]);
+  useEffect(() => { readerVisibleRef.current = readerVisible; }, [readerVisible]);
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
@@ -3729,8 +3734,16 @@ function AppContent() {
   const bucketDetailPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
-    onMoveShouldSetPanResponderCapture: (_evt, g) => g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85,
+    // When Reader is nested in Collection, only capture LEFT swipes on the Collection header.
+    // Right swipes (especially on posts beneath) should pass through to the Reader.
+    onMoveShouldSetPanResponderCapture: (_evt, g) => {
+      // If Reader is visible and this is a RIGHT swipe, don't capture — let Reader handle it
+      if (readerVisibleRef.current && g.dx > 0) return false;
+      return g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy) * 0.85;
+    },
     onPanResponderMove: (_evt, g) => {
+      // If Reader is visible and this is a rightward swipe on the Reader, don't animate Collection
+      if (readerVisibleRef.current && g.dx > 0) return;
       const x = Math.max(0, Math.min(SCREEN_WIDTH, g.dx));
       if (x > BACK_SWIPE_LOCK_DX && !isBucketDetailBackSwipingRef.current) {
         isBucketDetailBackSwipingRef.current = true;
@@ -3738,6 +3751,8 @@ function AppContent() {
       bucketDetailTranslateX.setValue(x);
     },
     onPanResponderRelease: (_evt, g) => {
+      // If Reader is visible and this is a rightward release, don't close Collection — Reader handles it
+      if (readerVisibleRef.current && g.dx > 0) return;
       if (g.dx > SCREEN_WIDTH * 0.18 || (g.dx > 0 && g.vx > 0.35)) {
         closeBucketDetailBySwipe();
         return;
