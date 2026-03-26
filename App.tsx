@@ -3991,7 +3991,6 @@ function AppContent() {
             <>
               <Header onSearchPress={() => setShowSearchModal(true)} />
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
                 <Sparkles size={32} color={colors.primary} />
                 <Text style={styles.loadingText}>Loading...</Text>
               </View>
