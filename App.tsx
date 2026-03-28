@@ -3341,7 +3341,11 @@ function AppContent() {
   }, [feedItems, isViewingFeed]);
 
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
-
+  // When opening Post from Collection, we hide Collection instead of closing it
+  // This preserves Collection state for back navigation
+  const [isTransitioningToPost, setIsTransitioningToPost] = useState(false);
+  // Whether Collection overlay is visible (false when transitioning to Post)
+  const isCollectionVisible = selectedBucketKey !== null && !isTransitioningToPost;
   const [savedCollections, setSavedCollections] = useState<SavedCollection[]>([]);
   const savedBucketKeys = useMemo(() => new Set(savedCollections.map(c => c.bucket_key)), [savedCollections]);
   const [selectedBucketDetail, setSelectedBucketDetail] = useState<ApiBucketDetail | null>(null);
@@ -3432,6 +3436,15 @@ function AppContent() {
   const BACK_SWIPE_LOCK_DX = 12;
 
   const finalizeClosePost = useCallback(() => {
+    // If we opened a Post from Collection (Collection is hidden but key is still set),
+    // restore Collection instead of closing Reader
+    if (isTransitioningToPost) {
+      setIsTransitioningToPost(false);
+      isBackSwipingRef.current = false;
+      backSwipeLockSignal.setValue(0);
+      readerTranslateX.setValue(0);
+      return;
+    }
     // If Collection is open and Reader has NO nested history, keep Reader visible
     if (selectedBucketKey && nestedPrevSwiperItems.length === 0) {
       // Collection is open - don't close the Reader, just reset the animation
@@ -3529,7 +3542,8 @@ function AppContent() {
 
     // If Collection is open (nested navigation), save the current reader state
     // so we can restore it when Post B is swiped closed
-    if (selectedBucketKey && readerVisible) {
+    // Use bucketKeyRef to get current value (not stale closure)
+    if (bucketKeyRef.current && readerVisibleRef.current) {
       setNestedPrevSwiperItems(swiperItems);
       setNestedPrevSelectedUid(selectedPostUid);
       setNestedPrevSelectedIndex(swiperItems.findIndex(item => item.uid === selectedPostUid));
@@ -3545,7 +3559,7 @@ function AppContent() {
     // Check if we are opening the main feed (using reference equality or some other heuristic)
     // Here we rely on the caller passing the exact feedItems array object
     setIsViewingFeed(items === feedItems);
-  }, [feedItems, readerTranslateX, backSwipeLockSignal, selectedBucketKey, readerVisible, swiperItems, selectedPostUid]);
+  }, [feedItems, readerTranslateX, backSwipeLockSignal, swiperItems, selectedPostUid]);
 
   // Open a single post by uid (e.g. from deep link); fetches from API then opens
   const openPostByUid = useCallback(async (uid: string) => {
@@ -3780,8 +3794,9 @@ function AppContent() {
     bucketDetailTranslateX.setValue(0);
 
     // Save current reader state before opening Collection overlay
-    // (only on first open, not on refresh/update when already open)
-    if (!selectedBucketKey && readerVisible) {
+    // Use readerVisibleRef to get CURRENT value (not stale closure from useCallback memoization)
+    const isReaderCurrentlyVisible = readerVisibleRef.current;
+    if (!selectedBucketKey && isReaderCurrentlyVisible) {
       setReaderVisibleBeforeCollection(true);
       setReaderItemsBeforeCollection(swiperItems);
       setReaderUidBeforeCollection(selectedPostUid);
@@ -4209,8 +4224,8 @@ function AppContent() {
         {/* 底部导航 */}
         <BottomNav activeTab={bottomTab} onTabChange={handleBottomTabChange} />
 
-        {/* Collection detail overlay */}
-        {selectedBucketKey ? (
+        {/* Collection detail overlay - hidden when transitioning to Post */}
+        {selectedBucketKey && !isTransitioningToPost ? (
           <Animated.View
             {...bucketDetailPanResponder.panHandlers}
             pointerEvents="box-none"
@@ -4268,7 +4283,11 @@ function AppContent() {
                     return (
                       <Pressable
                         style={styles.collectionDetailCard}
-                        onPress={() => { closeBucketDetail(); openPost(item.uid, bucketDetailItems); }}
+                        onPress={() => { 
+                          // Hide Collection instead of closing - so Collection state is preserved for back navigation
+                          setIsTransitioningToPost(true);
+                          openPost(item.uid, bucketDetailItems);
+                        }}
                       >
                         <Image
                           source={item.coverImage}
@@ -4320,7 +4339,7 @@ function AppContent() {
           selectedPostUid !== null ? (
             <Animated.View
               {...readerPanResponder.panHandlers}
-              pointerEvents="auto"
+              pointerEvents={isCollectionVisible ? 'none' : 'auto'}
               style={{
                 ...StyleSheet.absoluteFillObject,
                 zIndex: readerVisible ? 51 : 1,
