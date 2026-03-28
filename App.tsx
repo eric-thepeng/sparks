@@ -4225,20 +4225,23 @@ function AppContent() {
         <BottomNav activeTab={bottomTab} onTabChange={handleBottomTabChange} />
 
         {/* Collection detail overlay - hidden when transitioning to Post */}
+        {/* Split into two layers: header (interactive) + content (pointerEvents=box-none, transparent) */}
         {selectedBucketKey && !isTransitioningToPost ? (
-          <Animated.View
-            {...bucketDetailPanResponder.panHandlers}
-            pointerEvents="box-none"
-            style={[
-              styles.collectionDetailOverlay,
-              {
-                bottom: 0,
-                zIndex: 49,
-                transform: [{ translateX: bucketDetailTranslateX }],
-              }
-            ]}
-          >
-            <View style={styles.collectionDetailContainer}>
+          <>
+            {/* Header layer - separate, on top, handles left-swipe-to-close */}
+            <Animated.View
+              {...bucketDetailPanResponder.panHandlers}
+              pointerEvents="box-none"
+              style={[
+                styles.collectionDetailOverlay,
+                {
+                  top: 0,
+                  zIndex: 52,
+                  transform: [{ translateX: bucketDetailTranslateX }],
+                  elevation: 52,
+                }
+              ]}
+            >
               <View style={[styles.collectionDetailHeader, { paddingTop: insets.top + 14 }]}>
                 <Pressable style={styles.collectionDetailBackButton} onPress={finalizeCloseBucketDetail}>
                   <ChevronLeft size={24} color={colors.text} />
@@ -4269,69 +4272,85 @@ function AppContent() {
                   </View>
                 </View>
               </View>
+            </Animated.View>
 
-              {(isAllPostsLoading || isBucketDetailLoading) ? (
-                <LoadingScreen />
-              ) : (
-                <FlatList
-                  data={bucketDetailItems}
-                  keyExtractor={(item) => `bucket-detail-${item.uid}`}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.collectionDetailList}
-                  renderItem={({ item }) => {
-                    const isRead = readPostUids.has(item.uid);
-                    return (
-                      <Pressable
-                        style={styles.collectionDetailCard}
-                        onPress={() => { 
-                          // Hide Collection instead of closing - so Collection state is preserved for back navigation
-                          setIsTransitioningToPost(true);
-                          openPost(item.uid, bucketDetailItems);
-                        }}
-                      >
-                        <Image
-                          source={item.coverImage}
-                          style={styles.collectionDetailCardImage}
-                          contentFit="cover"
-                          transition={200}
-                          cachePolicy="memory-disk"
-                        />
-                        <View style={styles.collectionDetailCardBody}>
-                          <Text style={styles.collectionDetailCardTitle} numberOfLines={3}>
-                            {item.title}
-                          </Text>
-                          <View style={[
-                            styles.collectionDetailReadBadge,
-                            isRead ? styles.collectionDetailReadBadgeDone : styles.collectionDetailReadBadgeTodo,
-                          ]}>
-                            <View
-                              style={[
-                                styles.collectionDetailReadDot,
-                                isRead ? styles.collectionDetailReadDotDone : styles.collectionDetailReadDotTodo,
-                              ]}
-                            />
-                            <Text
-                              style={[
-                                styles.collectionDetailReadText,
-                                isRead ? styles.collectionDetailReadTextDone : styles.collectionDetailReadTextTodo,
-                              ]}
-                            >
-                              {isRead ? 'Read' : 'Unread'}
+            {/* Content layer - pointerEvents=box-none, so right swipes pass through to Reader */}
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                styles.collectionDetailOverlay,
+                {
+                  bottom: 0,
+                  zIndex: readerVisible ? 49 : 51,
+                  elevation: readerVisible ? 49 : 51,
+                  transform: [{ translateX: bucketDetailTranslateX }],
+                }
+              ]}
+            >
+              <View style={styles.collectionDetailContainer}>
+                {(isAllPostsLoading || isBucketDetailLoading) ? (
+                  <LoadingScreen />
+                ) : (
+                  <FlatList
+                    data={bucketDetailItems}
+                    keyExtractor={(item) => `bucket-detail-${item.uid}`}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.collectionDetailList}
+                    renderItem={({ item }) => {
+                      const isRead = readPostUids.has(item.uid);
+                      return (
+                        <Pressable
+                          style={styles.collectionDetailCard}
+                          onPress={() => { 
+                            // Hide Collection instead of closing - so Collection state is preserved for back navigation
+                            setIsTransitioningToPost(true);
+                            openPost(item.uid, bucketDetailItems);
+                          }}
+                        >
+                          <Image
+                            source={item.coverImage}
+                            style={styles.collectionDetailCardImage}
+                            contentFit="cover"
+                            transition={200}
+                            cachePolicy="memory-disk"
+                          />
+                          <View style={styles.collectionDetailCardBody}>
+                            <Text style={styles.collectionDetailCardTitle} numberOfLines={3}>
+                              {item.title}
                             </Text>
+                            <View style={[
+                              styles.collectionDetailReadBadge,
+                              isRead ? styles.collectionDetailReadBadgeDone : styles.collectionDetailReadBadgeTodo,
+                            ]}>
+                              <View
+                                style={[
+                                  styles.collectionDetailReadDot,
+                                  isRead ? styles.collectionDetailReadDotDone : styles.collectionDetailReadDotTodo,
+                                ]}
+                              />
+                              <Text
+                                style={[
+                                  styles.collectionDetailReadText,
+                                  isRead ? styles.collectionDetailReadTextDone : styles.collectionDetailReadTextTodo,
+                                ]}
+                              >
+                                {isRead ? 'Read' : 'Unread'}
+                              </Text>
+                            </View>
                           </View>
-                        </View>
-                      </Pressable>
-                    );
-                  }}
-                  ListEmptyComponent={(
-                    <View style={styles.collectionDetailEmpty}>
-                      <Text style={styles.collectionDetailEmptyText}>No posts available in this collection.</Text>
-                    </View>
-                  )}
-                />
-              )}
-            </View>
-          </Animated.View>
+                        </Pressable>
+                      );
+                    }}
+                    ListEmptyComponent={(
+                      <View style={styles.collectionDetailEmpty}>
+                        <Text style={styles.collectionDetailEmptyText}>No posts available in this collection.</Text>
+                      </View>
+                    )}
+                  />
+                )}
+              </View>
+            </Animated.View>
+          </>
         ) : null}
 
         {/* 帖子详情 Reader (V2 overlay first, fallback to legacy modal) */}
